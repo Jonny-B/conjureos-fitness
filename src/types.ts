@@ -151,6 +151,36 @@ export interface WeightEntry {
 
 // ── Fitness / workouts (scaffolded slice) ────────────────────────────
 
+/**
+ * Attribution for trainer/coach-authored content. Forward-compatible hook for
+ * the planned "fitness coach" ConjureOS user type: licensed trainers author
+ * workouts/programs that import into a user's fitness app and display with the
+ * coach's name, photo, and credit.
+ *
+ * Optional everywhere today — built-in seeds and user-made content omit it and
+ * nothing depends on it yet. Kept here so the eventual coach feature is purely
+ * additive (no migration of the Workout shape). See the GitHub "coach" epic.
+ */
+export interface CoachProfile {
+  /** Stable coach id — a ConjureOS user id once coach accounts exist. */
+  id: string;
+  /** Display name for the "designed by" credit. */
+  name: string;
+  /** Headshot/avatar URL or data URL. */
+  photoUrl?: string;
+  /** Short credential line, e.g. "NASM-CPT · 8 yrs". */
+  credentials?: string;
+  /** One-paragraph bio for a future coach profile page. */
+  bio?: string;
+  /** Optional external link (site / booking). */
+  link?: string;
+  /** True once licensed-trainer status has been verified. */
+  verified?: boolean;
+}
+
+/** Where a workout came from. Treated as "built-in" when omitted. */
+export type WorkoutOrigin = "built-in" | "coach" | "user";
+
 export interface ExerciseSet {
   /** Target reps, or null for a timed set. */
   reps: number | null;
@@ -176,6 +206,10 @@ export interface Workout {
   /** Short pitch / focus, e.g. "Full-body, 20 min, no equipment". */
   summary?: string;
   exercises: Exercise[];
+  /** Provenance — defaults to built-in when omitted. */
+  origin?: WorkoutOrigin;
+  /** Coach credit, present when origin === "coach". Additive — see CoachProfile. */
+  author?: CoachProfile;
 }
 
 // ── Derived view models ──────────────────────────────────────────────
