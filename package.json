@@ -1,0 +1,61 @@
+{
+  "name": "conjureos-fitness",
+  "version": "0.1.0",
+  "description": "Nourish — calorie, nutrition, weight & fitness tracking for ConjureOS. A My Net Diary-style daily tracker with barcode scanning, recipe-app integration, and guided workouts.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Jonny-B",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jonny-B/conjureos-fitness.git"
+  },
+  "conjureos": {
+    "displayName": "Nourish",
+    "icon": "fa:apple-whole",
+    "permissions": [
+      "ai.complete",
+      "vfs.read",
+      "vfs.write",
+      "actions.read",
+      "actions.write"
+    ],
+    "actions": {
+      "logFood": {
+        "permission": "actions.write",
+        "description": "Log a food to the user's diary for a given meal and date. Takes name, calories, and optional protein/carbs/fat (grams), meal (breakfast|lunch|dinner|snacks), and date (YYYY-MM-DD, defaults to today). Useful for assistants or recipe apps that want to record what the user ate."
+      },
+      "todayTotals": {
+        "permission": "actions.read",
+        "description": "Return today's nutrition totals (calories, protein, carbs, fat) and the user's daily goals plus remaining calories. Useful for dashboards, assistants, or apps that want to know how much budget is left."
+      },
+      "logRecipeMeal": {
+        "permission": "actions.write",
+        "description": "Log a saved recipe from the Recipes app as a meal by slug, copying its per-serving nutrition into the diary and marking the recipe cooked. Takes slug, optional servings (default 1), meal, and date."
+      }
+    },
+    "promptSuggestions": [
+      "Log a chicken sandwich and a beer for lunch",
+      "How many calories do I have left today?",
+      "Log the recipe I cooked tonight"
+    ]
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:inline": "tsc -b && vite build --mode inline",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}
