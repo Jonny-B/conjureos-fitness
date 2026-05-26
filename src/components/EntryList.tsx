@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Entry } from "../lib/types";
+import { MEALS, MEAL_LABELS } from "../lib/types";
 
 interface Props {
   entries: Entry[];
@@ -7,9 +8,8 @@ interface Props {
   onDelete: (id: string) => Promise<void>;
 }
 
-/** Today's log, grouped food vs exercise, with tap-to-edit and delete. */
+/** Today's log, grouped by meal (Breakfast → Snacks) then Exercise. */
 export default function EntryList({ entries, onUpdate, onDelete }: Props) {
-  const food = entries.filter((e) => e.kind === "food");
   const exercise = entries.filter((e) => e.kind === "exercise");
 
   if (entries.length === 0) {
@@ -22,13 +22,17 @@ export default function EntryList({ entries, onUpdate, onDelete }: Props) {
 
   return (
     <section className="entries">
-      {food.length > 0 && (
-        <Group title="Food" total={`${Math.round(sum(food))} kcal`}>
-          {food.map((e) => (
-            <Row key={e.id} entry={e} onUpdate={onUpdate} onDelete={onDelete} />
-          ))}
-        </Group>
-      )}
+      {MEALS.map((m) => {
+        const items = entries.filter((e) => e.kind === "food" && e.meal === m);
+        if (items.length === 0) return null;
+        return (
+          <Group key={m} title={MEAL_LABELS[m]} total={`${Math.round(sum(items))} kcal`}>
+            {items.map((e) => (
+              <Row key={e.id} entry={e} onUpdate={onUpdate} onDelete={onDelete} />
+            ))}
+          </Group>
+        );
+      })}
       {exercise.length > 0 && (
         <Group title="Exercise" total={`−${Math.round(sum(exercise))} kcal`}>
           {exercise.map((e) => (

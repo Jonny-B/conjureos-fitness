@@ -41,12 +41,15 @@ Now sign-in, data, and AI logging hit the real Supabase + Edge Function. Set
 
 ## What v1 does
 
+- **Calorie budget** — remaining calories (`goal − food + exercise`) shown big in the ring
+- **Meal slots** — food organized into Breakfast / Lunch / Dinner / Snacks; tap a slot to log into it
 - **Plain-language logging** — natural-language food/exercise → structured entries
 - **Photo logging** — snap a meal, get estimated items + macros (multimodal)
-- **Daily totals vs goals** — calorie ring (eaten − burned = net) + protein / carbs / fat bars
+- **Macros vs goals** — protein / carbs / fat bars
 - **Inline adjust** — tap any entry to fix the name, quantity, or macros; estimates are never claimed as precise
 - **Weekly history** — last 7 days of net calories against your goal, tap a bar to jump to that day
 - **Editable goals** — set your daily calorie + macro targets
+- **Account + settings** — header avatar opens settings; installable PWA for iPhone home screen
 
 ## Architecture — the backend boundary
 

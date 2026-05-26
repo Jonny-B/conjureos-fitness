@@ -1,19 +1,26 @@
 import { useRef, useState } from "react";
-import type { DraftEntry, EntryKind } from "../lib/types";
+import type { DraftEntry, EntryKind, Meal } from "../lib/types";
+import { MEALS, MEAL_LABELS } from "../lib/types";
 import { parseEntries } from "../lib/api";
 
 interface Props {
+  kind: EntryKind;
+  meal: Meal;
+  onKindChange: (k: EntryKind) => void;
+  onMealChange: (m: Meal) => void;
   onLogged: (drafts: DraftEntry[]) => Promise<void>;
 }
 
-/** Plain-language + photo logging. Parses via the AI function, then hands
- *  the drafts up to be saved. The user adjusts numbers afterward in the list. */
-export default function LogInput({ onLogged }: Props) {
-  const [kind, setKind] = useState<EntryKind>("food");
+/** Plain-language + photo logging. Parses via the AI, tags food with the
+ *  selected meal, then hands the drafts up to be saved. */
+export default function LogInput({ kind, meal, onKindChange, onMealChange, onLogged }: Props) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const withMeal = (drafts: DraftEntry[]): DraftEntry[] =>
+    drafts.map((d) => (d.kind === "food" ? { ...d, meal } : d));
 
   async function logText() {
     const trimmed = text.trim();
@@ -23,7 +30,7 @@ export default function LogInput({ onLogged }: Props) {
     try {
       const drafts = await parseEntries({ kind, text: trimmed });
       if (drafts.length === 0) throw new Error("Couldn't find anything to log — try rephrasing.");
-      await onLogged(drafts);
+      await onLogged(withMeal(drafts));
       setText("");
     } catch (err) {
       setError(humanError(err));
@@ -44,7 +51,7 @@ export default function LogInput({ onLogged }: Props) {
         image: { media_type: file.type || "image/jpeg", data },
       });
       if (drafts.length === 0) throw new Error("Couldn't read the photo — try a clearer shot.");
-      await onLogged(drafts);
+      await onLogged(withMeal(drafts));
       setText("");
     } catch (err) {
       setError(humanError(err));
@@ -59,44 +66,52 @@ export default function LogInput({ onLogged }: Props) {
       <div className="seg">
         <button
           className={kind === "food" ? "seg-btn active" : "seg-btn"}
-          onClick={() => setKind("food")}
+          onClick={() => onKindChange("food")}
         >
           Food
         </button>
         <button
           className={kind === "exercise" ? "seg-btn active" : "seg-btn"}
-          onClick={() => setKind("exercise")}
+          onClick={() => onKindChange("exercise")}
         >
           Exercise
         </button>
       </div>
 
-      <div className="logger-row">
-        <textarea
-          className="logger-input"
-          rows={2}
-          value={text}
-          disabled={busy}
-          placeholder={
-            kind === "food"
-              ? "chicken sandwich and a beer for lunch…"
-              : "30 min run at a moderate pace…"
-          }
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) logText();
-          }}
-        />
-      </div>
+      {kind === "food" && (
+        <div className="meal-pills">
+          {MEALS.map((m) => (
+            <button
+              key={m}
+              className={m === meal ? "meal-pill active" : "meal-pill"}
+              onClick={() => onMealChange(m)}
+            >
+              {MEAL_LABELS[m]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <textarea
+        className="logger-input"
+        rows={2}
+        value={text}
+        disabled={busy}
+        placeholder={
+          kind === "food"
+            ? `Add to ${MEAL_LABELS[meal].toLowerCase()} — “chicken sandwich and a beer”…`
+            : "30 min run at a moderate pace…"
+        }
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) logText();
+        }}
+      />
 
       <div className="logger-actions">
         {kind === "food" && (
           <>
-            <button
-              className="btn btn-ghost"
-              disabled={busy}
-              onClick={() => fileRef.current?.click()}
-            >
+            <button className="btn btn-ghost" disabled={busy} onClick={() => fileRef.current?.click()}>
               📷 Photo
             </button>
             <input

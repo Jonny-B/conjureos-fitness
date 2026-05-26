@@ -10,12 +10,12 @@
  * Selected automatically when Supabase env vars are absent, or forced with
  * VITE_USE_MOCK=true. Reset everything by clearing localStorage.
  */
-import type { DraftEntry, Entry, Goals } from "../types";
+import type { DraftEntry, Entry, Goals, Meal } from "../types";
 import { DEFAULT_GOALS } from "../types";
 import { shiftYmd, ymd } from "../date";
 import type { AppSession, FitnessBackend, ParseInput } from "./types";
 
-const STORE_KEY = "conjureos-fitness:mock-store:v1";
+const STORE_KEY = "conjureos-fitness:mock-store:v2";
 const SESSION_KEY = "conjureos-fitness:mock-session:v1";
 const DEMO_USER_ID = "demo-user";
 
@@ -199,11 +199,12 @@ const photoFallback = (): DraftEntry[] => [
 ];
 
 // ── seed ──────────────────────────────────────────────────────────────────
-function entry(date: string, d: DraftEntry, ageMs: number): Entry {
+function entry(date: string, d: DraftEntry, ageMs: number, meal?: Meal): Entry {
   return {
     id: uuid(),
     entry_date: date,
     kind: d.kind,
+    meal: d.kind === "food" ? (d.meal ?? meal ?? "snacks") : null,
     name: d.name,
     quantity: d.quantity || null,
     calories: d.calories,
@@ -218,14 +219,24 @@ function seed(): Store {
   const today = ymd();
   const entries: Entry[] = [];
   let age = 0;
-  const at = (date: string, drafts: DraftEntry[]) => {
-    for (const d of drafts) entries.push(entry(date, d, (age += 60_000)));
+  const at = (date: string, meal: Meal | null, drafts: DraftEntry[]) => {
+    for (const d of drafts) entries.push(entry(date, d, (age += 60_000), meal ?? undefined));
   };
 
-  at(shiftYmd(today, -3), [...estimateFood("oatmeal and a banana"), ...estimateFood("chicken sandwich"), ...estimateExercise("30 min run")]);
-  at(shiftYmd(today, -2), [...estimateFood("eggs and bacon and toast"), ...estimateFood("burrito"), ...estimateExercise("45 min weights")]);
-  at(shiftYmd(today, -1), [...estimateFood("greek yogurt"), ...estimateFood("salmon and rice and salad"), ...estimateFood("wine")]);
-  at(today, [...estimateFood("latte and oatmeal"), ...estimateExercise("20 min walk")]);
+  at(shiftYmd(today, -3), "breakfast", estimateFood("oatmeal and a banana"));
+  at(shiftYmd(today, -3), "lunch", estimateFood("chicken sandwich"));
+  at(shiftYmd(today, -3), null, estimateExercise("30 min run"));
+
+  at(shiftYmd(today, -2), "breakfast", estimateFood("eggs and bacon and toast"));
+  at(shiftYmd(today, -2), "dinner", estimateFood("burrito"));
+  at(shiftYmd(today, -2), null, estimateExercise("45 min weights"));
+
+  at(shiftYmd(today, -1), "breakfast", estimateFood("greek yogurt"));
+  at(shiftYmd(today, -1), "dinner", estimateFood("salmon and rice and salad"));
+  at(shiftYmd(today, -1), "snacks", estimateFood("wine"));
+
+  at(today, "breakfast", estimateFood("latte and oatmeal"));
+  at(today, null, estimateExercise("20 min walk"));
 
   return { entries, goals: { ...DEFAULT_GOALS } };
 }

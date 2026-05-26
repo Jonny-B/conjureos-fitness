@@ -96,6 +96,7 @@ export function createSupabaseBackend(): FitnessBackend {
         user_id: uid,
         entry_date: date,
         kind: d.kind,
+        meal: d.kind === "food" ? d.meal ?? "snacks" : null,
         name: d.name,
         quantity: d.quantity || null,
         calories: d.calories,

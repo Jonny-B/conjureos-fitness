@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { DraftEntry, Entry, Goals } from "../lib/types";
-import { DEFAULT_GOALS } from "../lib/types";
+import type { DraftEntry, Entry, EntryKind, Goals, Meal } from "../lib/types";
+import { DEFAULT_GOALS, defaultMeal } from "../lib/types";
 import {
   addEntries,
   deleteEntry,
@@ -13,7 +13,7 @@ import {
 } from "../lib/api";
 import { backend, isDemo } from "../lib/backend";
 import type { AppSession } from "../lib/backend/types";
-import { totalsFor } from "../lib/macros";
+import { mealTotals, totalsFor } from "../lib/macros";
 import DaySummary from "./DaySummary";
 import LogInput from "./LogInput";
 import EntryList from "./EntryList";
@@ -41,6 +41,8 @@ export default function Dashboard({ session }: { session: AppSession }) {
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [editingGoals, setEditingGoals] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [logKind, setLogKind] = useState<EntryKind>("food");
+  const [logMeal, setLogMeal] = useState<Meal>(defaultMeal());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,6 +74,7 @@ export default function Dashboard({ session }: { session: AppSession }) {
   }, [refresh]);
 
   const totals = useMemo(() => totalsFor(entries), [entries]);
+  const meals = useMemo(() => mealTotals(entries), [entries]);
 
   const weekBars: DayBar[] = useMemo(() => {
     const byDate = new Map<string, Entry[]>();
@@ -151,8 +154,24 @@ export default function Dashboard({ session }: { session: AppSession }) {
 
         {error && <p className="notice notice-err">{error}</p>}
 
-        <DaySummary totals={totals} goals={goals} onEditGoals={() => setEditingGoals(true)} />
-        <LogInput onLogged={handleLogged} />
+        <DaySummary
+          totals={totals}
+          meals={meals}
+          goals={goals}
+          activeMeal={logMeal}
+          onSelectMeal={(m) => {
+            setLogKind("food");
+            setLogMeal(m);
+          }}
+          onEditGoals={() => setEditingGoals(true)}
+        />
+        <LogInput
+          kind={logKind}
+          meal={logMeal}
+          onKindChange={setLogKind}
+          onMealChange={setLogMeal}
+          onLogged={handleLogged}
+        />
 
         {loading ? (
           <section className="card empty"><p>Loading your log…</p></section>
