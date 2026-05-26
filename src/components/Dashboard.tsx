@@ -19,6 +19,7 @@ import LogInput from "./LogInput";
 import EntryList from "./EntryList";
 import WeeklyChart, { type DayBar } from "./WeeklyChart";
 import GoalsModal from "./GoalsModal";
+import Settings from "./Settings";
 
 const DAY_MS = 86_400_000;
 const shift = (date: string, days: number) => ymd(new Date(new Date(date + "T00:00:00").getTime() + days * DAY_MS));
@@ -39,6 +40,7 @@ export default function Dashboard({ session }: { session: AppSession }) {
   const [week, setWeek] = useState<Entry[]>([]);
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [editingGoals, setEditingGoals] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,12 +116,14 @@ export default function Dashboard({ session }: { session: AppSession }) {
           <span className="brand-name">Fitness</span>
           {isDemo && <span className="demo-badge">demo</span>}
         </div>
-        <div className="user">
-          <span className="user-email">{session.user.email}</span>
-          <button className="link-btn" onClick={() => backend.signOut()}>
-            Sign out
-          </button>
-        </div>
+        <button
+          className="avatar"
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Account and settings"
+          title="Account and settings"
+        >
+          {avatarInitial(session.user.email)}
+        </button>
       </header>
 
       <main className="content">
@@ -163,9 +167,25 @@ export default function Dashboard({ session }: { session: AppSession }) {
         </footer>
       </main>
 
+      {settingsOpen && (
+        <Settings
+          email={session.user.email}
+          goals={goals}
+          isDemo={isDemo}
+          onEditGoals={() => setEditingGoals(true)}
+          onSignOut={() => backend.signOut()}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
       {editingGoals && (
         <GoalsModal goals={goals} onSave={handleSaveGoals} onClose={() => setEditingGoals(false)} />
       )}
     </div>
   );
+}
+
+function avatarInitial(email: string | null): string {
+  const c = (email ?? "").trim().charAt(0).toUpperCase();
+  return c || "◗";
 }
