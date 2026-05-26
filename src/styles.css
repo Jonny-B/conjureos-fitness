@@ -20,6 +20,23 @@
   --tabbar-h: 60px;
 }
 
+/* Restyle on the ConjureOS design language (@conjureos/ui). <body> carries
+   `.cui-ui`, so the app's structural tokens above are re-pointed at the
+   official `--cui-*` set and the whole UI inherits "Modern Whimsy". Domain
+   data-viz colors (the macro palette, good/bad) stay app-specific by design.
+   Equal specificity to :root but declared later, so these win where present. */
+.cui-ui {
+  --bg: var(--cui-bg);
+  --bg-2: var(--cui-bg-1);
+  --bg-3: var(--cui-bg-2);
+  --line: var(--cui-border);
+  --text: var(--cui-fg);
+  --muted: var(--cui-fg-mute);
+  --accent: var(--cui-accent);
+  --accent-2: var(--cui-accent-soft);
+  --radius: var(--cui-radius-lg);
+}
+
 * {
   box-sizing: border-box;
 }
