@@ -112,6 +112,11 @@ input, textarea { font-family: inherit; }
 }
 .brand-sm .brand-mark { width: 32px; height: 32px; font-size: 1.2rem; border-radius: 9px; }
 .brand-name { font-size: 1.1rem; font-weight: 700; }
+.demo-badge {
+  font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--carbs); background: #ffcc4d1f; border: 1px solid #ffcc4d44;
+  padding: 2px 7px; border-radius: 99px; margin-left: 2px;
+}
 .user { display: flex; align-items: center; gap: 14px; }
 .user-email { color: var(--ink-faint); font-size: 0.82rem; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { backend, isDemo } from "../lib/backend";
 
 type Mode = "magic" | "password";
 
-/** Sign-in screen. Reuses ConjureOS auth: magic-link, password, or Google. */
+/** Sign-in screen. Routes through the active backend's auth, so it works
+ *  identically in demo mode (any credentials succeed) and against real
+ *  ConjureOS auth (magic-link / password / Google). */
 export default function SignIn() {
   const [mode, setMode] = useState<Mode>("magic");
   const [email, setEmail] = useState("");
@@ -12,25 +14,17 @@ export default function SignIn() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const configured = isSupabaseConfigured();
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!supabase) return;
     setBusy(true);
     setError(null);
     setStatus(null);
     try {
       if (mode === "magic") {
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: { emailRedirectTo: window.location.origin },
-        });
-        if (error) throw error;
-        setStatus("Check your email for a sign-in link.");
+        const { message } = await backend.signInWithOtp(email);
+        if (message) setStatus(message);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        await backend.signInWithPassword(email, password);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed.");
@@ -40,13 +34,15 @@ export default function SignIn() {
   }
 
   async function google() {
-    if (!supabase) return;
     setError(null);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
-    if (error) setError(error.message);
+    setBusy(true);
+    try {
+      await backend.signInWithGoogle();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -60,10 +56,10 @@ export default function SignIn() {
           </div>
         </div>
 
-        {!configured && (
+        {isDemo && (
           <p className="notice notice-warn">
-            Supabase isn't configured yet. Set <code>VITE_SUPABASE_URL</code> and{" "}
-            <code>VITE_SUPABASE_ANON_KEY</code> (same project as ConjureOS) to enable sign-in.
+            <strong>Demo mode.</strong> Running on in-browser mock data — no backend needed.
+            Sign in with any email (or just hit the button).
           </p>
         )}
 
@@ -75,9 +71,9 @@ export default function SignIn() {
               required
               autoComplete="email"
               value={email}
-              disabled={!configured || busy}
+              disabled={busy}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              placeholder={isDemo ? "anything@demo.dev" : "you@example.com"}
             />
           </label>
 
@@ -89,18 +85,18 @@ export default function SignIn() {
                 required
                 autoComplete="current-password"
                 value={password}
-                disabled={!configured || busy}
+                disabled={busy}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </label>
           )}
 
-          <button type="submit" className="btn btn-primary" disabled={!configured || busy}>
-            {busy ? "…" : mode === "magic" ? "Email me a link" : "Sign in"}
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy ? "…" : isDemo ? "Enter demo" : mode === "magic" ? "Email me a link" : "Sign in"}
           </button>
         </form>
 
-        <button className="btn btn-ghost" onClick={google} disabled={!configured || busy}>
+        <button className="btn btn-ghost" onClick={google} disabled={busy}>
           Continue with Google
         </button>
 

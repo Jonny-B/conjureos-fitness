@@ -1,32 +1,32 @@
 import { useEffect, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
-import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { backend } from "../lib/backend";
+import type { AppSession, BackendKind } from "../lib/backend/types";
 
 export interface AuthState {
-  session: Session | null;
+  session: AppSession | null;
   loading: boolean;
-  configured: boolean;
+  kind: BackendKind;
 }
 
-/** Tracks the Supabase auth session, updating on sign-in/out across tabs. */
+/** Tracks the auth session via the active backend (mock or supabase). */
 export function useAuth(): AuthState {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<AppSession | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
+    let active = true;
+    backend.getSession().then((s) => {
+      if (active) {
+        setSession(s);
+        setLoading(false);
+      }
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
-    });
-    return () => sub.subscription.unsubscribe();
+    const unsub = backend.onAuthStateChange((s) => setSession(s));
+    return () => {
+      active = false;
+      unsub();
+    };
   }, []);
 
-  return { session, loading, configured: isSupabaseConfigured() };
+  return { session, loading, kind: backend.kind };
 }

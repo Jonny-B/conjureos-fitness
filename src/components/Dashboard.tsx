@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
 import type { DraftEntry, Entry, Goals } from "../lib/types";
 import { DEFAULT_GOALS } from "../lib/types";
 import {
@@ -12,8 +11,9 @@ import {
   updateEntry,
   ymd,
 } from "../lib/api";
+import { backend, isDemo } from "../lib/backend";
+import type { AppSession } from "../lib/backend/types";
 import { totalsFor } from "../lib/macros";
-import { supabase } from "../lib/supabase";
 import DaySummary from "./DaySummary";
 import LogInput from "./LogInput";
 import EntryList from "./EntryList";
@@ -33,7 +33,7 @@ const prettyDate = (date: string) => {
   });
 };
 
-export default function Dashboard({ session }: { session: Session }) {
+export default function Dashboard({ session }: { session: AppSession }) {
   const [day, setDay] = useState(ymd());
   const [entries, setEntries] = useState<Entry[]>([]);
   const [week, setWeek] = useState<Entry[]>([]);
@@ -112,10 +112,11 @@ export default function Dashboard({ session }: { session: Session }) {
         <div className="brand brand-sm">
           <span className="brand-mark" aria-hidden>◗</span>
           <span className="brand-name">Fitness</span>
+          {isDemo && <span className="demo-badge">demo</span>}
         </div>
         <div className="user">
           <span className="user-email">{session.user.email}</span>
-          <button className="link-btn" onClick={() => supabase?.auth.signOut()}>
+          <button className="link-btn" onClick={() => backend.signOut()}>
             Sign out
           </button>
         </div>
