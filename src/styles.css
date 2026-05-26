@@ -91,11 +91,12 @@ body {
 .env-pill {
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--accent-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px 8px;
+  letter-spacing: 0.04em;
+  color: var(--cui-accent-soft);
+  background: var(--cui-accent-mute);
+  border: 1px solid var(--cui-accent-tint);
+  border-radius: var(--cui-radius-pill);
+  padding: 2px 10px;
 }
 .icon-btn {
   background: transparent;
@@ -173,23 +174,36 @@ body {
   background: var(--bg-3);
   color: var(--text);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--cui-radius);
   padding: 10px 14px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  transition: background var(--cui-duration) var(--cui-ease),
+              border-color var(--cui-duration) var(--cui-ease),
+              transform var(--cui-duration-fast) var(--cui-ease);
 }
 .btn:hover {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--cui-border-strong);
+}
+.btn:active {
+  transform: translateY(1px);
 }
 .btn:disabled {
   opacity: 0.45;
   cursor: default;
+  transform: none;
 }
 .btn.primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  border: none;
-  color: white;
+  background: var(--cui-accent);
+  border: 1px solid var(--cui-accent);
+  color: #fff;
+  box-shadow: var(--cui-shadow-accent);
+}
+.btn.primary:hover {
+  background: var(--cui-accent-soft);
+  border-color: var(--cui-accent-soft);
+  color: var(--cui-bg);
 }
 .btn.block {
   width: 100%;
@@ -209,11 +223,12 @@ body {
   width: 100%;
   background: var(--bg-2);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--cui-radius-sm);
   color: var(--text);
   padding: 11px 12px;
   font-size: 15px;
   font-family: inherit;
+  transition: border-color var(--cui-duration) var(--cui-ease);
 }
 .text-input:focus,
 .text-area:focus,
@@ -265,11 +280,12 @@ body {
 
 /* Calorie-budget hero: remaining ring flanked by tappable meal satellites. */
 .budget-card {
-  background: var(--bg-2);
-  border: 1px solid var(--line);
+  background: var(--cui-accent-gradient), var(--bg-2);
+  border: 1px solid var(--cui-accent-tint);
   border-radius: var(--radius);
   padding: 16px;
   margin-bottom: 16px;
+  box-shadow: var(--cui-shadow);
 }
 .budget-head {
   display: flex;
@@ -310,10 +326,13 @@ body {
   align-items: center;
   gap: 1px;
   padding: 8px 4px;
-  border-radius: 10px;
+  border-radius: var(--cui-radius);
+  transition: background var(--cui-duration) var(--cui-ease),
+              transform var(--cui-duration-fast) var(--cui-ease);
 }
 .meal-stat:hover {
-  background: var(--bg-3);
+  background: var(--cui-accent-mute);
+  transform: translateY(-1px);
 }
 .meal-stat-label {
   font-size: 12px;
@@ -518,13 +537,19 @@ body {
 .add-to-meal {
   margin-top: 8px;
   background: none;
-  border: 1px dashed var(--line);
-  color: var(--accent-2);
-  border-radius: 10px;
+  border: 1px dashed var(--cui-border-strong);
+  color: var(--cui-accent-soft);
+  border-radius: var(--cui-radius);
   padding: 8px;
   width: 100%;
   cursor: pointer;
   font-size: 13px;
+  transition: background var(--cui-duration) var(--cui-ease),
+              border-color var(--cui-duration) var(--cui-ease);
+}
+.add-to-meal:hover {
+  background: var(--cui-accent-mute);
+  border-color: var(--cui-accent-tint);
 }
 
 /* ── Add flow ─────────────────────────────────────────────────────────── */
@@ -543,15 +568,18 @@ body {
   background: var(--bg-3);
   border: 1px solid var(--line);
   color: var(--muted);
-  border-radius: 999px;
+  border-radius: var(--cui-radius-pill);
   padding: 6px 14px;
   font-size: 13px;
   cursor: pointer;
+  transition: background var(--cui-duration) var(--cui-ease),
+              color var(--cui-duration) var(--cui-ease),
+              border-color var(--cui-duration) var(--cui-ease);
 }
 .chip.active {
-  background: linear-gradient(135deg, rgba(124, 106, 247, 0.25), rgba(74, 158, 255, 0.18));
-  color: var(--text);
-  border-color: rgba(124, 106, 247, 0.5);
+  background: var(--cui-accent-mute);
+  color: var(--cui-accent-soft);
+  border-color: var(--cui-accent-tint);
 }
 .mode-body {
   display: flex;
@@ -766,6 +794,16 @@ body {
   padding: 16px;
   cursor: pointer;
   color: var(--text);
+  transition: border-color var(--cui-duration) var(--cui-ease),
+              background var(--cui-duration) var(--cui-ease),
+              transform var(--cui-duration) var(--cui-ease),
+              box-shadow var(--cui-duration) var(--cui-ease);
+}
+.workout-card:hover {
+  border-color: var(--cui-border-strong);
+  background: var(--bg-3);
+  transform: translateY(-1px);
+  box-shadow: var(--cui-shadow-accent);
 }
 .workout-name {
   font-size: 17px;
