@@ -12,7 +12,7 @@ import type { FoodItem, Macros } from "../../types";
 
 const BASE = "https://world.openfoodfacts.org";
 // Identify ourselves per OFF etiquette so we're not rate-limited as anon.
-const UA = "ConjureOS-Nourish/0.1 (https://github.com/Jonny-B/conjureos-fitness)";
+const UA = "ConjureOS-Fitness/0.1 (https://github.com/Jonny-B/conjureos-fitness)";
 
 interface OffNutriments {
   ["energy-kcal_serving"]?: number;

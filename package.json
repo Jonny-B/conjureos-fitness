@@ -1,7 +1,7 @@
 {
   "name": "conjureos-fitness",
   "version": "0.1.0",
-  "description": "Nourish — calorie, nutrition, weight & fitness tracking for ConjureOS. A My Net Diary-style daily tracker with barcode scanning, recipe-app integration, and guided workouts.",
+  "description": "Conjure Fitness — calorie, nutrition, weight & fitness tracking for ConjureOS. A My Net Diary-style daily tracker with barcode scanning, recipe-app integration, and guided workouts.",
   "type": "module",
   "license": "MIT",
   "author": "Jonny-B",
@@ -10,7 +10,7 @@
     "url": "https://github.com/Jonny-B/conjureos-fitness.git"
   },
   "conjureos": {
-    "displayName": "Nourish",
+    "displayName": "Conjure Fitness",
     "icon": "fa:apple-whole",
     "permissions": [
       "ai.complete",

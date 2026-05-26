@@ -1,6 +1,6 @@
 /**
  * Client for the Recipes anchor app's cross-app actions (Phase 13a), wrapped
- * in a typed surface with a dev-mode mock. Lets Nourish read the user's saved
+ * in a typed surface with a dev-mode mock. Lets Conjure Fitness read the user's saved
  * recipes and log a cooked one as a meal.
  *
  * The Recipes app registers `listRecipes`, `getRecipe`, `addRecipe`,

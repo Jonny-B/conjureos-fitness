@@ -246,6 +246,82 @@ body {
   min-width: 140px;
 }
 
+/* Calorie-budget hero: remaining ring flanked by tappable meal satellites. */
+.budget-card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.budget-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.budget-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--muted);
+}
+.budget-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent-2);
+}
+.budget-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 6px;
+}
+.budget-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.meal-stat {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 8px 4px;
+  border-radius: 10px;
+}
+.meal-stat:hover {
+  background: var(--bg-3);
+}
+.meal-stat-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.meal-stat-cal {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+/* Promote the ring to hero size inside the budget grid. */
+.budget-grid .ring-wrap,
+.budget-grid .ring {
+  width: 132px;
+  height: 132px;
+}
+.budget-grid .ring-number {
+  font-size: 32px;
+}
+.budget-foot {
+  text-align: center;
+  margin: 12px 0;
+}
+
 .summary-card {
   display: flex;
   align-items: center;

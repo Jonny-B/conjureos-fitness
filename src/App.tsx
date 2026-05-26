@@ -67,7 +67,7 @@ export function App() {
           <span className="brand-mark" aria-hidden>
             ◴
           </span>
-          Nourish
+          Conjure Fitness
         </div>
         <div className="topbar-spacer" />
         {backend === "mock" && <span className="env-pill" title="No backend session — data is local to this device">demo</span>}

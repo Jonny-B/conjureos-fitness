@@ -45,6 +45,7 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
 
   const isToday = date === todayISO();
   const total = view?.total ?? { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  const mealCal = (m: MealType) => view?.perMeal[m].calories ?? 0;
 
   return (
     <div className="diary">
@@ -65,14 +66,31 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
         </button>
       </div>
 
-      <section className="summary-card">
-        <CalorieRing consumed={total.calories} goal={goals.calories} />
-        <div className="summary-right">
-          <div className="summary-eaten">
-            <strong>{total.calories}</strong> eaten · goal {goals.calories}
-          </div>
-          <MacroBars total={total} goals={goals} />
+      <section className="budget-card">
+        <div className="budget-head">
+          <span className="budget-label">Calorie Budget</span>
+          <span className="budget-value">{goals.calories.toLocaleString()}</span>
         </div>
+
+        <div className="budget-grid">
+          <div className="budget-col">
+            <MealStat label={MEAL_LABELS.breakfast} cal={mealCal("breakfast")} onClick={() => onAddToMeal("breakfast")} />
+            <MealStat label={MEAL_LABELS.lunch} cal={mealCal("lunch")} onClick={() => onAddToMeal("lunch")} />
+          </div>
+          <CalorieRing consumed={total.calories} goal={goals.calories} />
+          <div className="budget-col">
+            <MealStat label={MEAL_LABELS.dinner} cal={mealCal("dinner")} onClick={() => onAddToMeal("dinner")} />
+            <MealStat label={MEAL_LABELS.snacks} cal={mealCal("snacks")} onClick={() => onAddToMeal("snacks")} />
+          </div>
+        </div>
+
+        <div className="budget-foot">
+          <span className="summary-eaten">
+            <strong>{total.calories}</strong> eaten · goal {goals.calories.toLocaleString()}
+          </span>
+        </div>
+
+        <MacroBars total={total} goals={goals} />
       </section>
 
       {MEAL_TYPES.map((meal) => {
@@ -119,6 +137,15 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
         );
       })}
     </div>
+  );
+}
+
+function MealStat({ label, cal, onClick }: { label: string; cal: number; onClick: () => void }) {
+  return (
+    <button className="meal-stat" onClick={onClick} aria-label={`Add to ${label}`}>
+      <span className="meal-stat-label">{label}</span>
+      <span className="meal-stat-cal">{cal}</span>
+    </button>
   );
 }
 
