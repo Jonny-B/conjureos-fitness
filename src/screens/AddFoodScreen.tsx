@@ -7,6 +7,7 @@ import { parseMeal } from "../features/naturalLanguage";
 import { isValidBarcode } from "../features/barcode";
 import { listRecipes, markCooked, type ListedRecipe } from "../bridge/recipeBridge";
 import { BarcodeScanner } from "../components/BarcodeScanner";
+import { ChevronLeft, SearchIcon } from "../components/icons";
 
 type Mode = "search" | "scan" | "describe" | "recipes";
 
@@ -37,12 +38,19 @@ export function AddFoodScreen({ date, defaultMeal, onLogged, onCancel }: Props) 
   return (
     <div className="add">
       <div className="add-modes">
-        {(["search", "scan", "describe", "recipes"] as Mode[]).map((m) => (
-          <button key={m} className={`chip${mode === m ? " active" : ""}`} onClick={() => setMode(m)}>
-            {MODE_LABELS[m]}
-          </button>
-        ))}
-        <div className="add-modes-spacer" />
+        <div className="segmented" role="tablist">
+          {(["search", "scan", "describe", "recipes"] as Mode[]).map((m) => (
+            <button
+              key={m}
+              role="tab"
+              aria-selected={mode === m}
+              className={`segmented-btn${mode === m ? " active" : ""}`}
+              onClick={() => setMode(m)}
+            >
+              {MODE_LABELS[m]}
+            </button>
+          ))}
+        </div>
         <button className="link-btn" onClick={onCancel}>
           Cancel
         </button>
@@ -95,15 +103,22 @@ function SearchMode({ onPick }: { onPick: (food: FoodItem) => void }) {
 
   return (
     <div className="mode-body">
-      <input
-        className="text-input"
-        placeholder="Search foods (e.g. greek yogurt)"
-        value={query}
-        autoFocus
-        onChange={(e) => setQuery(e.target.value)}
-      />
+      <div className="search-field">
+        <SearchIcon size={18} className="search-field-icon" />
+        <input
+          className="text-input"
+          placeholder="Search foods (e.g. greek yogurt)"
+          value={query}
+          autoFocus
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
       {loading && <div className="muted small">Searching Open Food Facts + USDA…</div>}
-      <FoodResultList foods={results} onPick={onPick} emptyHint={query.length >= 2 ? "No matches." : "Type to search."} />
+      <FoodResultList
+        foods={results}
+        onPick={onPick}
+        emptyHint={query.trim().length >= 2 ? "No matches — try a simpler term." : "Type at least 2 letters to search."}
+      />
     </div>
   );
 }
@@ -166,13 +181,18 @@ function DescribeMode({
   const [text, setText] = useState("");
   const [meal, setMeal] = useState<MealType>(defaultMeal);
   const [items, setItems] = useState<FoodItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const parse = async () => {
     if (!text.trim()) return;
     setBusy(true);
+    setError(null);
+    setItems(null);
     try {
       setItems(await parseMeal({ text }));
+    } catch {
+      setError("Couldn’t reach the estimator. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -203,7 +223,15 @@ function DescribeMode({
         </button>
       </div>
 
-      {items && (
+      {error && <div className="notice notice-error">{error}</div>}
+
+      {items && items.length === 0 && !error && (
+        <div className="notice">
+          No foods recognized in that description. Try naming the dishes, e.g. “turkey sandwich and an apple.”
+        </div>
+      )}
+
+      {items && items.length > 0 && (
         <>
           <div className="muted small">Estimates — adjust later by editing the diary entry.</div>
           <ul className="parsed-list">
@@ -216,7 +244,7 @@ function DescribeMode({
               </li>
             ))}
           </ul>
-          <button className="btn primary block" disabled={!items.length} onClick={logAll}>
+          <button className="btn primary block" onClick={logAll}>
             Log {items.length} item{items.length === 1 ? "" : "s"} to {MEAL_LABELS[meal]}
           </button>
         </>
@@ -345,8 +373,8 @@ function LogPanel({
 
   return (
     <div className="log-panel">
-      <button className="link-btn" onClick={onBack}>
-        ‹ Back
+      <button className="link-btn back-link" onClick={onBack}>
+        <ChevronLeft size={16} /> Back
       </button>
       <h2 className="log-title">{food.name}</h2>
       {food.brand && <div className="muted">{food.brand}</div>}

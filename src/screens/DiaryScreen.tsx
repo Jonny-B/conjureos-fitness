@@ -4,6 +4,7 @@ import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { buildDayView, entryMacros, shiftDate, todayISO } from "../features/diary";
 import { CalorieRing, MacroBars } from "../components/rings";
+import { ChevronLeft, ChevronRight, TrashIcon } from "../components/icons";
 
 interface Props {
   date: string;
@@ -51,9 +52,13 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
     <div className="diary">
       <div className="date-nav">
         <button className="icon-btn" aria-label="Previous day" onClick={() => onChangeDate(shiftDate(date, -1))}>
-          ‹
+          <ChevronLeft size={20} />
         </button>
-        <button className="date-label" onClick={() => onChangeDate(todayISO())}>
+        <button
+          className="date-label"
+          onClick={() => onChangeDate(todayISO())}
+          title={isToday ? undefined : "Jump to today"}
+        >
           {isToday ? "Today" : formatDate(date)}
         </button>
         <button
@@ -62,7 +67,7 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
           disabled={isToday}
           onClick={() => onChangeDate(shiftDate(date, 1))}
         >
-          ›
+          <ChevronRight size={20} />
         </button>
       </div>
 
@@ -116,14 +121,19 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
                     </div>
                     <div className="entry-cal">{em.calories}</div>
                     <div className="entry-actions">
-                      <button className="step" aria-label="Less" onClick={() => updateQty(e, -0.25)}>
+                      <button
+                        className="step"
+                        aria-label="Less"
+                        disabled={e.quantity <= 0.25}
+                        onClick={() => updateQty(e, -0.25)}
+                      >
                         −
                       </button>
                       <button className="step" aria-label="More" onClick={() => updateQty(e, 0.25)}>
                         +
                       </button>
                       <button className="step del" aria-label="Remove" onClick={() => remove(e)}>
-                        ✕
+                        <TrashIcon size={16} />
                       </button>
                     </div>
                   </li>
@@ -131,7 +141,7 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
               })}
             </ul>
             <button className="add-to-meal" onClick={() => onAddToMeal(meal)}>
-              ＋ Add food
+              + Add food
             </button>
           </section>
         );

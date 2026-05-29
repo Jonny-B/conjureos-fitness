@@ -18,12 +18,19 @@ export function CalorieRing({ consumed, goal }: { consumed: number; goal: number
   return (
     <div className="ring-wrap">
       <svg viewBox="0 0 120 120" className="ring" role="img" aria-label={`${consumed} of ${goal} calories`}>
+        <defs>
+          <linearGradient id="cal-ring-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="var(--cui-accent)" />
+            <stop offset="100%" stopColor="var(--cui-accent-soft)" />
+          </linearGradient>
+        </defs>
         <circle cx="60" cy="60" r={R} className="ring-track" />
         <circle
           cx="60"
           cy="60"
           r={R}
           className={`ring-value${over ? " over" : ""}`}
+          stroke={over ? undefined : "url(#cal-ring-grad)"}
           strokeDasharray={`${dash} ${C}`}
           transform="rotate(-90 60 60)"
         />
@@ -32,6 +39,40 @@ export function CalorieRing({ consumed, goal }: { consumed: number; goal: number
         <div className="ring-number">{Math.abs(remaining)}</div>
         <div className="ring-label">{over ? "cal over" : "cal left"}</div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Generic countdown/progress ring used by the workout player. `pct` is 0–100
+ * of the ring filled; children render in the center (the big timer number).
+ */
+export function ProgressRing({
+  pct,
+  tone = "accent",
+  children,
+}: {
+  pct: number;
+  tone?: "accent" | "rest" | "reps";
+  children: React.ReactNode;
+}) {
+  const R = 54;
+  const C = 2 * Math.PI * R;
+  const dash = (Math.max(0, Math.min(100, pct)) / 100) * C;
+  return (
+    <div className="progress-ring-wrap">
+      <svg viewBox="0 0 120 120" className="progress-ring" aria-hidden>
+        <circle cx="60" cy="60" r={R} className="ring-track" />
+        <circle
+          cx="60"
+          cy="60"
+          r={R}
+          className={`progress-ring-value ${tone}`}
+          strokeDasharray={`${dash} ${C}`}
+          transform="rotate(-90 60 60)"
+        />
+      </svg>
+      <div className="ring-center">{children}</div>
     </div>
   );
 }
@@ -50,7 +91,10 @@ export function MacroBars({ total, goals }: { total: Macros; goals: Goals }) {
         return (
           <div className="macro-row" key={r.key}>
             <div className="macro-head">
-              <span className="macro-label">{r.label}</span>
+              <span className="macro-label">
+                <span className={`macro-dot ${r.cls}`} aria-hidden />
+                {r.label}
+              </span>
               <span className="macro-amt">
                 {value} / {r.goal} g
               </span>

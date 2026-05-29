@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Conjure Fitness — calorie, nutrition, weight & fitness tracking for ConjureOS. A My Net Diary-style daily tracker with barcode scanning, recipe-app integration, and guided workouts.",
   "type": "module",
   "license": "MIT",

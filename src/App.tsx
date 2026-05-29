@@ -9,6 +9,15 @@ import { AddFoodScreen } from "./screens/AddFoodScreen";
 import { TrendsScreen } from "./screens/TrendsScreen";
 import { WorkoutsScreen } from "./screens/WorkoutsScreen";
 import { SettingsSheet } from "./screens/SettingsSheet";
+import {
+  AddIcon,
+  DiaryIcon,
+  Logo,
+  SettingsIcon,
+  TrendsIcon,
+  WorkoutsIcon,
+} from "./components/icons";
+import type { ComponentType } from "react";
 
 type Tab = "diary" | "add" | "trends" | "workouts";
 
@@ -65,14 +74,14 @@ export function App() {
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden>
-            ◴
+            <Logo />
           </span>
           Conjure Fitness
         </div>
         <div className="topbar-spacer" />
         {backend === "mock" && <span className="env-pill" title="No backend session — data is local to this device">demo</span>}
         <button className="icon-btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
-          ⚙
+          <SettingsIcon size={20} />
         </button>
       </header>
 
@@ -105,10 +114,10 @@ export function App() {
       </main>
 
       <nav className="tabbar">
-        <TabButton label="Diary" icon="☰" active={tab === "diary"} onClick={() => setTab("diary")} />
-        <TabButton label="Add" icon="＋" active={tab === "add"} onClick={() => openAdd(addMeal)} />
-        <TabButton label="Trends" icon="📈" active={tab === "trends"} onClick={() => setTab("trends")} />
-        <TabButton label="Workouts" icon="🏋" active={tab === "workouts"} onClick={() => setTab("workouts")} />
+        <TabButton label="Diary" Icon={DiaryIcon} active={tab === "diary"} onClick={() => setTab("diary")} />
+        <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(addMeal)} />
+        <TabButton label="Trends" Icon={TrendsIcon} active={tab === "trends"} onClick={() => setTab("trends")} />
+        <TabButton label="Workouts" Icon={WorkoutsIcon} active={tab === "workouts"} onClick={() => setTab("workouts")} />
       </nav>
 
       {settingsOpen && (
@@ -125,19 +134,19 @@ export function App() {
 
 function TabButton({
   label,
-  icon,
+  Icon,
   active,
   onClick,
 }: {
   label: string;
-  icon: string;
+  Icon: ComponentType<{ size?: number }>;
   active: boolean;
   onClick: () => void;
 }) {
   return (
-    <button className={`tab${active ? " active" : ""}`} onClick={onClick}>
+    <button className={`tab${active ? " active" : ""}`} onClick={onClick} aria-current={active ? "page" : undefined}>
       <span className="tab-icon" aria-hidden>
-        {icon}
+        <Icon size={22} />
       </span>
       <span className="tab-label">{label}</span>
     </button>

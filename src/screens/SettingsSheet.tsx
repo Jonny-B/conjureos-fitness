@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import type { ActivityLevel, GoalDirection, Goals, Profile, Sex } from "../types";
 import { getRepository } from "../data/repository";
 import { ACTIVITY_LABELS, recommendGoals } from "../features/goals";
+import { CloseIcon } from "../components/icons";
 
 const DEFAULT_PROFILE: Profile = {
   sex: "female",
@@ -55,11 +56,12 @@ export function SettingsSheet({
         <header className="sheet-head">
           <h2>Profile &amp; goals</h2>
           <button className="icon-btn" aria-label="Close" onClick={onClose}>
-            ✕
+            <CloseIcon size={20} />
           </button>
         </header>
 
         <div className="sheet-body">
+          <div className="section-label">About you</div>
           <div className="form-grid">
             <Field label="Sex">
               <select className="select" value={p.sex} onChange={(e) => set("sex", e.target.value as Sex)}>
@@ -100,9 +102,12 @@ export function SettingsSheet({
             </select>
           </Field>
 
-          <button className="btn block" onClick={applyRecommended}>
-            Use recommended goals
-          </button>
+          <div className="section-label">
+            Daily targets
+            <button className="link-btn section-action" onClick={applyRecommended}>
+              Use recommended
+            </button>
+          </div>
 
           <div className="form-grid">
             <Field label="Calories">

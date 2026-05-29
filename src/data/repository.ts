@@ -91,7 +91,7 @@ export async function getRepository(): Promise<Repository> {
     instance = new MockRepository();
     if (import.meta.env.DEV) {
       // eslint-disable-next-line no-console
-      console.info("[nourish] using mock data layer (no shared-project session)");
+      console.info("[conjure-fitness] using mock data layer (no shared-project session)");
     }
   }
   initPromise = instance.init();

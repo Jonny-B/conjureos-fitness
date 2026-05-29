@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Workout } from "../types";
 import { BUILT_IN_WORKOUTS, buildSteps, type PlayerStep } from "../features/workouts";
+import { ProgressRing } from "../components/rings";
+import { ChevronLeft, PlayIcon } from "../components/icons";
 
 export function WorkoutsScreen() {
   const [active, setActive] = useState<Workout | null>(null);
@@ -14,11 +16,16 @@ export function WorkoutsScreen() {
         {BUILT_IN_WORKOUTS.map((w) => (
           <li key={w.id}>
             <button className="workout-card" onClick={() => setActive(w)}>
-              <div className="workout-name">{w.name}</div>
-              <div className="workout-summary">{w.summary}</div>
-              <div className="workout-meta">
-                {w.exercises.length} exercises · {w.exercises.reduce((s, e) => s + e.sets.length, 0)} sets
+              <div className="workout-card-text">
+                <div className="workout-name">{w.name}</div>
+                <div className="workout-summary">{w.summary}</div>
+                <div className="workout-meta">
+                  {w.exercises.length} exercises · {w.exercises.reduce((s, e) => s + e.sets.length, 0)} sets
+                </div>
               </div>
+              <span className="workout-play" aria-hidden>
+                <PlayIcon size={18} />
+              </span>
             </button>
           </li>
         ))}
@@ -77,11 +84,16 @@ function WorkoutPlayer({ workout, onExit }: { workout: Workout; onExit: () => vo
   const totalWork = steps.filter((s) => s.kind === "work").length;
   const workDone = steps.slice(0, index + 1).filter((s) => s.kind === "work").length;
 
+  // Ring fill = elapsed fraction of a timed/rest countdown; full for rep sets.
+  const dur = step.durationSec ?? null;
+  const ringPct =
+    dur != null && dur > 0 ? ((dur - (secondsLeft ?? dur)) / dur) * 100 : 100;
+
   return (
     <div className={`player ${step.kind}`}>
       <div className="player-top">
-        <button className="link-btn" onClick={onExit}>
-          ‹ End
+        <button className="link-btn back-link" onClick={onExit}>
+          <ChevronLeft size={16} /> End
         </button>
         <span className="player-progress">
           Set {Math.min(workDone, totalWork)} / {totalWork}
@@ -97,18 +109,25 @@ function WorkoutPlayer({ workout, onExit }: { workout: Workout; onExit: () => vo
             {step.weightKg ? ` · ${step.weightKg} kg` : ""}
           </div>
 
-          {step.durationSec != null ? (
-            <div className="timer big">{fmt(secondsLeft ?? step.durationSec)}</div>
-          ) : (
-            <div className="timer big reps">{step.reps} reps</div>
-          )}
+          <ProgressRing pct={ringPct} tone={step.durationSec != null ? "accent" : "reps"}>
+            {step.durationSec != null ? (
+              <div className="timer big">{fmt(secondsLeft ?? step.durationSec)}</div>
+            ) : (
+              <div className="timer big reps">
+                {step.reps}
+                <span className="timer-unit">reps</span>
+              </div>
+            )}
+          </ProgressRing>
 
           {step.notes && <div className="player-notes">{step.notes}</div>}
         </div>
       ) : (
         <div className="player-body">
           <div className="player-phase">REST</div>
-          <div className="timer big rest">{fmt(secondsLeft ?? step.durationSec)}</div>
+          <ProgressRing pct={ringPct} tone="rest">
+            <div className="timer big rest">{fmt(secondsLeft ?? step.durationSec)}</div>
+          </ProgressRing>
           <div className="player-next">Next: {step.nextExerciseName}</div>
         </div>
       )}
