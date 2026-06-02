@@ -14,6 +14,38 @@ const BASE = "https://world.openfoodfacts.org";
 // Identify ourselves per OFF etiquette so we're not rate-limited as anon.
 const UA = "ConjureOS-Fitness/0.1 (https://github.com/Jonny-B/conjureos-fitness)";
 
+// OFF is a global database and returns products labeled in Arabic, CJK,
+// Cyrillic, Thai, etc. We want English-region results, so drop any product
+// whose name carries letters from a non-Latin script. Checked by code point so
+// the source stays pure ASCII. (Greek is intentionally allowed — µ and friends
+// show up in otherwise-English labels.)
+function hasNonLatinScript(name: string): boolean {
+  for (const ch of name) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (
+      (c >= 0x0590 && c <= 0x05ff) || // Hebrew
+      (c >= 0x0600 && c <= 0x06ff) || // Arabic
+      (c >= 0x0750 && c <= 0x077f) || // Arabic Supplement
+      (c >= 0x0900 && c <= 0x097f) || // Devanagari
+      (c >= 0x0e00 && c <= 0x0e7f) || // Thai
+      (c >= 0x0400 && c <= 0x04ff) || // Cyrillic
+      (c >= 0x3040 && c <= 0x30ff) || // Hiragana + Katakana
+      (c >= 0x3400 && c <= 0x4dbf) || // CJK Extension A
+      (c >= 0x4e00 && c <= 0x9fff) || // CJK Unified
+      (c >= 0xac00 && c <= 0xd7af) //    Hangul
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True when a product name reads as English/Latin-script (and has letters). */
+function isEnglishName(name: string): boolean {
+  if (hasNonLatinScript(name)) return false;
+  return /[A-Za-z]/.test(name);
+}
+
 interface OffNutriments {
   ["energy-kcal_serving"]?: number;
   ["proteins_serving"]?: number;
@@ -128,6 +160,8 @@ export async function searchText(
   url.searchParams.set("search_simple", "1");
   url.searchParams.set("action", "process");
   url.searchParams.set("json", "1");
+  // Ask OFF for English labels to bias the source toward English-region results.
+  url.searchParams.set("lc", "en");
   url.searchParams.set("page_size", String(Math.min(limit, 30)));
   url.searchParams.set(
     "fields",
@@ -144,8 +178,9 @@ export async function searchText(
   const out: FoodItem[] = [];
   for (const p of json.products ?? []) {
     const item = toFoodItem(p);
-    // Drop entries with no usable energy — OFF has many incomplete records.
-    if (item && item.perServing.calories > 0) out.push(item);
+    // Drop entries with no usable energy (OFF has many incomplete records) and
+    // anything not labeled in English/Latin script (no more Arabic, CJK, etc.).
+    if (item && item.perServing.calories > 0 && isEnglishName(item.name)) out.push(item);
     if (out.length >= limit) break;
   }
   return out;

@@ -75,35 +75,50 @@ const MODE_LABELS: Record<Mode, string> = {
 
 // ── Search ─────────────────────────────────────────────────────────────
 
+const MIN_SEARCH_CHARS = 3;
+const SEARCH_DEBOUNCE_MS = 250;
+
 function SearchMode({ onPick }: { onPick: (food: FoodItem) => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<FoodItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  const trimmed = query.trim();
+  const ready = trimmed.length >= MIN_SEARCH_CHARS;
 
   useEffect(() => {
-    if (query.trim().length < 2) {
+    // Below the threshold (including after a backspace) reset to a clean slate.
+    if (!ready) {
       setResults([]);
+      setSearching(false);
       return;
     }
+    // Every keystroke shows activity immediately so typing feels responsive,
+    // then waits out the debounce before hitting the network.
+    setSearching(true);
     const controller = new AbortController();
     const t = setTimeout(async () => {
-      setLoading(true);
       try {
-        const found = await searchFoods(query, 20, controller.signal);
-        if (!controller.signal.aborted) setResults(found);
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        const found = await searchFoods(trimmed, 20, controller.signal);
+        if (!controller.signal.aborted) {
+          setResults(found);
+          setSearching(false);
+        }
+      } catch {
+        if (!controller.signal.aborted) setSearching(false);
       }
-    }, 350);
+    }, SEARCH_DEBOUNCE_MS);
+    // Cleanup runs on the next keystroke: cancel the in-flight fetch AND the
+    // not-yet-fired debounced search so only the latest query ever lands.
     return () => {
       controller.abort();
       clearTimeout(t);
     };
-  }, [query]);
+  }, [trimmed, ready]);
 
   return (
     <div className="mode-body">
-      <div className="search-field">
+      <div className={`search-field${searching ? " searching" : ""}`}>
         <SearchIcon size={18} className="search-field-icon" />
         <input
           className="text-input"
@@ -112,12 +127,19 @@ function SearchMode({ onPick }: { onPick: (food: FoodItem) => void }) {
           autoFocus
           onChange={(e) => setQuery(e.target.value)}
         />
+        {searching && <span className="search-field-spinner" aria-label="Searching" />}
       </div>
-      {loading && <div className="muted small">Searching Open Food Facts + USDA…</div>}
+      {searching && <div className="muted small">Searching Open Food Facts + USDA…</div>}
       <FoodResultList
         foods={results}
         onPick={onPick}
-        emptyHint={query.trim().length >= 2 ? "No matches — try a simpler term." : "Type at least 2 letters to search."}
+        emptyHint={
+          ready
+            ? searching
+              ? "Searching…"
+              : "No matches — try a simpler term."
+            : `Type at least ${MIN_SEARCH_CHARS} letters to search.`
+        }
       />
     </div>
   );

@@ -746,6 +746,23 @@ body {
 }
 .search-field .text-input {
   padding-left: 38px;
+  padding-right: 38px;
+  transition: box-shadow var(--cui-duration) var(--cui-ease);
+}
+/* Active-search glow so typing feels like it's doing something. */
+.search-field.searching .text-input {
+  box-shadow: 0 0 0 2px var(--accent) inset;
+}
+.search-field-spinner {
+  position: absolute;
+  right: 12px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--bg-3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  pointer-events: none;
 }
 .food-results {
   list-style: none;
