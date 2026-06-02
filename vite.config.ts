@@ -26,6 +26,9 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       target: "es2022",
+      // Never minify: ConjureOS lets users (and the in-OS AI) view + modify
+      // installed app source, so the published build must stay readable.
+      minify: false,
       sourcemap: !inline,
       ...(inline
         ? {
