@@ -120,6 +120,8 @@ export function App() {
         <TabButton label="Workouts" Icon={WorkoutsIcon} active={tab === "workouts"} onClick={() => setTab("workouts")} />
       </nav>
 
+      <div className="app-version">v{__APP_VERSION__}</div>
+
       {settingsOpen && (
         <SettingsSheet
           goals={goals}
