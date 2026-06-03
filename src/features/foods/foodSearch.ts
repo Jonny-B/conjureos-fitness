@@ -63,7 +63,7 @@ export async function searchFoods(
   signal?: AbortSignal,
 ): Promise<FoodItem[]> {
   const q = query.trim();
-  if (q.length < 2) return [];
+  if (q.length < 3) return [];
   const half = Math.ceil(limit / 2);
   const [offResults, usdaResults] = await Promise.all([
     off.searchText(q, half, signal).catch(() => [] as FoodItem[]),
