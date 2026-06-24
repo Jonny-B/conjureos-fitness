@@ -24,6 +24,20 @@ export function BarcodeScanner({
     const controller = new AbortController();
     let stream: MediaStream | null = null;
 
+    // Warm the WASM engine in parallel with getUserMedia. On WebKit the
+    // polyfill lazy-fetches a ~1 MiB wasm blob on first detect(); kicking it
+    // off here hides the 200 to 800 ms stall behind the camera-permission
+    // dialog. Errors are intentionally swallowed: this is best-effort.
+    try {
+      const warmCanvas = document.createElement("canvas");
+      warmCanvas.width = 1;
+      warmCanvas.height = 1;
+      const Ctor = (globalThis as { BarcodeDetector?: new () => { detect: (s: CanvasImageSource) => Promise<unknown> } }).BarcodeDetector;
+      if (Ctor) new Ctor().detect(warmCanvas).catch(() => {});
+    } catch {
+      /* best-effort warm-up */
+    }
+
     (async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
