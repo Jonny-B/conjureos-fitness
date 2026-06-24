@@ -61,14 +61,22 @@ jobs:
             echo "__CHANGELOG__"
           } >> "$GITHUB_OUTPUT"
 
-      # The action lives on the conjureos `dev` branch. Until this pipeline is
-      # merged to dev, both steps are pinned to the feature branch under test.
-      # Switch back to @dev after the merge.
+      # The shared publish action lives in the (private) ConjureOS repo. GitHub
+      # can't resolve an action in another private *personal* repo via
+      # `uses: Jonny-B/ConjureOS/...@dev`, so check ConjureOS out with a
+      # read-only PAT and reference the action by local path below.
+      - name: Checkout ConjureOS (shared publish action)
+        uses: actions/checkout@v4
+        with:
+          repository: Jonny-B/ConjureOS
+          ref: dev
+          token: ${{ secrets.CONJUREOS_REPO_TOKEN }}
+          path: .conjureos
 
       # workflow_dispatch -> DEV project. Test path; publishes to dev users.
       - name: Publish to App Store (dev)
         if: github.event_name == 'workflow_dispatch'
-        uses: Jonny-B/ConjureOS/.github/actions/publish-anchor-app@dev
+        uses: ./.conjureos/.github/actions/publish-anchor-app
         with:
           supabase-url: https://${{ secrets.SUPABASE_DEV_PROJECT_REF }}.supabase.co
           # Anon key is public by design (shipped in every browser); RLS applies.
@@ -82,7 +90,7 @@ jobs:
       # release published -> PROD project. Ships to real users.
       - name: Publish to App Store (prod)
         if: github.event_name == 'release'
-        uses: Jonny-B/ConjureOS/.github/actions/publish-anchor-app@dev
+        uses: ./.conjureos/.github/actions/publish-anchor-app
         with:
           supabase-url: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
           supabase-anon-key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50Z2VsYnRlcGVjcXNxbG94bWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTkzMzEsImV4cCI6MjA5MzY3NTMzMX0.fgRCszkeAbHANaK-JJAGmTwWHyOh-3b6-od1c3s3V0w

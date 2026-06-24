@@ -1,4 +1,6 @@
-# Conjure Fitness — an app for ConjureOS
+# Conjure Health, an app for ConjureOS
+
+> Renamed from "Conjure Fitness" on 2026-06-24 as v2 (plan wizard + daily check-off home + AI workout coach) was scoped. Slug `fitness` + repo `conjureos-fitness` unchanged for now to avoid a disruptive App Store re-publish; revisit when v2 publishes.
 
 Calorie, nutrition, weight, and fitness tracking. A My Net Diary-style daily
 tracker: log food by search, barcode, or plain language; see calories + macros
@@ -75,7 +77,7 @@ npm run build       # dist/ — ingested by the Phase 8 bundler on ZIP import
 
 ## Cross-app integration
 
-Conjure Fitness registers actions other apps / the home orchestrator can call:
+Conjure Health registers actions other apps / the home orchestrator can call:
 
 | Action | Scope | What it does |
 |---|---|---|
