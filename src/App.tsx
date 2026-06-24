@@ -76,7 +76,7 @@ export function App() {
           <span className="brand-mark" aria-hidden>
             <Logo />
           </span>
-          Conjure Fitness
+          Conjure Health
         </div>
         <div className="topbar-spacer" />
         {backend === "mock" && <span className="env-pill" title="No backend session — data is local to this device">demo</span>}
