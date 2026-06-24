@@ -311,6 +311,19 @@ body {
   transition: border-color var(--cui-duration) var(--cui-ease),
               box-shadow var(--cui-duration) var(--cui-ease);
 }
+
+/* iOS Safari zooms the viewport on focus when a form control is under 16px.
+   Force 16px on touch so it never zooms; pinch-zoom stays available (no
+   user-scalable=no). !important to beat the per-component .text-input /
+   .select sizes. Touch only, so desktop is untouched. */
+@media (pointer: coarse) {
+  input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 .text-input:focus,
 .text-area:focus,
 .select:focus {
