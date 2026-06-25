@@ -21,7 +21,7 @@ export function NutritionLabelCapture({
   onCancel,
 }: {
   barcode?: string;
-  onParsed: (food: FoodItem) => void;
+  onParsed: (food: FoodItem, confidence: number) => void;
   onCancel: () => void;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
@@ -61,7 +61,7 @@ export function NutritionLabelCapture({
         setStatus("low-confidence");
         return;
       }
-      onParsed(result.food);
+      onParsed(result.food, result.confidence);
     } catch {
       setError("The estimator didn't respond. Check your connection and try again.");
       setStatus("error");

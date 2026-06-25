@@ -42,7 +42,22 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Build single-file HTML
+      # Two build steps, gated by trigger, so the bundle bakes the right Supabase
+      # URL + anon key for the target project. Anon keys are public by design
+      # (shipped in every browser); RLS gates everything. The client SDK needs
+      # them to call the health-foods-db Edge Function.
+      - name: Build single-file HTML (dev project)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_REF }}.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xcHZqbHN5d3JwdGVmZ3d1enRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTA3OTMsImV4cCI6MjA5NTQ4Njc5M30.ITZjX5KkMNgbJuFEHS5-IqFFJC6A39OynVgOznZeqD8
+        run: npm run build:inline
+
+      - name: Build single-file HTML (prod project)
+        if: github.event_name == 'release'
+        env:
+          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50Z2VsYnRlcGVjcXNxbG94bWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTkzMzEsImV4cCI6MjA5MzY3NTMzMX0.fgRCszkeAbHANaK-JJAGmTwWHyOh-3b6-od1c3s3V0w
         run: npm run build:inline
 
       - name: Resolve changelog

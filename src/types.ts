@@ -25,15 +25,38 @@ export interface Macros {
 export interface Micros {
   fiber?: number;
   sugar?: number;
+  addedSugar?: number;
+  saturatedFat?: number;
+  transFat?: number;
+  cholesterolMg?: number;
   /** Sodium in milligrams. */
   sodium?: number;
+  potassiumMg?: number;
+  calciumMg?: number;
+  ironMg?: number;
+  vitaminAIu?: number;
+  vitaminCMg?: number;
+  vitaminDIu?: number;
+  alcoholG?: number;
+  caffeineMg?: number;
+}
+
+/** Where a FoodItem came from + the trust signals attached to it. */
+export interface FoodProvenance {
+  /** Matches the DB source column: our_db / off_backfill / ai_label / ai_front / user_manual. */
+  sourceTag: string;
+  aiConfidence?: number;
+  isCanonical?: boolean;
+  license?: string;
+  attributionText?: string;
+  warningNote?: string;
 }
 
 export const ZERO_MACROS: Macros = { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
 // ── Foods ────────────────────────────────────────────────────────────
 
-export type FoodSource = "openfoodfacts" | "usda" | "custom" | "recipe";
+export type FoodSource = "openfoodfacts" | "usda" | "custom" | "recipe" | "conjure_health";
 
 /**
  * A food the user can log. Nutrition is expressed **per one serving** of
@@ -55,8 +78,9 @@ export interface FoodItem {
   micros?: Micros;
   /** Human label for one serving, e.g. "1 cup (240 g)" or "100 g". */
   servingSize: string;
-  /** Grams in one serving when known — lets us offer gram-based quantities. */
+  /** Grams in one serving when known, so we can offer gram-based quantities. */
   servingGrams?: number;
+  provenance?: FoodProvenance;
 }
 
 // ── Diary ────────────────────────────────────────────────────────────
