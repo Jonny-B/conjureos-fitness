@@ -47,13 +47,23 @@ jobs:
 
       - name: Resolve changelog
         id: changelog
+        # Read release/dispatch text via env vars, NOT ${{ }} interpolation:
+        # backticks and quotes in release notes (e.g. `npm packages`) otherwise
+        # land in the shell as command substitution and crash with exit 127.
+        # Same fix conjureos-app-recipes' workflow took (DECISIONS 2026-06-21).
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_INPUT: ${{ github.event.inputs.changelog }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            text="${{ github.event.release.body }}"
-            [ -z "$text" ] && text="${{ github.event.release.name }}"
-            [ -z "$text" ] && text="${{ github.event.release.tag_name }}"
+          if [ "$EVENT_NAME" = "release" ]; then
+            text="$RELEASE_BODY"
+            [ -z "$text" ] && text="$RELEASE_NAME"
+            [ -z "$text" ] && text="$RELEASE_TAG"
           else
-            text="${{ github.event.inputs.changelog }}"
+            text="$DISPATCH_INPUT"
           fi
           {
             echo "text<<__CHANGELOG__"
