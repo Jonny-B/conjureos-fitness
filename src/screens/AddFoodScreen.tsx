@@ -8,7 +8,15 @@ import { isValidBarcode } from "../features/barcode";
 import { listRecipes, markCooked, type ListedRecipe } from "../bridge/recipeBridge";
 import { BarcodeScanner } from "../components/BarcodeScanner";
 import { NutritionLabelCapture } from "../components/NutritionLabelCapture";
-import { ChevronLeft, SearchIcon } from "../components/icons";
+import { FrontOfPackageCapture } from "../components/FrontOfPackageCapture";
+import { EditableNutritionPreview } from "../components/EditableNutritionPreview";
+import {
+  ChevronLeft,
+  ChevronRight,
+  NutritionPanelIcon,
+  PackageIcon,
+  SearchIcon,
+} from "../components/icons";
 
 type Mode = "search" | "scan" | "describe" | "recipes";
 
@@ -148,11 +156,21 @@ function SearchMode({ onPick }: { onPick: (food: FoodItem) => void }) {
 
 // ── Scan ───────────────────────────────────────────────────────────────
 
+type CaptureMode = "label" | "front" | null;
+
+interface PendingPreview {
+  food: FoodItem;
+  source: "ai_label" | "ai_front";
+  confidence: number;
+  warningNote?: string;
+}
+
 function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
   const [manual, setManual] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [missedBarcode, setMissedBarcode] = useState<string | null>(null);
-  const [capturing, setCapturing] = useState(false);
+  const [capture, setCapture] = useState<CaptureMode>(null);
+  const [pendingPreview, setPendingPreview] = useState<PendingPreview | null>(null);
   const busy = useRef(false);
 
   const resolve = async (barcode: string) => {
@@ -172,30 +190,96 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
     }
   };
 
-  if (capturing) {
+  if (pendingPreview) {
     return (
-      <NutritionLabelCapture
-        barcode={missedBarcode ?? undefined}
-        onParsed={(food) => {
-          setCapturing(false);
+      <EditableNutritionPreview
+        initial={pendingPreview.food}
+        source={pendingPreview.source}
+        aiConfidence={pendingPreview.confidence}
+        warningNote={pendingPreview.warningNote}
+        onConfirm={(food) => {
+          setPendingPreview(null);
+          setCapture(null);
           setMissedBarcode(null);
           onPick(food);
         }}
-        onCancel={() => setCapturing(false)}
+        onCancel={() => setPendingPreview(null)}
+      />
+    );
+  }
+
+  if (capture === "label") {
+    return (
+      <NutritionLabelCapture
+        barcode={missedBarcode ?? undefined}
+        onParsed={(food, confidence) =>
+          setPendingPreview({ food, source: "ai_label", confidence })
+        }
+        onCancel={() => setCapture(null)}
+      />
+    );
+  }
+
+  if (capture === "front") {
+    return (
+      <FrontOfPackageCapture
+        barcode={missedBarcode ?? undefined}
+        onParsed={(est) =>
+          setPendingPreview({
+            food: est.food,
+            source: "ai_front",
+            confidence: est.confidence,
+            warningNote: est.warningNote,
+          })
+        }
+        onCancel={() => setCapture(null)}
       />
     );
   }
 
   if (missedBarcode) {
     return (
-      <div className="mode-body">
-        <div className="notice">
-          No product found for <strong>{missedBarcode}</strong>. Snap the nutrition-facts
-          panel and we'll log it from the photo.
+      <div className="mode-body snap-miss">
+        <div className="snap-miss-barcode-row">
+          <span className="chip muted">No match</span>
+          <span className="muted small">{missedBarcode}</span>
         </div>
-        <button className="btn primary block" onClick={() => setCapturing(true)}>
-          Snap the nutrition label
+        <div className="snap-miss-copy">
+          <div>We don't have this one yet. Help us teach Conjure.</div>
+          <div className="muted small">
+            We checked our database and Open Food Facts. Snap a photo and we'll do the rest.
+          </div>
+        </div>
+
+        <button
+          className="snap-cta-card primary"
+          onClick={() => setCapture("label")}
+          aria-label="Snap the nutrition label, recommended for best accuracy"
+        >
+          <span className="snap-cta-icon">
+            <NutritionPanelIcon size={28} />
+          </span>
+          <span className="snap-cta-text">
+            <span className="snap-cta-title">Snap the nutrition label</span>
+            <span className="snap-cta-sub">Best accuracy. Reads the panel directly.</span>
+          </span>
+          <ChevronRight size={20} />
+          <span className="snap-cta-pill">Recommended</span>
         </button>
+
+        <button className="snap-cta-card secondary" onClick={() => setCapture("front")}>
+          <span className="snap-cta-icon">
+            <PackageIcon size={28} />
+          </span>
+          <span className="snap-cta-text">
+            <span className="snap-cta-title">Snap the front of the package</span>
+            <span className="snap-cta-sub">
+              For produce, beer, or anything without a label. We'll estimate.
+            </span>
+          </span>
+          <ChevronRight size={20} />
+        </button>
+
         <button
           className="link-btn"
           onClick={() => {

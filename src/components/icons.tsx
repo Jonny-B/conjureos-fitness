@@ -116,3 +116,32 @@ export const TrashIcon = (p: IconProps) => (
     <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12" />
   </Svg>
 );
+
+export const NutritionPanelIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="4" y="3" width="16" height="18" rx="2" />
+    <path d="M7 8h10M7 12h10M7 16h6" />
+  </Svg>
+);
+
+export const PackageIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 7l9-4 9 4-9 4-9-4z" />
+    <path d="M3 7v10l9 4 9-4V7" />
+    <path d="M12 11v10" />
+  </Svg>
+);
+
+export const CheckIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <polyline points="20 6 9 17 4 12" />
+  </Svg>
+);
+
+export const AlertTriangle = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </Svg>
+);
