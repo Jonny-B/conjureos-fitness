@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Conjure Health: plans, daily check-off, calorie + nutrition logging, weight, and an AI-guided workout coach for ConjureOS.",
   "type": "module",
   "license": "MIT",

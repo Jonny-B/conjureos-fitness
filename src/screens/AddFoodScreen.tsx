@@ -7,6 +7,7 @@ import { parseMeal } from "../features/naturalLanguage";
 import { isValidBarcode } from "../features/barcode";
 import { listRecipes, markCooked, type ListedRecipe } from "../bridge/recipeBridge";
 import { BarcodeScanner } from "../components/BarcodeScanner";
+import { NutritionLabelCapture } from "../components/NutritionLabelCapture";
 import { ChevronLeft, SearchIcon } from "../components/icons";
 
 type Mode = "search" | "scan" | "describe" | "recipes";
@@ -150,6 +151,8 @@ function SearchMode({ onPick }: { onPick: (food: FoodItem) => void }) {
 function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
   const [manual, setManual] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [missedBarcode, setMissedBarcode] = useState<string | null>(null);
+  const [capturing, setCapturing] = useState(false);
   const busy = useRef(false);
 
   const resolve = async (barcode: string) => {
@@ -158,12 +161,53 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
     setStatus(`Looking up ${barcode}…`);
     try {
       const food = await lookupBarcode(barcode);
-      if (food) onPick(food);
-      else setStatus(`No product found for ${barcode}.`);
+      if (food) {
+        onPick(food);
+      } else {
+        setStatus(null);
+        setMissedBarcode(barcode);
+      }
     } finally {
       busy.current = false;
     }
   };
+
+  if (capturing) {
+    return (
+      <NutritionLabelCapture
+        barcode={missedBarcode ?? undefined}
+        onParsed={(food) => {
+          setCapturing(false);
+          setMissedBarcode(null);
+          onPick(food);
+        }}
+        onCancel={() => setCapturing(false)}
+      />
+    );
+  }
+
+  if (missedBarcode) {
+    return (
+      <div className="mode-body">
+        <div className="notice">
+          No product found for <strong>{missedBarcode}</strong>. Snap the nutrition-facts
+          panel and we'll log it from the photo.
+        </div>
+        <button className="btn primary block" onClick={() => setCapturing(true)}>
+          Snap the nutrition label
+        </button>
+        <button
+          className="link-btn"
+          onClick={() => {
+            setMissedBarcode(null);
+            setManual("");
+          }}
+        >
+          Try another barcode
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="mode-body">
