@@ -1,0 +1,95 @@
+# Conjure Health, project status
+
+> **Last updated: 2026-06-25. DEVELOPMENT PAUSED.**
+> Paused to focus on the ConjureOS platform and the Recipes app. The app has
+> been REMOVED from both the dev and prod App Stores (the `store_apps` rows were
+> deleted, which also cleared version history and install records). The code in
+> this repo is untouched and can be re-published anytime via the normal release
+> flow. Nothing here is abandoned; it is parked.
+
+## Where we left off
+
+The last work was making barcode scanning actually useful, then building a
+community food database so misses get easier over time. All of it shipped to
+dev and prod before the pause.
+
+### What we accomplished (most recent session)
+
+- **Renamed the app** from "Conjure Fitness" to "Conjure Health" everywhere it
+  shows (display name, window title, brand text). The slug stayed `fitness` and
+  the repo name stayed `conjureos-fitness` to avoid a disruptive store
+  re-publish.
+- **Fixed barcode scanning on iPhones.** It was silently broken on iOS Safari
+  and iOS Edge (no native `BarcodeDetector`). Added the `barcode-detector`
+  polyfill so the camera scanner works on every phone; Android keeps using the
+  faster native path.
+- **Added a fallback when a barcode is not found.** Two ways to snap a photo:
+  the nutrition label (most accurate) or the front of the package (for beer,
+  produce, or anything without a label). AI reads the photo and fills in the
+  nutrition.
+- **You review the AI guess before saving.** A clean editable screen shows the
+  AI's numbers with a friendly "double-check this" warning; every macro and
+  micro is correctable before it saves.
+- **Built a community food database** (lives in ConjureOS Supabase). Saved foods
+  go into `health_foods` so the next person who scans the same barcode gets an
+  instant hit. On a miss we check Open Food Facts and copy their answer into
+  ours automatically.
+- **Protected the database from bad data.** New user submissions stay hidden
+  from lookups until trusted (canonical or sourced from Open Food Facts), so one
+  bad entry cannot poison results for everyone.
+- **Set up hands-off moderation.** A weekly job emails conjureos@gmail.com a
+  short report if anyone looks like they are spamming or piling up flagged
+  entries. Quiet weeks send nothing.
+- **Shipped all of it to production**, app and backend. Fixed a deploy ordering
+  snag along the way and made the fix permanent.
+
+### What was already built before that (v1, the foundation)
+
+- Diary with a calorie ring + macro bars vs. goals, day-to-day navigation.
+- Add food four ways: text search (Open Food Facts + USDA), barcode scan,
+  plain-language describe (AI), and pull a recipe from the Recipes app.
+- Weight tracking with a trend sparkline + BMI.
+- Built-in workout library with a guided player (timed sets, rep sets, rest
+  timers, audio cues).
+- Profile + goals via Mifflin-St Jeor with manual override.
+- Clean data layer: a `Repository` interface with a VFS-backed mock (default)
+  and a Supabase implementation, swappable at runtime.
+
+## Where it lives
+
+- **Frontend:** this repo (`conjureos-fitness`), Vite + React + TypeScript.
+  Current version `0.2.10`.
+- **Community food DB backend:** in the ConjureOS repo, NOT here. Migrations
+  `090_health_foods.sql` + `092_health_foods_moderation.sql`, edge functions
+  `health-foods-db` + `health-foods-moderation-sweep`. Live on dev + prod.
+- **The original per-user backend** (diary/weight sync) was always a separate
+  private repo and is still optional; the app runs fully on the mock layer
+  without it.
+
+## Pending when we resume
+
+- **Conjure Health v2 (the big one, not started):** plan wizard + daily
+  check-off home + AI workout coach. Designed and scoped into 6 GitHub issues on
+  this repo (P0 through P5, issues #57 to #62). See the ConjureOS
+  `PHASE_12_DESIGN.md` section 12b and `DECISIONS.md` 2026-06-24 for the full
+  plan. v2 plan data is meant to persist as VFS app data.
+- **Two small manual steps for the food DB** (only matter when resumed and only
+  if we want the extras, the core works without them):
+  - Set the `conjure_project_url` Vault secret on the dev and prod Supabase
+    projects so the weekly moderation email actually fires (it no-ops until
+    then). See ConjureOS `OPEN_QUESTIONS.md`.
+  - Create an Open Food Facts bot account so we can contribute our entries back
+    upstream (currently we only pull from OFF, we do not push). See ConjureOS
+    `OPEN_QUESTIONS.md` and repo issue #63.
+
+## To put it back in the stores
+
+Nothing is deleted from the code. Re-publish via the normal flow:
+
+- **Dev:** Actions, "Publish to ConjureOS App Store", Run workflow
+  (`workflow_dispatch`).
+- **Prod:** publish a GitHub Release (the release-published trigger ships to the
+  prod project).
+
+Bump the version in `package.json` first. The publish creates a fresh
+`store_apps` row, so the app comes back as a new listing.
