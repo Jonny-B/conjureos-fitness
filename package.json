@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "0.2.10",
+  "version": "0.2.12",
   "description": "Conjure Health: plans, daily check-off, calorie + nutrition logging, weight, and an AI-guided workout coach for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -22,15 +22,80 @@
     "actions": {
       "logFood": {
         "permission": "actions.write",
-        "description": "Log a food to the user's diary for a given meal and date. Takes name, calories, and optional protein/carbs/fat (grams), meal (breakfast|lunch|dinner|snacks), and date (YYYY-MM-DD, defaults to today). Useful for assistants or recipe apps that want to record what the user ate."
+        "description": "Log a food to the user's diary for a given meal and date. Takes name, calories, and optional protein/carbs/fat (grams), meal (breakfast|lunch|dinner|snacks), and date (YYYY-MM-DD, defaults to today). Useful for assistants or recipe apps that want to record what the user ate.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "maxLength": 80 },
+            "calories": { "type": "integer", "minimum": 0, "maximum": 5000 },
+            "protein": { "type": "integer", "minimum": 0, "maximum": 500, "description": "Grams." },
+            "carbs": { "type": "integer", "minimum": 0, "maximum": 800, "description": "Grams." },
+            "fat": { "type": "integer", "minimum": 0, "maximum": 500, "description": "Grams." },
+            "meal": { "type": "string", "enum": ["breakfast", "lunch", "dinner", "snacks"], "description": "Defaults by time of day when omitted." },
+            "date": { "type": "string", "description": "YYYY-MM-DD; defaults to today." }
+          },
+          "required": ["name", "calories"]
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "The new diary entry's id." }
+          }
+        }
       },
       "todayTotals": {
         "permission": "actions.read",
-        "description": "Return today's nutrition totals (calories, protein, carbs, fat) and the user's daily goals plus remaining calories. Useful for dashboards, assistants, or apps that want to know how much budget is left."
+        "description": "Return today's nutrition totals (calories, protein, carbs, fat) and the user's daily goals plus remaining calories. Useful for dashboards, assistants, or apps that want to know how much budget is left.",
+        "params": {
+          "type": "object",
+          "properties": {}
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "date": { "type": "string", "description": "YYYY-MM-DD." },
+            "total": {
+              "type": "object",
+              "properties": {
+                "calories": { "type": "number" },
+                "protein": { "type": "number" },
+                "carbs": { "type": "number" },
+                "fat": { "type": "number" }
+              }
+            },
+            "goals": {
+              "type": "object",
+              "properties": {
+                "calories": { "type": "number" },
+                "protein": { "type": "number" },
+                "carbs": { "type": "number" },
+                "fat": { "type": "number" }
+              }
+            },
+            "caloriesRemaining": { "type": "number" }
+          }
+        }
       },
       "logRecipeMeal": {
         "permission": "actions.write",
-        "description": "Log a saved recipe from the Recipes app as a meal by slug, copying its per-serving nutrition into the diary and marking the recipe cooked. Takes slug, optional servings (default 1), meal, and date."
+        "description": "Log a saved recipe from the Recipes app as a meal by slug, copying its per-serving nutrition into the diary and marking the recipe cooked. Takes slug, optional servings (default 1), meal, and date.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "slug": { "type": "string", "maxLength": 80, "description": "The Recipes app slug of the saved recipe." },
+            "servings": { "type": "number", "minimum": 0.1, "maximum": 20, "description": "Defaults to 1." },
+            "meal": { "type": "string", "enum": ["breakfast", "lunch", "dinner", "snacks"], "description": "Defaults by time of day when omitted." },
+            "date": { "type": "string", "description": "YYYY-MM-DD; defaults to today." }
+          },
+          "required": ["slug"]
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "description": "The new diary entry's id." },
+            "logged": { "type": "boolean" }
+          }
+        }
       }
     },
     "promptSuggestions": [

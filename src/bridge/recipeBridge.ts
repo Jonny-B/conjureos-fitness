@@ -56,6 +56,31 @@ export interface ListedRecipe {
 const DEFAULT_PATH = "/apps/recipes";
 let cachedPath: string | null = null;
 
+/**
+ * Thrown by the read helpers when a cross-app call fails specifically because
+ * the Recipes app isn't open (`TARGET_NOT_RUNNING`) — as opposed to a genuine
+ * "no such recipe" miss (which still returns null). Lets `logRecipeMeal` raise
+ * the orchestrator's `NEEDS_APP_OPEN:<path>` marker so the shell opens Recipes
+ * and retries, instead of misreporting a missing recipe.
+ */
+export class RecipesAppClosedError extends Error {
+  readonly appPath: string;
+  constructor(appPath: string) {
+    super(`Recipes app not running: ${appPath}`);
+    this.name = "RecipesAppClosedError";
+    this.appPath = appPath;
+  }
+}
+
+/** True when a rejected invoke carries the kernel's TARGET_NOT_RUNNING code. */
+function isTargetClosed(err: unknown): boolean {
+  return (
+    !!err &&
+    typeof err === "object" &&
+    (err as { code?: unknown }).code === "TARGET_NOT_RUNNING"
+  );
+}
+
 function actions() {
   return window.__conjureos?.actions;
 }
@@ -106,7 +131,11 @@ export async function getRecipe(slug: string): Promise<ListedRecipe | null> {
   try {
     const res = (await a.invoke(path, "getRecipe", { slug })) as { recipe?: ListedRecipe | null };
     return res?.recipe ?? null;
-  } catch {
+  } catch (err) {
+    // Recipes being closed is recoverable, not a real miss: surface it so the
+    // caller (and ultimately the orchestrator) can open Recipes and retry,
+    // rather than reporting "recipe not found". Any other failure stays a null.
+    if (isTargetClosed(err)) throw new RecipesAppClosedError(path);
     return null;
   }
 }

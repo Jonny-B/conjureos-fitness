@@ -16,7 +16,7 @@ import type { MealType } from "../types";
 import { MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { buildDayView, todayISO } from "../features/diary";
-import { getRecipe, markCooked } from "./recipeBridge";
+import { getRecipe, markCooked, RecipesAppClosedError, type ListedRecipe } from "./recipeBridge";
 import { newId } from "../data/id";
 
 function asObject(v: unknown): Record<string, unknown> {
@@ -99,7 +99,18 @@ async function logRecipeMeal(raw?: unknown): Promise<{ id: string; logged: boole
   const meal = asMeal(p.meal);
   const date = asDate(p.date);
 
-  const recipe = await getRecipe(slug);
+  let recipe: ListedRecipe | null;
+  try {
+    recipe = await getRecipe(slug);
+  } catch (err) {
+    // Recipes app is closed: ask the orchestrator to open it and retry the
+    // whole action, instead of failing as if the recipe didn't exist. The
+    // shell catches this marker, opens Recipes, and re-invokes logRecipeMeal.
+    if (err instanceof RecipesAppClosedError) {
+      throw new Error(`NEEDS_APP_OPEN:${err.appPath}`);
+    }
+    throw err;
+  }
   if (!recipe || !recipe.nutrition) {
     throw new Error(`recipe not found or has no nutrition: ${slug}`);
   }
