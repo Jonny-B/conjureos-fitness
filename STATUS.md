@@ -1,17 +1,28 @@
 # Conjure Health, project status
 
-> **Last updated: 2026-06-25. DEVELOPMENT PAUSED.**
-> Paused to focus on the ConjureOS platform and the Recipes app. The app has
-> been REMOVED from both the dev and prod App Stores (the `store_apps` rows were
-> deleted, which also cleared version history and install records). The code in
-> this repo is untouched and can be re-published anytime via the normal release
-> flow. Nothing here is abandoned; it is parked.
+> **Last updated: 2026-07-11. ACTIVE — relaunching.**
+> Development resumed. The app is being re-published to the App Stores (dev
+> first, then prod) and v2 work is starting. The `store_apps` rows were deleted
+> during the pause, so the re-publish creates fresh listings (version history +
+> install records start over). Current focus: relaunch + Conjure Health v2.
 
-## Where we left off
+## Current focus
 
-The last work was making barcode scanning actually useful, then building a
-community food database so misses get easier over time. All of it shipped to
-dev and prod before the pause.
+Bringing the app back to life. Order of operations this session:
+
+1. Un-pause docs + bump to `0.3.0` (done).
+2. Re-publish to the **dev** App Store, verify barcode scanning end-to-end.
+3. Re-publish to **prod** via GitHub Release.
+4. Backend extras: `conjure_project_url` Vault secret (moderation email) + Open
+   Food Facts push-back bot (issue #63).
+5. Kick off **v2** (issues #57–62): plan wizard + daily check-off home + AI coach.
+
+Working branch: `claude/conjure-barcode-scanning-6y7f65`.
+
+## What was already built (foundation, all shipped to dev + prod pre-pause)
+
+The last pre-pause work made barcode scanning actually useful, then built a
+community food database so misses get easier over time.
 
 ### What we accomplished (most recent session)
 
