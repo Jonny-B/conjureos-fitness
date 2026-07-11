@@ -1452,6 +1452,35 @@ body {
   font-size: 13px;
 }
 
+/* ── v2 safety: first-run disclaimer card ─────────────────────────────── */
+.disclaimer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.disclaimer-lead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+.disclaimer-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.disclaimer-para {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0;
+}
+.disclaimer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
 .calories-card {
   background:
     linear-gradient(rgba(124, 92, 255, 0.08), rgba(124, 92, 255, 0.02)),
