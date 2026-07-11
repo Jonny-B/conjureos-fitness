@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import type { DayView, DiaryEntry, Goals, MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
-import { buildDayView, entryMacros, shiftDate, todayISO } from "../features/diary";
+import { buildDayView, entryMacros, isAiEstimate, shiftDate, todayISO } from "../features/diary";
 import { CalorieRing, MacroBars } from "../components/rings";
 import { ChevronLeft, ChevronRight, TrashIcon } from "../components/icons";
+import { AiEstimateBadge } from "../components/AiEstimateBadge";
 
 interface Props {
   date: string;
@@ -114,7 +115,10 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onO
                 return (
                   <li className="entry" key={e.id}>
                     <div className="entry-main">
-                      <div className="entry-name">{e.food.name}</div>
+                      <div className="entry-title">
+                        <span className="entry-name">{e.food.name}</span>
+                        {isAiEstimate(e) && <AiEstimateBadge />}
+                      </div>
                       <div className="entry-sub">
                         {e.quantity}× {e.food.servingSize}
                         {e.food.brand ? ` · ${e.food.brand}` : ""}

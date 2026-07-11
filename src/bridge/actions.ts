@@ -63,10 +63,12 @@ async function logFood(raw?: unknown): Promise<{ id: string }> {
   // explicit 0 (e.g. black coffee) is respected; only an absent value estimates.
   let perServing: Macros;
   let servingSize = "1 serving";
+  let estimated = false;
   if (p.calories === undefined || p.calories === null) {
     const estimate = await estimateMacros(name);
     perServing = estimate.perServing;
     servingSize = estimate.servingSize;
+    estimated = true;
   } else {
     perServing = {
       calories: asNonNegInt(p.calories, "calories", 5000),
@@ -87,6 +89,8 @@ async function logFood(raw?: unknown): Promise<{ id: string }> {
       name,
       perServing,
       servingSize,
+      // Mark AI-estimated logs so the diary flags them as an inaccurate guess.
+      ...(estimated ? { provenance: { sourceTag: "ai_estimate" } } : {}),
     },
   });
   return { id: entry.id };
