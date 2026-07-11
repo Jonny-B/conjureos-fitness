@@ -16,11 +16,29 @@
  * point: swap the backend, change nothing above this line.
  */
 
-import type { DiaryEntry, Goals, Profile, WeightEntry } from "../types";
+import type {
+  DailyCheckoff,
+  DiaryEntry,
+  Goals,
+  Plan,
+  Profile,
+  WeightEntry,
+  WorkoutSession,
+} from "../types";
 import { getAccessToken, isHostAuthAvailable } from "../bridge/host";
 
 /** Fields the caller supplies when logging; id + loggedAt are assigned here. */
 export type NewDiaryEntry = Omit<DiaryEntry, "id" | "loggedAt">;
+
+/** A patch to a day's check-off; `date` is supplied separately. */
+export type DayLogPatch = Partial<Omit<DailyCheckoff, "date">>;
+
+/**
+ * Error thrown by SupabaseRepository for every v2 plan path. The v2 data model
+ * is VFS-only for now (DECISIONS 2026-06-24); callers catch this to fall back
+ * to the mock layer rather than surfacing it to the user.
+ */
+export const PLAN_REQUIRES_V2_BACKEND = "PLAN_REQUIRES_V2_BACKEND";
 
 export interface Repository {
   /** Which backend is live — for diagnostics + a dev badge in the UI. */
@@ -48,6 +66,29 @@ export interface Repository {
   listWeights(): Promise<WeightEntry[]>;
   /** One canonical weight per day; last write wins. */
   upsertWeight(entry: WeightEntry): Promise<void>;
+
+  // ── v2: plans + daily check-off + coached sessions ──────────────────
+  // VFS-only today. SupabaseRepository throws PLAN_REQUIRES_V2_BACKEND for
+  // every method here (see DECISIONS 2026-06-24).
+
+  /** The active plan, or null when the user hasn't created one. */
+  getPlan(): Promise<Plan | null>;
+  /** Persist the (single) active plan, replacing any existing one. */
+  savePlan(plan: Plan): Promise<void>;
+  /** Remove the active plan. Day-log history is retained. */
+  clearPlan(): Promise<void>;
+
+  /** A day's check-off record, or null when nothing's been ticked yet. */
+  getDayLog(date: string): Promise<DailyCheckoff | null>;
+  /** Merge a patch into a day's check-off, creating the record if absent. */
+  saveDayLog(date: string, patch: DayLogPatch): Promise<void>;
+  /** Toggle a single plan goal for a date. Idempotent per (goal, date, done). */
+  markCheckoff(goalId: string, date: string, done: boolean): Promise<void>;
+
+  /** Workout sessions, newest first, optionally capped. */
+  listWorkoutSessions(limit?: number): Promise<WorkoutSession[]>;
+  /** Persist a workout session, replacing one with the same id. */
+  saveWorkoutSession(session: WorkoutSession): Promise<void>;
 }
 
 // ── Singleton selector ────────────────────────────────────────────────
