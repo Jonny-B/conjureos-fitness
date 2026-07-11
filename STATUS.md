@@ -11,11 +11,18 @@
 Bringing the app back to life. Order of operations this session:
 
 1. Un-pause docs + bump to `0.3.0` (done).
-2. Re-publish to the **dev** App Store, verify barcode scanning end-to-end.
-3. Re-publish to **prod** via GitHub Release.
+2. Re-publish to the **dev** App Store, verify barcode scanning end-to-end
+   (manual `workflow_dispatch` — the automation can't dispatch Actions).
+3. Re-publish to **prod** via GitHub Release (needs a branch→`main` merge first).
 4. Backend extras: `conjure_project_url` Vault secret (moderation email) + Open
    Food Facts push-back bot (issue #63).
-5. Kick off **v2** (issues #57–62): plan wizard + daily check-off home + AI coach.
+5. **v2** (issues #57–62): plan wizard + daily check-off home + AI coach.
+   - P0 (#57) domain model + Repository extension — **done** (mock v1→v2 migration,
+     Supabase stubs throw `PLAN_REQUIRES_V2_BACKEND`).
+   - P1 (#58) safety static assets — **done** (`src/features/safety/*` intake gate,
+     injury exclusions, symptom keywords; `DisclaimerCard`).
+   - P2 (#59) wizard + plan-gen + validator — next.
+   - P3 (#60) home + check-off · P4 (#61) AI coach · P5 (#62) settings + publish.
 
 Working branch: `claude/conjure-barcode-scanning-6y7f65`.
 
