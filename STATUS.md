@@ -29,8 +29,14 @@ future publishes can go through normal CI (Release) with no bootstrap.
      Supabase stubs throw `PLAN_REQUIRES_V2_BACKEND`).
    - P1 (#58) safety static assets — **done** (`src/features/safety/*` intake gate,
      injury exclusions, symptom keywords; `DisclaimerCard`).
-   - P2 (#59) wizard + plan-gen + validator — next.
-   - P3 (#60) home + check-off · P4 (#61) AI coach · P5 (#62) settings + publish.
+   - P2 (#59) first-run wizard + plan-gen + validator + fallback — **done**
+     (`src/screens/WizardScreen.tsx` + `src/features/plan/*`; App renders it when
+     `getPlan()` is null; logging-only gate hides the Workouts tab). App at `0.5.0`.
+   - P3 (#60) home + check-off — next · P4 (#61) AI coach · P5 (#62) settings + publish.
+
+> Note: P2 lives on the branch only — **not published** to the stores yet (dev/prod
+> are on `0.4.2`). The wizard gates the whole app on first run, so publish P3+ or a
+> deliberate v2 cut, not this commit, unless you want testers to hit the wizard now.
 
 Working branch: `claude/conjure-barcode-scanning-6y7f65`.
 
