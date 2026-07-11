@@ -12,10 +12,11 @@ interface Props {
   nonce: number;
   onChangeDate: (date: string) => void;
   onAddToMeal: (meal: MealType) => void;
+  onOpenMeal: (meal: MealType) => void;
   onMutated: () => void;
 }
 
-export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onMutated }: Props) {
+export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onOpenMeal, onMutated }: Props) {
   const [view, setView] = useState<DayView | null>(null);
 
   useEffect(() => {
@@ -79,13 +80,13 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
 
         <div className="budget-grid">
           <div className="budget-col">
-            <MealStat label={MEAL_LABELS.breakfast} cal={mealCal("breakfast")} onClick={() => onAddToMeal("breakfast")} />
-            <MealStat label={MEAL_LABELS.lunch} cal={mealCal("lunch")} onClick={() => onAddToMeal("lunch")} />
+            <MealStat label={MEAL_LABELS.breakfast} cal={mealCal("breakfast")} onClick={() => onOpenMeal("breakfast")} />
+            <MealStat label={MEAL_LABELS.lunch} cal={mealCal("lunch")} onClick={() => onOpenMeal("lunch")} />
           </div>
           <CalorieRing consumed={total.calories} goal={goals.calories} />
           <div className="budget-col">
-            <MealStat label={MEAL_LABELS.dinner} cal={mealCal("dinner")} onClick={() => onAddToMeal("dinner")} />
-            <MealStat label={MEAL_LABELS.snacks} cal={mealCal("snacks")} onClick={() => onAddToMeal("snacks")} />
+            <MealStat label={MEAL_LABELS.dinner} cal={mealCal("dinner")} onClick={() => onOpenMeal("dinner")} />
+            <MealStat label={MEAL_LABELS.snacks} cal={mealCal("snacks")} onClick={() => onOpenMeal("snacks")} />
           </div>
         </div>
 
@@ -103,10 +104,10 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
         const m = view?.perMeal[meal];
         return (
           <section className="meal" key={meal}>
-            <header className="meal-head">
+            <button className="meal-head" onClick={() => onOpenMeal(meal)} aria-label={`Open ${MEAL_LABELS[meal]}`}>
               <h2>{MEAL_LABELS[meal]}</h2>
               <span className="meal-cal">{m?.calories ?? 0} cal</span>
-            </header>
+            </button>
             <ul className="entry-list">
               {entries.map((e) => {
                 const em = entryMacros(e);

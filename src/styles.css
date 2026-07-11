@@ -622,6 +622,15 @@ body {
   align-items: baseline;
   justify-content: space-between;
   margin-bottom: 6px;
+  /* Now a button (opens the meal detail) — strip the default chrome. */
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
 }
 .meal-head h2 {
   font-size: 15px;
@@ -1479,6 +1488,65 @@ body {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 4px;
+}
+
+/* ── Meal detail screen ───────────────────────────────────────────────── */
+.meal-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.meal-detail-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
+  gap: 10px;
+}
+.meal-detail-title h1 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+.meal-detail-cal {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.meal-detail-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 14px;
+}
+.meal-cta-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.meal-cta {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 12px;
+  border-radius: var(--cui-radius);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.meal-cta:hover {
+  border-color: var(--accent);
+}
+.meal-cta.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .calories-card {
