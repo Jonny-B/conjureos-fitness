@@ -1573,6 +1573,159 @@ body {
   color: #fff;
 }
 
+/* ── v2 first-run wizard ──────────────────────────────────────────────── */
+.wizard-step {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.wizard-head h1 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 2px 0 0;
+}
+.wizard-step-num {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+}
+.wizard-nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+.wizard-nav .btn.primary,
+.wizard-nav .btn:only-child {
+  flex: 1;
+}
+.wizard-nav .btn.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.mode-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: var(--cui-radius);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.mode-card.active {
+  border-color: var(--accent);
+  background: var(--cui-accent-mute, rgba(124, 106, 247, 0.12));
+}
+.mode-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mode-card-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--cui-accent-mute, rgba(124, 106, 247, 0.14));
+}
+.mode-card-blurb {
+  font-size: 13px;
+  color: var(--muted);
+}
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.check-row input {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.chip.active {
+  border-color: var(--accent);
+  background: var(--cui-accent-mute, rgba(124, 106, 247, 0.14));
+  color: var(--accent);
+}
+.plan-summary {
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 0;
+}
+.plan-goal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-goal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--cui-radius-sm, 10px);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.goal-kind {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+.goal-nutrition { color: var(--protein); background: rgba(94, 200, 166, 0.14); }
+.goal-workout { color: var(--accent-2); background: rgba(74, 158, 255, 0.14); }
+.goal-habit { color: var(--carbs); background: rgba(240, 179, 74, 0.14); }
+.goal-label {
+  font-size: 14px;
+}
+.disclaimer-inline {
+  align-items: flex-start;
+}
+
 .calories-card {
   background:
     linear-gradient(rgba(124, 92, 255, 0.08), rgba(124, 92, 255, 0.02)),
