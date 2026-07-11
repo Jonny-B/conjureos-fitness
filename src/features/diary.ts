@@ -31,6 +31,15 @@ export function addMacros(a: Macros, b: Macros): Macros {
   };
 }
 
+/**
+ * True when an entry's numbers are an unreviewed AI estimate (logged by name
+ * without explicit macros, via the assistant or the Describe tab). The diary
+ * badges these so the user knows they're a guess and may be inaccurate.
+ */
+export function isAiEstimate(entry: DiaryEntry): boolean {
+  return entry.food.provenance?.sourceTag === "ai_estimate";
+}
+
 /** Nutrition for an entry = its food's per-serving macros × quantity, rounded. */
 export function entryMacros(entry: DiaryEntry): Macros {
   const q = entry.quantity;

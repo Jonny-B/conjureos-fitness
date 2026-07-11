@@ -622,6 +622,15 @@ body {
   align-items: baseline;
   justify-content: space-between;
   margin-bottom: 6px;
+  /* Now a button (opens the meal detail) — strip the default chrome. */
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
 }
 .meal-head h2 {
   font-size: 15px;
@@ -656,6 +665,30 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Name + optional "AI estimate" badge on one row; name ellipses, badge stays. */
+.entry-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.entry-title .entry-name {
+  min-width: 0;
+}
+.ai-estimate-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: var(--cui-radius-pill, 999px);
+  color: var(--cui-accent-soft, #b9a8ff);
+  background: var(--cui-accent-mute, rgba(124, 106, 247, 0.14));
+  border: 1px solid var(--cui-accent-tint, rgba(124, 106, 247, 0.3));
+  cursor: help;
 }
 .entry-sub {
   font-size: 12px;
@@ -1450,6 +1483,94 @@ body {
   border-radius: 10px;
   display: flex; gap: 8px; align-items: center;
   font-size: 13px;
+}
+
+/* ── v2 safety: first-run disclaimer card ─────────────────────────────── */
+.disclaimer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.disclaimer-lead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+.disclaimer-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.disclaimer-para {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0;
+}
+.disclaimer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* ── Meal detail screen ───────────────────────────────────────────────── */
+.meal-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.meal-detail-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
+  gap: 10px;
+}
+.meal-detail-title h1 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+.meal-detail-cal {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.meal-detail-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 14px;
+}
+.meal-cta-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.meal-cta {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 12px;
+  border-radius: var(--cui-radius);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.meal-cta:hover {
+  border-color: var(--accent);
+}
+.meal-cta.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .calories-card {

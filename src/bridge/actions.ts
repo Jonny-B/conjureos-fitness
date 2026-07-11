@@ -12,9 +12,10 @@
  * side-effect-free; writes trigger ConjureOS's one-time per-caller grant.
  */
 
-import type { MealType } from "../types";
+import type { Macros, MealType } from "../types";
 import { MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
+import { parseMeal } from "../features/naturalLanguage";
 import { buildDayView, todayISO } from "../features/diary";
 import { getRecipe, markCooked, RecipesAppClosedError, type ListedRecipe } from "./recipeBridge";
 import { newId } from "../data/id";
@@ -53,12 +54,29 @@ function asDate(v: unknown): string {
 async function logFood(raw?: unknown): Promise<{ id: string }> {
   const p = asObject(raw);
   const name = asString(p.name, "name", 80);
-  const calories = asNonNegInt(p.calories, "calories", 5000);
-  const protein = asNonNegInt(p.protein, "protein", 500);
-  const carbs = asNonNegInt(p.carbs, "carbs", 800);
-  const fat = asNonNegInt(p.fat, "fat", 500);
   const meal = asMeal(p.meal);
   const date = asDate(p.date);
+
+  // Calories are optional. When a caller names a food without numbers ("a
+  // McCrispy sandwich"), estimate the macros from the name — the same estimator
+  // the Describe tab uses — instead of requiring the caller to know them. An
+  // explicit 0 (e.g. black coffee) is respected; only an absent value estimates.
+  let perServing: Macros;
+  let servingSize = "1 serving";
+  let estimated = false;
+  if (p.calories === undefined || p.calories === null) {
+    const estimate = await estimateMacros(name);
+    perServing = estimate.perServing;
+    servingSize = estimate.servingSize;
+    estimated = true;
+  } else {
+    perServing = {
+      calories: asNonNegInt(p.calories, "calories", 5000),
+      protein: asNonNegInt(p.protein, "protein", 500),
+      carbs: asNonNegInt(p.carbs, "carbs", 800),
+      fat: asNonNegInt(p.fat, "fat", 500),
+    };
+  }
 
   const repo = await getRepository();
   const entry = await repo.addDiaryEntry({
@@ -69,11 +87,30 @@ async function logFood(raw?: unknown): Promise<{ id: string }> {
       id: newId(),
       source: "custom",
       name,
-      perServing: { calories, protein, carbs, fat },
-      servingSize: "1 serving",
+      perServing,
+      servingSize,
+      // Mark AI-estimated logs so the diary flags them as an inaccurate guess.
+      ...(estimated ? { provenance: { sourceTag: "ai_estimate" } } : {}),
     },
   });
   return { id: entry.id };
+}
+
+/**
+ * Estimate one food's per-serving macros from its name via the shared
+ * natural-language estimator. Falls back to all-zeros if the estimator returns
+ * nothing (offline / unparseable) so a log never hard-fails on a missing number.
+ */
+async function estimateMacros(
+  name: string,
+): Promise<{ perServing: Macros; servingSize: string }> {
+  try {
+    const [item] = await parseMeal({ text: name });
+    if (item) return { perServing: item.perServing, servingSize: item.servingSize };
+  } catch {
+    // Non-fatal — fall through to the zero estimate below.
+  }
+  return { perServing: { calories: 0, protein: 0, carbs: 0, fat: 0 }, servingSize: "1 serving" };
 }
 
 async function todayTotals(): Promise<{

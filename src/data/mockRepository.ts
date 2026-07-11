@@ -11,15 +11,24 @@
  * above the Repository interface.
  */
 
-import type { DiaryEntry, Goals, Profile, WeightEntry } from "../types";
+import type {
+  DailyCheckoff,
+  DiaryEntry,
+  Goals,
+  Plan,
+  Profile,
+  WeightEntry,
+  WorkoutSession,
+} from "../types";
 import { DEFAULT_GOALS } from "../types";
 import { readJson, writeJson } from "../bridge/vfs";
-import type { NewDiaryEntry, Repository } from "./repository";
+import type { DayLogPatch, NewDiaryEntry, Repository } from "./repository";
 import { newId } from "./id";
 
 const STORE_PATH = "store.json";
 
-interface StoreShape {
+/** v1: profile/goals/diary/weights only. Retained for the migration path. */
+interface StoreShapeV1 {
   v: 1;
   profile: Profile | null;
   goals: Goals | null;
@@ -27,15 +36,65 @@ interface StoreShape {
   weights: WeightEntry[];
 }
 
-const EMPTY: StoreShape = { v: 1, profile: null, goals: null, diary: [], weights: [] };
+/** v2: adds the plan / daily check-off / workout-session slices. */
+interface StoreShape {
+  v: 2;
+  profile: Profile | null;
+  goals: Goals | null;
+  diary: DiaryEntry[];
+  weights: WeightEntry[];
+  plan: Plan | null;
+  /** Keyed by YYYY-MM-DD. */
+  dayLogs: Record<string, DailyCheckoff>;
+  workoutSessions: WorkoutSession[];
+}
+
+const EMPTY: StoreShape = {
+  v: 2,
+  profile: null,
+  goals: null,
+  diary: [],
+  weights: [],
+  plan: null,
+  dayLogs: {},
+  workoutSessions: [],
+};
+
+/**
+ * Normalise whatever was on disk into the current StoreShape. A v1 document is
+ * migrated by retaining its slices and synthesising empty v2 fields; anything
+ * else (missing, corrupt, future version) resets to EMPTY.
+ */
+function migrate(loaded: unknown): StoreShape {
+  if (!loaded || typeof loaded !== "object") return structuredClone(EMPTY);
+  const doc = loaded as { v?: number };
+  if (doc.v === 2) return loaded as StoreShape;
+  if (doc.v === 1) {
+    const v1 = loaded as StoreShapeV1;
+    return {
+      v: 2,
+      profile: v1.profile ?? null,
+      goals: v1.goals ?? null,
+      diary: v1.diary ?? [],
+      weights: v1.weights ?? [],
+      plan: null,
+      dayLogs: {},
+      workoutSessions: [],
+    };
+  }
+  return structuredClone(EMPTY);
+}
 
 export class MockRepository implements Repository {
   readonly kind = "mock" as const;
   private store: StoreShape = structuredClone(EMPTY);
 
   async init(): Promise<void> {
-    const loaded = await readJson<StoreShape>(STORE_PATH, structuredClone(EMPTY));
-    this.store = loaded && loaded.v === 1 ? loaded : structuredClone(EMPTY);
+    const loaded = await readJson<unknown>(STORE_PATH, structuredClone(EMPTY));
+    const before = (loaded as { v?: number } | null)?.v;
+    this.store = migrate(loaded);
+    // Persist the upgrade immediately so a v1 doc doesn't re-migrate every load.
+    if (before !== 2) await this.flush();
   }
 
   private async flush(): Promise<void> {
@@ -97,6 +156,55 @@ export class MockRepository implements Repository {
     const existing = this.store.weights.find((w) => w.date === entry.date);
     if (existing) existing.weightKg = entry.weightKg;
     else this.store.weights.push(entry);
+    await this.flush();
+  }
+
+  // ── v2: plans + daily check-off + coached sessions ──────────────────
+
+  async getPlan(): Promise<Plan | null> {
+    return this.store.plan;
+  }
+
+  async savePlan(plan: Plan): Promise<void> {
+    this.store.plan = plan;
+    await this.flush();
+  }
+
+  async clearPlan(): Promise<void> {
+    this.store.plan = null;
+    await this.flush();
+  }
+
+  async getDayLog(date: string): Promise<DailyCheckoff | null> {
+    return this.store.dayLogs[date] ?? null;
+  }
+
+  async saveDayLog(date: string, patch: DayLogPatch): Promise<void> {
+    const current = this.store.dayLogs[date] ?? { date, goalsCompleted: [] };
+    this.store.dayLogs[date] = { ...current, ...patch, date };
+    await this.flush();
+  }
+
+  async markCheckoff(goalId: string, date: string, done: boolean): Promise<void> {
+    const current = this.store.dayLogs[date] ?? { date, goalsCompleted: [] };
+    const set = new Set(current.goalsCompleted);
+    if (done) set.add(goalId);
+    else set.delete(goalId);
+    this.store.dayLogs[date] = { ...current, date, goalsCompleted: [...set] };
+    await this.flush();
+  }
+
+  async listWorkoutSessions(limit?: number): Promise<WorkoutSession[]> {
+    const sorted = [...this.store.workoutSessions].sort((a, b) =>
+      b.completedAt.localeCompare(a.completedAt),
+    );
+    return limit != null ? sorted.slice(0, limit) : sorted;
+  }
+
+  async saveWorkoutSession(session: WorkoutSession): Promise<void> {
+    const idx = this.store.workoutSessions.findIndex((s) => s.id === session.id);
+    if (idx >= 0) this.store.workoutSessions[idx] = session;
+    else this.store.workoutSessions.push(session);
     await this.flush();
   }
 }

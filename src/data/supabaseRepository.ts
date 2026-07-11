@@ -11,10 +11,19 @@
  * in this checkout). Table/column names here must match those migrations.
  */
 
-import type { DiaryEntry, Goals, Profile, WeightEntry } from "../types";
+import type {
+  DailyCheckoff,
+  DiaryEntry,
+  Goals,
+  Plan,
+  Profile,
+  WeightEntry,
+  WorkoutSession,
+} from "../types";
 import { DEFAULT_GOALS } from "../types";
 import { getAccessToken } from "../bridge/host";
-import type { NewDiaryEntry, Repository } from "./repository";
+import type { DayLogPatch, NewDiaryEntry, Repository } from "./repository";
+import { PLAN_REQUIRES_V2_BACKEND } from "./repository";
 import { SupabaseRestClient } from "./supabaseClient";
 
 interface ProfileRow {
@@ -148,6 +157,35 @@ export class SupabaseRepository implements Repository {
 
   async upsertWeight(entry: WeightEntry): Promise<void> {
     await this.client.upsert("weights", { date: entry.date, weight_kg: entry.weightKg }, "user_id,date");
+  }
+
+  // ── v2: VFS-only today; no backend rows yet (DECISIONS 2026-06-24). ──
+  // Every method throws so callers can detect the unsupported backend and
+  // route plan data through the mock layer instead.
+
+  async getPlan(): Promise<Plan | null> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async savePlan(_plan: Plan): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async clearPlan(): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async getDayLog(_date: string): Promise<DailyCheckoff | null> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async saveDayLog(_date: string, _patch: DayLogPatch): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async markCheckoff(_goalId: string, _date: string, _done: boolean): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async listWorkoutSessions(_limit?: number): Promise<WorkoutSession[]> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async saveWorkoutSession(_session: WorkoutSession): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
   }
 }
 
