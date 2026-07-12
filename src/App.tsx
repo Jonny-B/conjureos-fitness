@@ -7,6 +7,8 @@ import { todayISO } from "./features/diary";
 import { DiaryScreen } from "./screens/DiaryScreen";
 import { MealDetailScreen } from "./screens/MealDetailScreen";
 import { WizardScreen } from "./screens/WizardScreen";
+import { ProfileSetupWizard } from "./screens/ProfileSetupWizard";
+import { SetupBanner } from "./components/SetupBanner";
 import { AddFoodScreen } from "./screens/AddFoodScreen";
 import { TrendsScreen } from "./screens/TrendsScreen";
 import { WorkoutsScreen } from "./screens/WorkoutsScreen";
@@ -34,6 +36,11 @@ export function App() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [ready, setReady] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Guided profile/goals setup: the step id the wizard is open on (null = closed),
+  // and a per-session dismiss for the Home banner (resets on reload = "shows again
+  // when they open again").
+  const [setupStep, setSetupStep] = useState<string | null>(null);
+  const [setupDismissed, setSetupDismissed] = useState(false);
   // The meal the Add flow should default to when opened from a meal's "+".
   const [addMeal, setAddMeal] = useState<MealType>("breakfast");
   // Which input the Add screen opens on (Scan when launched from a meal's Scan CTA).
@@ -117,6 +124,27 @@ export function App() {
     );
   }
 
+  // Guided profile/goals setup (opened from the Home banner) owns the screen
+  // while active, but is fully dismissible.
+  if (ready && setupStep !== null) {
+    return (
+      <div className="app">
+        <main className="screen">
+          <ProfileSetupWizard
+            profile={profile}
+            goals={goals}
+            initialStepId={setupStep}
+            onSaved={(p, gg) => {
+              setProfile(p);
+              setGoals(gg);
+            }}
+            onClose={() => setSetupStep(null)}
+          />
+        </main>
+      </div>
+    );
+  }
+
   const loggingOnly = plan?.mode === "logging_only";
 
   return (
@@ -134,6 +162,14 @@ export function App() {
           <SettingsIcon size={20} />
         </button>
       </header>
+
+      {ready && !setupDismissed && (
+        <SetupBanner
+          profile={profile}
+          onStart={(stepId) => setSetupStep(stepId)}
+          onDismiss={() => setSetupDismissed(true)}
+        />
+      )}
 
       <main className="screen">
         {!ready ? (

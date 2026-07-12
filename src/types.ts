@@ -144,6 +144,14 @@ export interface Profile {
   goalWeightKg?: number;
   /** Display unit preference. Storage is always metric. */
   units: "metric" | "imperial";
+  /** Guided-setup progress. Absent ⇒ setup never started. Additive; rides
+   *  saveProfile, so it works on both the mock and Supabase backends. */
+  setup?: ProfileSetup;
+}
+
+/** Which steps of the guided profile/goals setup the user has completed. */
+export interface ProfileSetup {
+  completedSteps: string[];
 }
 
 /**
