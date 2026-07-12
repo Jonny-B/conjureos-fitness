@@ -9,13 +9,52 @@
  * A failing plan is retried once, then replaced by a fallback template.
  */
 
-import type { PlanMode, SafetyIntake, Sex } from "../../types";
+import type { PlanMode, SafetyIntake, Sex, WorkoutProgram } from "../../types";
 import type { GeneratedPlan } from "./model";
 import { kcalFloor, modeHasWorkouts, modeTracksFood } from "./model";
 import { isExerciseExcluded } from "../safety/injuryExclusions";
 
 const MAX_WORKOUT_GOALS = 6;
 const MAX_PROGRAM_WORKOUTS = 6;
+
+/**
+ * Program-only safety rails (W4/W5). Returns a list of reasons the program is
+ * unsafe/invalid; empty means it passes. Shared by full plan validation and the
+ * adaptation engine so an AI-adjusted program clears the exact same gate a
+ * generated one does.
+ */
+export function validateProgram(
+  program: WorkoutProgram,
+  mode: PlanMode,
+  injuries: string[],
+): string[] {
+  const reasons: string[] = [];
+  if (!modeHasWorkouts(mode)) {
+    reasons.push(`a ${mode} plan must not carry a workout program`);
+  }
+  if (program.workouts.length < 1 || program.workouts.length > MAX_PROGRAM_WORKOUTS) {
+    reasons.push(`program has ${program.workouts.length} workouts (expected 1-${MAX_PROGRAM_WORKOUTS})`);
+  }
+  for (const pw of program.workouts) {
+    for (const e of pw.workout.exercises) {
+      if (isExerciseExcluded(`${e.name} ${e.notes ?? ""}`, injuries)) {
+        reasons.push(`program exercise "${e.name}" conflicts with a declared injury`);
+      }
+    }
+  }
+  if (program.benchmarks.length !== 1) {
+    reasons.push(`program must have exactly one benchmark (found ${program.benchmarks.length})`);
+  } else {
+    const b = program.benchmarks[0]!;
+    if (!Number.isFinite(b.target) || b.target <= 0) {
+      reasons.push("benchmark has no valid target");
+    }
+    if (isExerciseExcluded(b.name, injuries)) {
+      reasons.push(`benchmark "${b.name}" conflicts with a declared injury`);
+    }
+  }
+  return reasons;
+}
 
 export interface ValidationContext {
   mode: PlanMode;
@@ -65,33 +104,7 @@ export function validatePlan(gen: GeneratedPlan, ctx: ValidationContext): Valida
 
   // 5. Structured workout program (W4), when present.
   if (gen.program) {
-    const p = gen.program;
-    if (!modeHasWorkouts(ctx.mode)) {
-      reasons.push(`a ${ctx.mode} plan must not carry a workout program`);
-    }
-    if (p.workouts.length < 1 || p.workouts.length > MAX_PROGRAM_WORKOUTS) {
-      reasons.push(`program has ${p.workouts.length} workouts (expected 1-${MAX_PROGRAM_WORKOUTS})`);
-    }
-    // Every prescribed movement must clear the injury exclusion list.
-    for (const pw of p.workouts) {
-      for (const e of pw.workout.exercises) {
-        if (isExerciseExcluded(`${e.name} ${e.notes ?? ""}`, injuries)) {
-          reasons.push(`program exercise "${e.name}" conflicts with a declared injury`);
-        }
-      }
-    }
-    // Exactly one benchmark, with a usable target.
-    if (p.benchmarks.length !== 1) {
-      reasons.push(`program must have exactly one benchmark (found ${p.benchmarks.length})`);
-    } else {
-      const b = p.benchmarks[0]!;
-      if (!Number.isFinite(b.target) || b.target <= 0) {
-        reasons.push("benchmark has no valid target");
-      }
-      if (isExerciseExcluded(b.name, injuries)) {
-        reasons.push(`benchmark "${b.name}" conflicts with a declared injury`);
-      }
-    }
+    reasons.push(...validateProgram(gen.program, ctx.mode, injuries));
   }
 
   return { ok: reasons.length === 0, reasons };
