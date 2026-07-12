@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ExerciseActual, Workout, WorkoutSession } from "../types";
+import type { ExerciseActual, Profile, Workout, WorkoutSession } from "../types";
 import { BUILT_IN_WORKOUTS, buildSteps, newCardioSession, newSessionFrom, type PlayerStep } from "../features/workouts";
 import { normalizeExerciseKey } from "../features/explainers/normalizeKey";
 import { lastSetFor } from "../features/workoutHistory";
@@ -19,13 +19,14 @@ type View =
 
 const isCardio = (w: Workout) => w.kind === "run" || w.kind === "bike";
 
-export function WorkoutsScreen() {
+export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
   const [view, setView] = useState<View>({ screen: "list" });
 
   if (view.screen === "cardio") {
     return (
       <CardioPlayer
         workout={view.workout}
+        units={units}
         onFinish={async (cardio) => {
           try {
             const repo = await getRepository();

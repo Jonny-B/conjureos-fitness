@@ -4,6 +4,7 @@ import { DEFAULT_GOALS } from "../types";
 import { getRepository } from "../data/repository";
 import { ACTIVITY_LABELS, recommendGoals } from "../features/goals";
 import { NumberField } from "../components/NumberField";
+import { heightToCm, heightToDisplay, heightUnit, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { CloseIcon } from "../components/icons";
 
 const DEFAULT_PROFILE: Profile = {
@@ -107,13 +108,35 @@ export function SettingsSheet({
             <Field label="Age">
               <NumberField value={p.age} min={10} max={120} onChange={(n) => set("age", n)} aria-label="Age" />
             </Field>
-            <Field label="Height (cm)">
-              <NumberField value={p.heightCm} min={90} max={250} onChange={(n) => set("heightCm", n)} aria-label="Height in cm" />
+            <Field label={`Height (${heightUnit(p.units)})`}>
+              <NumberField
+                value={p.heightCm == null ? undefined : heightToDisplay(p.heightCm, p.units)}
+                min={heightToDisplay(90, p.units)}
+                max={heightToDisplay(250, p.units)}
+                onChange={(n) => set("heightCm", n == null ? undefined : Math.round(heightToCm(n, p.units)))}
+                aria-label="Height"
+              />
             </Field>
-            <Field label="Weight (kg)">
-              <NumberField value={p.weightKg} min={25} max={400} onChange={(n) => set("weightKg", n)} aria-label="Weight in kg" />
+            <Field label={`Weight (${weightUnit(p.units)})`}>
+              <NumberField
+                value={p.weightKg == null ? undefined : weightToDisplay(p.weightKg, p.units)}
+                min={weightToDisplay(25, p.units)}
+                max={weightToDisplay(400, p.units)}
+                onChange={(n) => set("weightKg", n == null ? undefined : Math.round(weightToKg(n, p.units) * 10) / 10)}
+                aria-label="Weight"
+              />
             </Field>
           </div>
+
+          <Field label="Units">
+            <div className="chip-row">
+              {(["metric", "imperial"] as const).map((u) => (
+                <button key={u} className={`chip${p.units === u ? " active" : ""}`} onClick={() => set("units", u)}>
+                  {u === "metric" ? "Metric (kg, cm)" : "Imperial (lb, in)"}
+                </button>
+              ))}
+            </div>
+          </Field>
 
           <Field label="Activity level">
             <select

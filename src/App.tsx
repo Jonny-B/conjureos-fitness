@@ -118,7 +118,7 @@ export function App() {
     return (
       <div className="app">
         <main className="screen">
-          <WizardScreen onComplete={onWizardComplete} />
+          <WizardScreen onComplete={onWizardComplete} units={profile?.units ?? "metric"} />
         </main>
       </div>
     );
@@ -208,7 +208,7 @@ export function App() {
         ) : tab === "trends" ? (
           <TrendsScreen profile={profile} />
         ) : tab === "workouts" && !loggingOnly ? (
-          <WorkoutsScreen />
+          <WorkoutsScreen units={profile?.units ?? "metric"} />
         ) : (
           <DiaryScreen
             date={date}

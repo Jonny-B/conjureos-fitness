@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { AgeBand, ActivityLevel, Plan, PlanMode, SafetyIntake, Sex } from "../types";
+import type { AgeBand, ActivityLevel, Plan, PlanMode, Profile, SafetyIntake, Sex } from "../types";
+import { heightToCm, heightUnit, weightToKg, weightUnit } from "../features/units";
 import { INJURY_REGIONS } from "../features/safety/injuryExclusions";
 import { requiresLoggingOnly, resolveSafeMode } from "../features/safety/intakeGate";
 import { DisclaimerCard, DISCLAIMER_SHORT } from "../components/DisclaimerCard";
@@ -15,6 +16,8 @@ const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev
 interface Props {
   /** Fired with the saved-ready Plan when the user taps "Start the plan". */
   onComplete: (plan: Plan) => void;
+  /** Display units for the height/weight inputs (storage stays metric). */
+  units?: Profile["units"];
 }
 
 const MODE_CARDS: { mode: PlanMode; title: string; blurb: string; recommended?: boolean }[] = [
@@ -37,7 +40,7 @@ const DURATIONS: { weeks: number; label: string }[] = [
   { weeks: 4, label: "1 month" },
 ];
 
-export function WizardScreen({ onComplete }: Props) {
+export function WizardScreen({ onComplete, units = "metric" }: Props) {
   const [step, setStep] = useState<Step>("disclaimer");
 
   // Step 1
@@ -81,8 +84,8 @@ export function WizardScreen({ onComplete }: Props) {
     durationWeeks,
     daysPerWeek: hasWorkouts ? daysPerWeek : undefined,
     equipment: hasWorkouts ? equipment : undefined,
-    heightCm: tracksFood && heightCm ? Number(heightCm) : undefined,
-    weightKg: tracksFood && weightKg ? Number(weightKg) : undefined,
+    heightCm: tracksFood && heightCm ? Math.round(heightToCm(Number(heightCm), units)) : undefined,
+    weightKg: tracksFood && weightKg ? Math.round(weightToKg(Number(weightKg), units) * 10) / 10 : undefined,
     sex: tracksFood ? sex : undefined,
     safety: intake,
   });
@@ -272,11 +275,11 @@ export function WizardScreen({ onComplete }: Props) {
           {tracksFood && (
             <div className="row gap">
               <label className="field">
-                <span className="field-label">Height (cm)</span>
+                <span className="field-label">Height ({heightUnit(units)})</span>
                 <input className="text-input" inputMode="numeric" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
               </label>
               <label className="field">
-                <span className="field-label">Weight (kg)</span>
+                <span className="field-label">Weight ({weightUnit(units)})</span>
                 <input className="text-input" inputMode="numeric" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
               </label>
               <label className="field">

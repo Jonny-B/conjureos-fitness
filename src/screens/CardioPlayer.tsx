@@ -1,15 +1,10 @@
 import { useState } from "react";
-import type { CardioActual, Workout } from "../types";
+import type { CardioActual, Profile, Workout } from "../types";
 import { useGpsTracker } from "../features/cardio/tracker";
+import { distanceUnit, fmtPace, kmToMi, paceUnit } from "../features/units";
 import { ManualCardioEntry } from "../components/ManualCardioEntry";
 import { ChevronLeft } from "../components/icons";
 
-function fmtPace(s: number | null): string {
-  if (s == null || !Number.isFinite(s)) return "—:—";
-  const m = Math.floor(s / 60);
-  const r = Math.round(s % 60);
-  return `${m}:${String(r).padStart(2, "0")}`;
-}
 function fmtTime(total: number): string {
   const s = Math.max(0, Math.round(total));
   const h = Math.floor(s / 3600);
@@ -22,16 +17,18 @@ function fmtTime(total: number): string {
 
 interface Props {
   workout: Workout;
+  units: Profile["units"];
   onFinish: (cardio: CardioActual) => void;
   onCancel: () => void;
 }
 
 /** Cardio (run/bike) screen: live GPS distance/pace/time/splits, with a manual
  *  distance+duration path always reachable. */
-export function CardioPlayer({ workout, onFinish, onCancel }: Props) {
+export function CardioPlayer({ workout, units, onFinish, onCancel }: Props) {
   const { available, state, start, pause, resume, stop } = useGpsTracker();
   const [manual, setManual] = useState(!available);
   const [started, setStarted] = useState(false);
+  const distDisplay = units === "imperial" ? kmToMi(state.distanceKm) : state.distanceKm;
 
   if (manual) {
     return (
@@ -45,7 +42,7 @@ export function CardioPlayer({ workout, onFinish, onCancel }: Props) {
           )}
         </div>
         <h2 className="cardio-title">{workout.name}</h2>
-        <ManualCardioEntry onSave={onFinish} onCancel={onCancel} />
+        <ManualCardioEntry units={units} onSave={onFinish} onCancel={onCancel} />
       </div>
     );
   }
@@ -61,8 +58,8 @@ export function CardioPlayer({ workout, onFinish, onCancel }: Props) {
 
       <div className="cardio-stats">
         <div className="cardio-distance">
-          {state.distanceKm.toFixed(2)}
-          <span className="cardio-unit">km</span>
+          {distDisplay.toFixed(2)}
+          <span className="cardio-unit">{distanceUnit(units)}</span>
         </div>
         <div className="cardio-sub">
           <div className="cardio-metric">
@@ -70,8 +67,8 @@ export function CardioPlayer({ workout, onFinish, onCancel }: Props) {
             <span className="cardio-lbl">time</span>
           </div>
           <div className="cardio-metric">
-            <span className="cardio-val">{fmtPace(state.paceSecPerKm)}</span>
-            <span className="cardio-lbl">/km</span>
+            <span className="cardio-val">{fmtPace(state.paceSecPerKm, units)}</span>
+            <span className="cardio-lbl">{paceUnit(units)}</span>
           </div>
         </div>
         {state.autoPaused && <div className="cardio-autopause">Auto-paused</div>}
@@ -81,7 +78,9 @@ export function CardioPlayer({ workout, onFinish, onCancel }: Props) {
       {state.splits.length > 0 && (
         <div className="cardio-splits">
           {state.splits.map((s, i) => (
-            <span key={i} className="split-chip">km {i + 1} · {fmtPace(s)}</span>
+            <span key={i} className="split-chip">
+              {distanceUnit(units)} {i + 1} · {fmtPace(s, units)}
+            </span>
           ))}
         </div>
       )}

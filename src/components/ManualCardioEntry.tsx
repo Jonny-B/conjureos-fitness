@@ -1,21 +1,23 @@
 import { useState } from "react";
-import type { CardioActual } from "../types";
+import type { CardioActual, Profile } from "../types";
+import { distanceUnit, miToKm } from "../features/units";
 import { NumberField } from "./NumberField";
 
 interface Props {
+  units: Profile["units"];
   onSave: (cardio: CardioActual) => void;
   onCancel: () => void;
 }
 
 /** Distance + duration entry — the universal cardio fallback (no GPS, denied
  *  permission, tunnels, or the mobile WebView until native GPS lands). */
-export function ManualCardioEntry({ onSave, onCancel }: Props) {
-  const [km, setKm] = useState<number | undefined>(undefined);
+export function ManualCardioEntry({ units, onSave, onCancel }: Props) {
+  const [dist, setDist] = useState<number | undefined>(undefined);
   const [minutes, setMinutes] = useState<number | undefined>(undefined);
-  const valid = (km ?? 0) > 0 && (minutes ?? 0) > 0;
+  const valid = (dist ?? 0) > 0 && (minutes ?? 0) > 0;
 
   const save = () => {
-    const distanceKm = km!;
+    const distanceKm = units === "imperial" ? miToKm(dist!) : dist!;
     const durationSec = Math.round(minutes! * 60);
     onSave({
       distanceKm,
@@ -28,8 +30,8 @@ export function ManualCardioEntry({ onSave, onCancel }: Props) {
   return (
     <div className="mode-body manual-cardio">
       <label className="field">
-        <span className="field-label">Distance (km)</span>
-        <NumberField value={km} min={0} max={500} onChange={setKm} aria-label="Distance in km" />
+        <span className="field-label">Distance ({distanceUnit(units)})</span>
+        <NumberField value={dist} min={0} max={500} onChange={setDist} aria-label="Distance" />
       </label>
       <label className="field">
         <span className="field-label">Duration (minutes)</span>
