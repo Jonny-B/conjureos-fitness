@@ -100,19 +100,46 @@ function interleave<T>(a: T[], b: T[]): T[] {
   return out;
 }
 
+/**
+ * Text search across Open Food Facts (branded) + USDA (whole foods), run in
+ * parallel and interleaved so neither source dominates.
+ *
+ * `onPartial`, when given, fires with the merged list as each provider lands so
+ * the UI can paint the fast provider's hits (USDA is usually sub-second) without
+ * waiting on the slow one (OFF's search endpoint often takes seconds). Both
+ * requests are individually timed out, so a dead provider can't stall the other.
+ */
 export async function searchFoods(
   query: string,
   limit = 20,
   signal?: AbortSignal,
+  onPartial?: (foods: FoodItem[]) => void,
 ): Promise<FoodItem[]> {
   const q = query.trim();
   if (q.length < 3) return [];
   const half = Math.ceil(limit / 2);
-  const [offResults, usdaResults] = await Promise.all([
-    off.searchText(q, half, signal).catch(() => [] as FoodItem[]),
-    usda.searchText(q, half, signal).catch(() => [] as FoodItem[]),
-  ]);
-  return interleave(offResults, usdaResults).slice(0, limit);
+
+  let offResults: FoodItem[] = [];
+  let usdaResults: FoodItem[] = [];
+  const merged = () => interleave(offResults, usdaResults).slice(0, limit);
+
+  const offP = off
+    .searchText(q, half, signal)
+    .then((r) => {
+      offResults = r;
+      if (!signal?.aborted) onPartial?.(merged());
+    })
+    .catch(() => {});
+  const usdaP = usda
+    .searchText(q, half, signal)
+    .then((r) => {
+      usdaResults = r;
+      if (!signal?.aborted) onPartial?.(merged());
+    })
+    .catch(() => {});
+
+  await Promise.all([offP, usdaP]);
+  return merged();
 }
 
 export { USING_DEMO_KEY } from "./usda";

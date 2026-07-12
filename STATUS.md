@@ -1,6 +1,6 @@
 # Conjure Health, project status
 
-> **Last updated: 2026-07-11. ACTIVE — relaunching.**
+> **Last updated: 2026-07-12. ACTIVE — relaunching.**
 > Development resumed. The app is being re-published to the App Stores (dev
 > first, then prod) and v2 work is starting. The `store_apps` rows were deleted
 > during the pause, so the re-publish creates fresh listings (version history +
@@ -31,7 +31,30 @@ Working branch: `claude/conjure-barcode-scanning-6y7f65`.
 The last pre-pause work made barcode scanning actually useful, then built a
 community food database so misses get easier over time.
 
-### What we accomplished (most recent session)
+### Latest session — barcode scan UX + search fix (`0.5.0`)
+
+- **One unified Scan surface.** Barcode scanning and the photo "scan the
+  food/product" fallback now live on a single surface. The immersive scanner is
+  primary; inline shortcuts (keyboard → manual barcode entry, camera → snap a
+  photo) are always available, and a barcode miss still auto-surfaces the photo
+  chooser. Branch: `claude/barcode-scan-ui-consolidate-q0w6i4`.
+- **Immersive in-page scanner** (matches the MyFitnessPal-style reference):
+  corner-bracket reticle, sweeping scan line, dimmed surround, framing guidance,
+  and floating flashlight (torch via `applyConstraints`) / keyboard / camera
+  controls — all while the mode tabs stay visible. No more full-screen takeover.
+- **In-app camera for photo capture.** The nutrition-label and
+  front-of-package captures now use a live in-app camera (`CameraCapture`,
+  getUserMedia → canvas still) instead of the jarring OS camera that
+  `<input capture>` launched. Falls back to a file/library picker when the
+  camera is unavailable or denied.
+- **Fixed "no hits" food search.** Text search fanned out to Open Food Facts +
+  USDA with `Promise.all` and no timeout, so a slow/dead OFF request (its search
+  endpoint is often slow or 503s) wedged the whole search — and a bad OFF draw
+  plus a rate-limited USDA `DEMO_KEY` could yield zero. Now each provider is
+  timed out (7s), results paint progressively as each lands (fast USDA no longer
+  waits on OFF), and OFF sorts by scan popularity. "Milk" returns hits again.
+
+### What we accomplished (session before)
 
 - **Renamed the app** from "Conjure Fitness" to "Conjure Health" everywhere it
   shows (display name, window title, brand text). The slug stayed `fitness` and
