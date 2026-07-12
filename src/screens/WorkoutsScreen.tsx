@@ -1,22 +1,44 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExerciseActual, Workout, WorkoutSession } from "../types";
-import { BUILT_IN_WORKOUTS, buildSteps, newSessionFrom, type PlayerStep } from "../features/workouts";
+import { BUILT_IN_WORKOUTS, buildSteps, newCardioSession, newSessionFrom, type PlayerStep } from "../features/workouts";
 import { normalizeExerciseKey } from "../features/explainers/normalizeKey";
 import { lastSetFor } from "../features/workoutHistory";
 import { getRepository } from "../data/repository";
 import { ProgressRing } from "../components/rings";
 import { SetRecorder, type SetEntry } from "../components/SetRecorder";
 import { ExplainerDropdown } from "../components/ExplainerDropdown";
+import { CardioPlayer } from "./CardioPlayer";
 import { WorkoutSummary } from "./WorkoutSummary";
 import { ChevronLeft, PlayIcon } from "../components/icons";
 
 type View =
   | { screen: "list" }
   | { screen: "player"; workout: Workout }
+  | { screen: "cardio"; workout: Workout }
   | { screen: "summary"; workout: Workout; byExercise: ExerciseActual[] };
+
+const isCardio = (w: Workout) => w.kind === "run" || w.kind === "bike";
 
 export function WorkoutsScreen() {
   const [view, setView] = useState<View>({ screen: "list" });
+
+  if (view.screen === "cardio") {
+    return (
+      <CardioPlayer
+        workout={view.workout}
+        onFinish={async (cardio) => {
+          try {
+            const repo = await getRepository();
+            await repo.saveWorkoutSession(newCardioSession(view.workout, cardio));
+          } catch {
+            /* mock persists; Supabase throws — non-fatal */
+          }
+          setView({ screen: "list" });
+        }}
+        onCancel={() => setView({ screen: "list" })}
+      />
+    );
+  }
 
   if (view.screen === "player") {
     return (
@@ -53,12 +75,17 @@ export function WorkoutsScreen() {
       <ul className="workout-list">
         {BUILT_IN_WORKOUTS.map((w) => (
           <li key={w.id}>
-            <button className="workout-card" onClick={() => setView({ screen: "player", workout: w })}>
+            <button
+              className="workout-card"
+              onClick={() => setView({ screen: isCardio(w) ? "cardio" : "player", workout: w })}
+            >
               <div className="workout-card-text">
                 <div className="workout-name">{w.name}</div>
                 <div className="workout-summary">{w.summary}</div>
                 <div className="workout-meta">
-                  {w.exercises.length} exercises · {w.exercises.reduce((s, e) => s + e.sets.length, 0)} sets
+                  {isCardio(w)
+                    ? w.kind === "run" ? "Run · track distance" : "Bike · track distance"
+                    : `${w.exercises.length} exercises · ${w.exercises.reduce((s, e) => s + e.sets.length, 0)} sets`}
                 </div>
               </div>
               <span className="workout-play" aria-hidden>

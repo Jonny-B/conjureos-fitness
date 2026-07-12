@@ -7,7 +7,7 @@
  * and would route through the repository like the diary does.
  */
 
-import type { Exercise, ExerciseActual, ExerciseSet, Workout, WorkoutSession } from "../types";
+import type { CardioActual, Exercise, ExerciseActual, ExerciseSet, Workout, WorkoutSession } from "../types";
 import { newId } from "../data/id";
 import { todayISO } from "./diary";
 
@@ -59,6 +59,22 @@ export const BUILT_IN_WORKOUTS: Workout[] = [
       ex("Bicep Curls", [repSet(12, 45, 8), repSet(12, 60, 8)]),
     ],
   },
+  {
+    id: "morning-run",
+    name: "Morning Run",
+    summary: "Cardio · GPS distance + pace",
+    kind: "run",
+    cardioTarget: { distanceKm: 5 },
+    exercises: [],
+  },
+  {
+    id: "bike-ride",
+    name: "Bike Ride",
+    summary: "Cardio · GPS distance",
+    kind: "bike",
+    cardioTarget: { distanceKm: 15 },
+    exercises: [],
+  },
 ];
 
 export type PlayerStep =
@@ -102,6 +118,20 @@ export function newSessionFrom(
     actual,
     reprompts: [],
     byExercise,
+    completedAt: new Date().toISOString(),
+  };
+}
+
+/** Assemble a persistable cardio session (run/bike) from a tracked result. */
+export function newCardioSession(workout: Workout, cardio: CardioActual): WorkoutSession {
+  return {
+    id: newId(),
+    date: todayISO(),
+    workoutId: workout.id,
+    planned: [],
+    actual: [],
+    reprompts: [],
+    cardio,
     completedAt: new Date().toISOString(),
   };
 }

@@ -1918,6 +1918,47 @@ body {
 .explainer-edit { display: flex; flex-direction: column; gap: 8px; }
 .explainer-empty { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
+/* ── W3: cardio player ────────────────────────────────────────────────── */
+.cardio-player { display: flex; flex-direction: column; height: 100%; gap: 12px; }
+.cardio-title { font-size: 18px; font-weight: 700; text-align: center; margin: 0; }
+.cardio-stats { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 24px; }
+.cardio-distance {
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-2);
+}
+.cardio-unit { font-size: 22px; font-weight: 700; color: var(--muted); margin-left: 6px; }
+.cardio-sub { display: flex; gap: 32px; }
+.cardio-metric { display: flex; flex-direction: column; align-items: center; }
+.cardio-val { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cardio-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.cardio-autopause {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--carbs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cardio-splits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.split-chip {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.manual-cardio { display: flex; flex-direction: column; gap: 14px; }
+
 .calories-card {
   background:
     linear-gradient(rgba(124, 92, 255, 0.08), rgba(124, 92, 255, 0.02)),
