@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ExerciseActual, Profile, Workout, WorkoutSession } from "../types";
+import type { Benchmark, ExerciseActual, Plan, Profile, Workout, WorkoutSession } from "../types";
 import { BUILT_IN_WORKOUTS, buildSteps, newCardioSession, newSessionFrom, type PlayerStep } from "../features/workouts";
 import { normalizeExerciseKey } from "../features/explainers/normalizeKey";
+import { benchmarkProgress, recordBenchmarkResult } from "../features/plan/program";
 import { lastSetFor } from "../features/workoutHistory";
 import { getRepository } from "../data/repository";
 import { ProgressRing } from "../components/rings";
@@ -13,14 +14,56 @@ import { ChevronLeft, PlayIcon } from "../components/icons";
 
 type View =
   | { screen: "list" }
-  | { screen: "player"; workout: Workout }
-  | { screen: "cardio"; workout: Workout }
-  | { screen: "summary"; workout: Workout; byExercise: ExerciseActual[] };
+  | { screen: "player"; workout: Workout; benchmarkId?: string }
+  | { screen: "cardio"; workout: Workout; benchmarkId?: string }
+  | { screen: "summary"; workout: Workout; byExercise: ExerciseActual[]; benchmarkId?: string };
 
 const isCardio = (w: Workout) => w.kind === "run" || w.kind === "bike";
+const setCount = (w: Workout) => w.exercises.reduce((s, e) => s + e.sets.length, 0);
+
+function metaLine(w: Workout): string {
+  if (isCardio(w)) return w.kind === "run" ? "Run · track distance" : "Bike · track distance";
+  return `${w.exercises.length} exercises · ${setCount(w)} sets`;
+}
 
 export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
   const [view, setView] = useState<View>({ screen: "list" });
+  const [plan, setPlan] = useState<Plan | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getRepository()
+      .then((r) => r.getPlan())
+      .then((p) => alive && setPlan(p))
+      .catch(() => {
+        /* Supabase throws PLAN_REQUIRES_V2_BACKEND — no program to show */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Persist a finished session, then fold any benchmark result back into the
+  // plan's program and save it (the adaptive loop's measurement half).
+  const saveSession = useCallback(
+    async (session: WorkoutSession) => {
+      try {
+        const repo = await getRepository();
+        await repo.saveWorkoutSession(session);
+        if (plan?.program && session.benchmarkId) {
+          const program = recordBenchmarkResult(plan.program, session);
+          if (program !== plan.program) {
+            const updated = { ...plan, program };
+            await repo.savePlan(updated);
+            setPlan(updated);
+          }
+        }
+      } catch {
+        /* mock persists; Supabase throws — non-fatal */
+      }
+    },
+    [plan],
+  );
 
   if (view.screen === "cardio") {
     return (
@@ -28,12 +71,7 @@ export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
         workout={view.workout}
         units={units}
         onFinish={async (cardio) => {
-          try {
-            const repo = await getRepository();
-            await repo.saveWorkoutSession(newCardioSession(view.workout, cardio));
-          } catch {
-            /* mock persists; Supabase throws — non-fatal */
-          }
+          await saveSession(newCardioSession(view.workout, cardio, view.benchmarkId));
           setView({ screen: "list" });
         }}
         onCancel={() => setView({ screen: "list" })}
@@ -45,7 +83,9 @@ export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
     return (
       <StrengthPlayer
         workout={view.workout}
-        onFinish={(byExercise) => setView({ screen: "summary", workout: view.workout, byExercise })}
+        onFinish={(byExercise) =>
+          setView({ screen: "summary", workout: view.workout, byExercise, benchmarkId: view.benchmarkId })
+        }
         onCancel={() => setView({ screen: "list" })}
       />
     );
@@ -57,12 +97,7 @@ export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
         workout={view.workout}
         byExercise={view.byExercise}
         onSave={async () => {
-          try {
-            const repo = await getRepository();
-            await repo.saveWorkoutSession(newSessionFrom(view.workout, view.byExercise));
-          } catch {
-            /* mock persists; Supabase throws — non-fatal */
-          }
+          await saveSession(newSessionFrom(view.workout, view.byExercise, view.benchmarkId));
           setView({ screen: "list" });
         }}
         onDiscard={() => setView({ screen: "list" })}
@@ -70,24 +105,52 @@ export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
     );
   }
 
+  const start = (workout: Workout, benchmarkId?: string) =>
+    setView({ screen: isCardio(workout) ? "cardio" : "player", workout, benchmarkId });
+
+  const program = plan?.program;
+
   return (
     <div className="workouts">
       <h1 className="screen-title">Workouts</h1>
+
+      {program && program.workouts.length > 0 && (
+        <section className="program-section">
+          <div className="section-label">Your plan</div>
+          {program.benchmarks.map((b) => (
+            <BenchmarkCard key={b.id} benchmark={b} units={units} />
+          ))}
+          <ul className="workout-list">
+            {program.workouts.map((pw) => (
+              <li key={pw.id}>
+                <button className="workout-card" onClick={() => start(pw.workout, pw.benchmarkId)}>
+                  <div className="workout-card-text">
+                    <div className="workout-name">
+                      {pw.workout.name}
+                      {pw.isBenchmark && <span className="benchmark-badge">Benchmark</span>}
+                    </div>
+                    {pw.workout.summary && <div className="workout-summary">{pw.workout.summary}</div>}
+                    <div className="workout-meta">{metaLine(pw.workout)}</div>
+                  </div>
+                  <span className="workout-play" aria-hidden>
+                    <PlayIcon size={18} />
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <div className="section-label">{program ? "Library" : ""}</div>
       <ul className="workout-list">
         {BUILT_IN_WORKOUTS.map((w) => (
           <li key={w.id}>
-            <button
-              className="workout-card"
-              onClick={() => setView({ screen: isCardio(w) ? "cardio" : "player", workout: w })}
-            >
+            <button className="workout-card" onClick={() => start(w)}>
               <div className="workout-card-text">
                 <div className="workout-name">{w.name}</div>
                 <div className="workout-summary">{w.summary}</div>
-                <div className="workout-meta">
-                  {isCardio(w)
-                    ? w.kind === "run" ? "Run · track distance" : "Bike · track distance"
-                    : `${w.exercises.length} exercises · ${w.exercises.reduce((s, e) => s + e.sets.length, 0)} sets`}
-                </div>
+                <div className="workout-meta">{metaLine(w)}</div>
               </div>
               <span className="workout-play" aria-hidden>
                 <PlayIcon size={18} />
@@ -98,6 +161,49 @@ export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
       </ul>
     </div>
   );
+}
+
+/** Benchmark baseline → target progress card, shown atop a plan's program. */
+function BenchmarkCard({ benchmark: b, units }: { benchmark: Benchmark; units: Profile["units"] }) {
+  const pct = benchmarkProgress(b);
+  const latest = b.history.length ? b.history[b.history.length - 1]!.value : null;
+  const fmt = (v: number) => formatBenchmarkValue(v, b, units);
+  return (
+    <div className="benchmark-card">
+      <div className="benchmark-head">
+        <span className="benchmark-name">{b.name}</span>
+        <span className="benchmark-target">
+          {b.lowerIsBetter ? "target ≤ " : "target "}
+          {fmt(b.target)}
+        </span>
+      </div>
+      {b.baseline == null ? (
+        <div className="muted small">Complete the benchmark workout to set your baseline.</div>
+      ) : (
+        <>
+          <div className="benchmark-track">
+            <div className="benchmark-fill" style={{ width: `${Math.round((pct ?? 0) * 100)}%` }} />
+          </div>
+          <div className="benchmark-row">
+            <span className="muted small">start {fmt(b.baseline)}</span>
+            {latest != null && <span className="benchmark-now">now {fmt(latest)}</span>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Format a benchmark value with its unit; weight/distance respect display units. */
+function formatBenchmarkValue(v: number, b: Benchmark, units: Profile["units"]): string {
+  if (b.metric === "durationSec") {
+    const m = Math.floor(v / 60);
+    const s = Math.round(v % 60);
+    return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `${s}s`;
+  }
+  if (b.metric === "weightKg" && units === "imperial") return `${Math.round(v * 2.2046226218)} lb`;
+  if (b.metric === "distanceKm" && units === "imperial") return `${(v * 0.621371).toFixed(2)} mi`;
+  return `${Math.round(v * 10) / 10} ${b.unit}`;
 }
 
 // ── Guided strength player: timers, rest, per-set recording ──────────────

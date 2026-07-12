@@ -100,6 +100,7 @@ export type PlayerStep =
 export function newSessionFrom(
   workout: Workout,
   byExercise: ExerciseActual[],
+  benchmarkId?: string,
 ): WorkoutSession {
   const planned: ExerciseSet[] = workout.exercises.flatMap((e) => e.sets);
   const actual: ExerciseSet[] = byExercise.flatMap((e) =>
@@ -118,12 +119,17 @@ export function newSessionFrom(
     actual,
     reprompts: [],
     byExercise,
+    ...(benchmarkId ? { benchmarkId } : {}),
     completedAt: new Date().toISOString(),
   };
 }
 
 /** Assemble a persistable cardio session (run/bike) from a tracked result. */
-export function newCardioSession(workout: Workout, cardio: CardioActual): WorkoutSession {
+export function newCardioSession(
+  workout: Workout,
+  cardio: CardioActual,
+  benchmarkId?: string,
+): WorkoutSession {
   return {
     id: newId(),
     date: todayISO(),
@@ -132,6 +138,7 @@ export function newCardioSession(workout: Workout, cardio: CardioActual): Workou
     actual: [],
     reprompts: [],
     cardio,
+    ...(benchmarkId ? { benchmarkId } : {}),
     completedAt: new Date().toISOString(),
   };
 }

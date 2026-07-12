@@ -17,6 +17,7 @@ import { shiftDate, todayISO } from "../diary";
 import { movementsExcludedFor } from "../safety/injuryExclusions";
 import type { GeneratedGoal, GeneratedPlan, PlanInput } from "./model";
 import { modeHasWorkouts, modeTracksFood } from "./model";
+import { parseProgram } from "./program";
 import { validatePlan } from "./validate";
 import { fallbackPlan } from "./fallbackTemplates";
 
@@ -24,12 +25,20 @@ const SYSTEM = `You are a wellness coach, not a doctor. You give friendly sugges
 Design a short, realistic wellness plan from the user's inputs. Return ONLY a JSON object:
   { "summary": string,
     "dailyCalorieTarget": number | null,
-    "goals": [ { "label": string, "kind": "nutrition" | "workout" | "habit", "detail"?: string } ] }
+    "goals": [ { "label": string, "kind": "nutrition" | "workout" | "habit", "detail"?: string } ],
+    "program"?: {
+      "workouts": [ { "name": string, "kind"?: "strength" | "run" | "bike",
+                      "exercises": [ { "name": string,
+                                       "sets": [ { "reps"?: number, "durationSec"?: number, "restSec"?: number, "weightKg"?: number } ],
+                                       "notes"?: string } ] } ],
+      "benchmark": { "exercise": string, "metric": "reps" | "weightKg" | "durationSec" | "distanceKm", "target": number, "unit": string, "lowerIsBetter"?: boolean }
+    } }
 Rules:
 - "summary" is one encouraging sentence framing the plan.
 - "dailyCalorieTarget" is a sensible daily kcal number when the plan tracks food, else null. Never below a safe floor (~1200-1500). No crash diets.
 - 3 to 6 goals, each a short daily/weekly action. Use "nutrition" for food, "workout" for exercise, "habit" for everything else.
 - For a "workout" goal, put the specific movements in "detail" (comma-separated).
+- Include "program" ONLY when the plan prescribes workouts. Give 1-4 concrete workouts (2-6 exercises each; sets have reps OR durationSec, plus restSec) and EXACTLY ONE benchmark: a single measurable effort the plan aims to improve (e.g. push-ups reps, a 1-mile time). The benchmark exercise SHOULD appear in one of the workouts. Use metric units (weight in kg, distance in km, time in seconds); set lowerIsBetter=true for a timed effort.
 - Keep it beginner-appropriate and equipment-light unless told otherwise.
 - Output ONLY the JSON. No prose, no markdown fences.`;
 
@@ -100,10 +109,12 @@ function parseGenerated(raw: string): GeneratedPlan | null {
     goals.push(detail ? { label, kind, detail } : { label, kind });
   }
   if (goals.length === 0) return null;
+  const program = parseProgram(o.program) ?? undefined;
   return {
     summary: typeof o.summary === "string" ? o.summary.trim().slice(0, 200) : "Your plan",
     dailyCalorieTarget: clampKcal(o.dailyCalorieTarget),
     goals,
+    ...(program ? { program } : {}),
   };
 }
 
@@ -139,6 +150,9 @@ export function buildPlan(gen: GeneratedPlan, input: PlanInput, liability: Liabi
     safety: input.safety,
     liability,
     createdAt: new Date().toISOString(),
+    // Attach the adaptive program (W4) when generation produced one and the
+    // mode actually prescribes workouts. Food-only plans never carry a program.
+    ...(gen.program && modeHasWorkouts(input.mode) ? { program: gen.program } : {}),
   };
 }
 

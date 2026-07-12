@@ -6,7 +6,7 @@
  * fallback can share these without importing each other.
  */
 
-import type { PlanGoal, PlanMode, SafetyIntake, Sex } from "../../types";
+import type { PlanGoal, PlanMode, SafetyIntake, Sex, WorkoutProgram } from "../../types";
 
 /** Everything the 4-step wizard gathers before generating a plan. */
 export interface PlanInput {
@@ -42,6 +42,9 @@ export interface GeneratedPlan {
   /** Daily calorie target when the mode tracks food; null otherwise. */
   dailyCalorieTarget: number | null;
   goals: GeneratedGoal[];
+  /** Structured, adaptive workout program (W4). Parsed from the AI's `program`
+   *  block for workout-bearing modes; absent otherwise. Baselines start null. */
+  program?: WorkoutProgram;
 }
 
 /** Sex-specific daily calorie floor (kcal). Below this a plan is rejected. */

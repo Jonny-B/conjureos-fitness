@@ -7,10 +7,12 @@
  * return a minimal food-logging plan for it so the shape is always valid.
  */
 
-import type { PlanMode } from "../../types";
+import type { Exercise, PlanMode, WorkoutProgram } from "../../types";
 import type { GeneratedPlan, PlanInput } from "./model";
-import { modeTracksFood } from "./model";
+import { modeHasWorkouts, modeTracksFood } from "./model";
 import { isExerciseExcluded } from "../safety/injuryExclusions";
+import { newId } from "../../data/id";
+import { normalizeExerciseKey } from "../explainers/normalizeKey";
 
 /** A generous, always-safe daily calorie target (well above every floor). */
 const SAFE_KCAL = 1800;
@@ -56,6 +58,57 @@ const TEMPLATES: Record<PlanMode, GeneratedPlan> = {
 };
 
 /**
+ * A known-safe bodyweight benchmark program for the workout modes. Every move
+ * is equipment-free and beginner-appropriate; any exercise a declared injury
+ * excludes is dropped, and if the benchmark effort itself is excluded (or no
+ * exercises survive) the program is omitted entirely — a plan is still valid
+ * without one.
+ */
+function fallbackProgram(mode: PlanMode, injuries: string[]): WorkoutProgram | undefined {
+  if (!modeHasWorkouts(mode)) return undefined;
+
+  const seed: { name: string; sets: Exercise["sets"]; notes?: string }[] = [
+    { name: "Sit-to-Stand", sets: [{ reps: 12, durationSec: null, restSec: 45 }], notes: "Stand from a chair, control the way down." },
+    { name: "Wall Push-ups", sets: [{ reps: 10, durationSec: null, restSec: 45 }], notes: "Hands on a wall, chest to wall." },
+    { name: "March in Place", sets: [{ reps: null, durationSec: 60, restSec: 30 }], notes: "Lift the knees, easy pace." },
+    { name: "Plank", sets: [{ reps: null, durationSec: 30, restSec: 45 }], notes: "Neutral spine, squeeze the glutes." },
+  ];
+  const exercises: Exercise[] = seed
+    .filter((s) => !isExerciseExcluded(`${s.name} ${s.notes ?? ""}`, injuries))
+    .map((s) => ({ id: newId(), name: s.name, sets: s.sets, ...(s.notes ? { notes: s.notes } : {}) }));
+  if (exercises.length === 0) return undefined;
+
+  // Benchmark the first surviving rep-based exercise; require it to be safe.
+  const benchEx = exercises.find((e) => e.sets.some((set) => set.reps != null));
+  if (!benchEx || isExerciseExcluded(benchEx.name, injuries)) return undefined;
+
+  const benchmarkId = newId();
+  return {
+    workouts: [
+      {
+        id: newId(),
+        workout: { id: newId(), name: "Bodyweight Starter", summary: "Equipment-free full-body", exercises, origin: "built-in" },
+        isBenchmark: true,
+        benchmarkId,
+      },
+    ],
+    benchmarks: [
+      {
+        id: benchmarkId,
+        exerciseKey: normalizeExerciseKey(benchEx.name),
+        name: benchEx.name,
+        metric: "reps",
+        baseline: null,
+        target: 20,
+        unit: "reps",
+        history: [],
+      },
+    ],
+    analysisCursor: 0,
+  };
+}
+
+/**
  * The safe template for a mode. Adjusts the calorie target down only for modes
  * that don't track food (null), never below the safe value otherwise. `input`
  * is accepted for future personalisation but the template is intentionally
@@ -72,9 +125,11 @@ export function fallbackPlan(mode: PlanMode, input?: PlanInput): GeneratedPlan {
   if (goals.length === 0) {
     goals = [{ label: "Log everything you eat", kind: "nutrition" }];
   }
+  const program = fallbackProgram(mode, injuries);
   return {
     summary: t.summary,
     dailyCalorieTarget: modeTracksFood(mode) ? t.dailyCalorieTarget : null,
     goals: goals.map((g) => ({ ...g })),
+    ...(program ? { program } : {}),
   };
 }
