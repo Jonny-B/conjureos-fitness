@@ -1166,6 +1166,76 @@ body {
   color: var(--good);
 }
 
+/* Program editor (W6) */
+.program-editor {
+  max-width: 640px;
+}
+.editor-block {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: var(--bg-2);
+}
+.editor-workout-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.editor-title {
+  flex: 1;
+  font-weight: 700;
+}
+.field.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.editor-exercise {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.editor-exercise-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.editor-exercise-head .text-input {
+  flex: 1;
+}
+.editor-set {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr auto;
+  gap: 6px;
+  align-items: end;
+  margin-bottom: 6px;
+}
+.editor-set .set-field span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.link-btn.danger {
+  color: var(--bad, #e5484d);
+}
+.editor-errors {
+  border: 1px solid var(--bad, #e5484d);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: color-mix(in srgb, var(--bad, #e5484d) 8%, transparent);
+  font-size: 13px;
+}
+.editor-errors ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.btn.block {
+  width: 100%;
+}
+
 /* Player */
 .player {
   display: flex;

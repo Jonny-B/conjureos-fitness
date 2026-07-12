@@ -4,6 +4,7 @@ import { heightToCm, heightUnit, weightToKg, weightUnit } from "../features/unit
 import { INJURY_REGIONS } from "../features/safety/injuryExclusions";
 import { requiresLoggingOnly, resolveSafeMode } from "../features/safety/intakeGate";
 import { DisclaimerCard, DISCLAIMER_SHORT } from "../components/DisclaimerCard";
+import { ProgramEditor } from "../components/ProgramEditor";
 import { AlertTriangle, CheckIcon } from "../components/icons";
 import { createPlan, type CreatePlanResult } from "../features/plan/generate";
 import type { PlanInput } from "../features/plan/model";
@@ -65,6 +66,7 @@ export function WizardScreen({ onComplete, units = "metric" }: Props) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [tweakOpen, setTweakOpen] = useState(false);
   const [tweakText, setTweakText] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
 
   const intake: SafetyIntake = {
     ageBand,
@@ -358,10 +360,29 @@ export function WizardScreen({ onComplete, units = "metric" }: Props) {
                 {!tweakOpen && (
                   <button className="btn" onClick={() => setTweakOpen(true)}>Tweak it</button>
                 )}
+                {preview.plan.program && (
+                  <button className="btn" onClick={() => setEditOpen(true)}>Edit workouts</button>
+                )}
                 <button className="btn primary" onClick={start}>
                   <CheckIcon size={16} /> Start the plan
                 </button>
               </div>
+
+              {editOpen && preview.plan.program && (
+                <ProgramEditor
+                  program={preview.plan.program}
+                  mode={preview.plan.mode}
+                  injuries={intake.injuries}
+                  units={units}
+                  onCancel={() => setEditOpen(false)}
+                  onSave={(updated) => {
+                    setPreview((prev) =>
+                      prev ? { ...prev, plan: { ...prev.plan, program: updated } } : prev,
+                    );
+                    setEditOpen(false);
+                  }}
+                />
+              )}
             </>
           )}
         </div>

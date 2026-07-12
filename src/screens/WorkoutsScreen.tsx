@@ -9,6 +9,7 @@ import { getRepository } from "../data/repository";
 import { ProgressRing } from "../components/rings";
 import { SetRecorder, type SetEntry } from "../components/SetRecorder";
 import { ExplainerDropdown } from "../components/ExplainerDropdown";
+import { ProgramEditor } from "../components/ProgramEditor";
 import { CardioPlayer } from "./CardioPlayer";
 import { WorkoutSummary } from "./WorkoutSummary";
 import { ChevronLeft, PlayIcon } from "../components/icons";
@@ -30,6 +31,7 @@ function metaLine(w: Workout): string {
 export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
   const [view, setView] = useState<View>({ screen: "list" });
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -127,9 +129,35 @@ export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
     <div className="workouts">
       <h1 className="screen-title">Workouts</h1>
 
+      {editing && program && (
+        <ProgramEditor
+          program={program}
+          mode={plan!.mode}
+          injuries={plan!.safety.injuries ?? []}
+          units={units}
+          onCancel={() => setEditing(false)}
+          onSave={async (updated) => {
+            const next = { ...plan!, program: updated };
+            try {
+              const repo = await getRepository();
+              await repo.savePlan(next);
+            } catch {
+              /* mock persists; Supabase throws — non-fatal */
+            }
+            setPlan(next);
+            setEditing(false);
+          }}
+        />
+      )}
+
       {program && program.workouts.length > 0 && (
         <section className="program-section">
-          <div className="section-label">Your plan</div>
+          <div className="section-label">
+            Your plan
+            <button className="link-btn section-action" onClick={() => setEditing(true)}>
+              Edit plan
+            </button>
+          </div>
           {program.benchmarks.map((b) => (
             <BenchmarkCard key={b.id} benchmark={b} units={units} />
           ))}
