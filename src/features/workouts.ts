@@ -7,7 +7,9 @@
  * and would route through the repository like the diary does.
  */
 
-import type { Exercise, Workout } from "../types";
+import type { Exercise, ExerciseActual, ExerciseSet, Workout, WorkoutSession } from "../types";
+import { newId } from "../data/id";
+import { todayISO } from "./diary";
 
 let n = 0;
 const id = () => `seed-${n++}`;
@@ -72,6 +74,37 @@ export type PlayerStep =
       notes?: string;
     }
   | { kind: "rest"; durationSec: number; nextExerciseName: string };
+
+/**
+ * Assemble a persistable WorkoutSession from a workout + the sets the player
+ * recorded. Keeps the legacy flat `planned`/`actual` arrays populated (from the
+ * prescription and the recorded sets respectively) so the old shape stays valid
+ * alongside the structured `byExercise` — readers prefer the structured field.
+ */
+export function newSessionFrom(
+  workout: Workout,
+  byExercise: ExerciseActual[],
+): WorkoutSession {
+  const planned: ExerciseSet[] = workout.exercises.flatMap((e) => e.sets);
+  const actual: ExerciseSet[] = byExercise.flatMap((e) =>
+    e.sets.map((s) => ({
+      reps: s.reps ?? null,
+      durationSec: s.durationSec ?? null,
+      restSec: s.restActualSec ?? 0,
+      ...(s.weightKg != null ? { weightKg: s.weightKg } : {}),
+    })),
+  );
+  return {
+    id: newId(),
+    date: todayISO(),
+    workoutId: workout.id,
+    planned,
+    actual,
+    reprompts: [],
+    byExercise,
+    completedAt: new Date().toISOString(),
+  };
+}
 
 /** Flatten a workout into the ordered work/rest steps the player walks. */
 export function buildSteps(workout: Workout): PlayerStep[] {

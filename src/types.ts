@@ -224,12 +224,20 @@ export interface Exercise {
   notes?: string;
 }
 
+/** Workout modality. Absent ⇒ "strength" (the guided step player); cardio
+ *  kinds route to the distance tracker instead of buildSteps. */
+export type WorkoutKind = "strength" | "run" | "bike";
+
 export interface Workout {
   id: string;
   name: string;
   /** Short pitch / focus, e.g. "Full-body, 20 min, no equipment". */
   summary?: string;
   exercises: Exercise[];
+  /** Modality — absent means strength (back-compat with the built-in seeds). */
+  kind?: WorkoutKind;
+  /** For cardio kinds: an optional distance/time goal shown during the run. */
+  cardioTarget?: { distanceKm?: number; durationSec?: number };
   /** Provenance — defaults to built-in when omitted. */
   origin?: WorkoutOrigin;
   /** Coach credit, present when origin === "coach". Additive — see CoachProfile. */
@@ -342,9 +350,52 @@ export interface CoachReprompt {
 }
 
 /**
- * A completed (or abandoned) workout run. `planned` is the snapshot of the
- * prescribed sets; `actual` is what the user recorded; `reprompts` is the
- * coach conversation for this session.
+ * One recorded set. Timestamps bound the set so a "slow set" (the adaptation
+ * engine's key signal) is derivable as completedAt − startedAt vs the
+ * prescribed duration. All metric fields optional so a single shape covers
+ * rep, timed, and weighted sets.
+ */
+export interface SetActual {
+  reps?: number;
+  weightKg?: number;
+  durationSec?: number;
+  /** Subjective exertion, 1–10 (RPE), when the user records it. */
+  rpe?: number;
+  /** ISO timestamp the set became active. */
+  startedAt: string;
+  /** ISO timestamp the user marked it done. */
+  completedAt: string;
+  /** Actual rest taken after this set, seconds. */
+  restActualSec?: number;
+}
+
+/** A workout's recorded sets for one exercise, keyed for cross-session joins. */
+export interface ExerciseActual {
+  /** Normalized exercise name — the join key across sessions + explainers. */
+  exerciseKey: string;
+  /** Display name as prescribed. */
+  name: string;
+  sets: SetActual[];
+}
+
+/** Recorded result of a cardio (run/bike) session. */
+export interface CardioActual {
+  distanceKm: number;
+  durationSec: number;
+  avgPaceSecPerKm?: number;
+  /** Where the distance came from. */
+  source: "gps" | "steps" | "manual";
+  /** Per-km split times, seconds. */
+  splits?: number[];
+  /** Raw GPS breadcrumb when tracked (t = epoch ms). */
+  track?: { lat: number; lon: number; t: number; accuracy?: number }[];
+}
+
+/**
+ * A completed (or abandoned) workout run. `planned`/`actual` are the legacy
+ * flat snapshots (kept populated for back-compat); the structured
+ * `byExercise` (strength) and `cardio` fields are the v2 record. Readers prefer
+ * the structured fields when present.
  */
 export interface WorkoutSession {
   id: string;
@@ -355,6 +406,12 @@ export interface WorkoutSession {
   planned: ExerciseSet[];
   actual: ExerciseSet[];
   reprompts: CoachReprompt[];
+  /** Structured strength result — recorded sets grouped by exercise. */
+  byExercise?: ExerciseActual[];
+  /** Structured cardio result, for run/bike sessions. */
+  cardio?: CardioActual;
+  /** Set when this session was a benchmark run (links to Plan benchmark). */
+  benchmarkId?: string;
   /** ISO timestamp the session finished. */
   completedAt: string;
 }
