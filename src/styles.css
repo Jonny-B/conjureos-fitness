@@ -1726,6 +1726,116 @@ body {
   align-items: flex-start;
 }
 
+/* ── W1: color-coded player frame + set recorder + summary ────────────── */
+/* Whole-step top bar recolors on transition: purple=timed, blue=reps, green=rest. */
+.player.timed { box-shadow: inset 0 3px 0 var(--accent); }
+.player.reps { box-shadow: inset 0 3px 0 var(--accent-2); }
+.player.rest { box-shadow: inset 0 3px 0 var(--good); }
+.player.reps .player-phase { color: var(--accent-2); }
+
+.set-recorder {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 8px 0;
+}
+.set-lasttime { text-align: center; }
+.set-fields {
+  display: flex;
+  gap: 12px;
+}
+.set-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.set-field span {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.set-field .text-input {
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.set-suggestion {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-2);
+}
+.set-rpe {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+.plate-calc { text-align: center; }
+.plate-breakdown { margin-top: 6px; }
+.plate-chip {
+  display: inline-block;
+  min-width: 24px;
+  padding: 2px 6px;
+  margin: 0 3px;
+  border-radius: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+.workout-summary { display: flex; flex-direction: column; gap: 16px; }
+.summary-head h1 { font-size: 22px; font-weight: 700; margin: 0; }
+.summary-head p { margin: 2px 0 0; }
+.summary-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.summary-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 6px;
+  border-radius: var(--cui-radius);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+.summary-stat-value { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.summary-stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.summary-prs { display: flex; flex-direction: column; gap: 8px; }
+.pr-badge {
+  padding: 10px 12px;
+  border-radius: var(--cui-radius);
+  background: var(--cui-accent-mute, rgba(124, 106, 247, 0.14));
+  border: 1px solid var(--cui-accent-tint, rgba(124, 106, 247, 0.3));
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 14px;
+}
+.summary-exercises { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.summary-ex {
+  padding: 10px 12px;
+  border-radius: var(--cui-radius-sm, 10px);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+.summary-ex-name { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+.summary-ex-sets { display: flex; flex-wrap: wrap; gap: 6px; }
+.summary-set {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .calories-card {
   background:
     linear-gradient(rgba(124, 92, 255, 0.08), rgba(124, 92, 255, 0.02)),

@@ -1,15 +1,50 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ExerciseActual, Workout } from "../types";
+import type { ExerciseActual, Workout, WorkoutSession } from "../types";
 import { BUILT_IN_WORKOUTS, buildSteps, newSessionFrom, type PlayerStep } from "../features/workouts";
 import { normalizeExerciseKey } from "../features/explainers/normalizeKey";
+import { lastSetFor } from "../features/workoutHistory";
 import { getRepository } from "../data/repository";
 import { ProgressRing } from "../components/rings";
+import { SetRecorder, type SetEntry } from "../components/SetRecorder";
+import { WorkoutSummary } from "./WorkoutSummary";
 import { ChevronLeft, PlayIcon } from "../components/icons";
 
-export function WorkoutsScreen() {
-  const [active, setActive] = useState<Workout | null>(null);
+type View =
+  | { screen: "list" }
+  | { screen: "player"; workout: Workout }
+  | { screen: "summary"; workout: Workout; byExercise: ExerciseActual[] };
 
-  if (active) return <WorkoutPlayer workout={active} onExit={() => setActive(null)} />;
+export function WorkoutsScreen() {
+  const [view, setView] = useState<View>({ screen: "list" });
+
+  if (view.screen === "player") {
+    return (
+      <StrengthPlayer
+        workout={view.workout}
+        onFinish={(byExercise) => setView({ screen: "summary", workout: view.workout, byExercise })}
+        onCancel={() => setView({ screen: "list" })}
+      />
+    );
+  }
+
+  if (view.screen === "summary") {
+    return (
+      <WorkoutSummary
+        workout={view.workout}
+        byExercise={view.byExercise}
+        onSave={async () => {
+          try {
+            const repo = await getRepository();
+            await repo.saveWorkoutSession(newSessionFrom(view.workout, view.byExercise));
+          } catch {
+            /* mock persists; Supabase throws — non-fatal */
+          }
+          setView({ screen: "list" });
+        }}
+        onDiscard={() => setView({ screen: "list" })}
+      />
+    );
+  }
 
   return (
     <div className="workouts">
@@ -17,7 +52,7 @@ export function WorkoutsScreen() {
       <ul className="workout-list">
         {BUILT_IN_WORKOUTS.map((w) => (
           <li key={w.id}>
-            <button className="workout-card" onClick={() => setActive(w)}>
+            <button className="workout-card" onClick={() => setView({ screen: "player", workout: w })}>
               <div className="workout-card-text">
                 <div className="workout-name">{w.name}</div>
                 <div className="workout-summary">{w.summary}</div>
@@ -36,79 +71,104 @@ export function WorkoutsScreen() {
   );
 }
 
-// ── Guided player with set + rest timers ─────────────────────────────────
+// ── Guided strength player: timers, rest, per-set recording ──────────────
 
-function WorkoutPlayer({ workout, onExit }: { workout: Workout; onExit: () => void }) {
+interface ActualBucket extends ExerciseActual {
+  order: number;
+}
+
+function StrengthPlayer({
+  workout,
+  onFinish,
+  onCancel,
+}: {
+  workout: Workout;
+  onFinish: (byExercise: ExerciseActual[]) => void;
+  onCancel: () => void;
+}) {
   const stepsRef = useRef<PlayerStep[]>(buildSteps(workout));
   const steps = stepsRef.current;
 
   const [index, setIndex] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [running, setRunning] = useState(true);
+  const [sessions, setSessions] = useState<WorkoutSession[]>([]);
+  const [entry, setEntry] = useState<SetEntry>({});
   const step = steps[index];
 
   const beep = useBeep();
 
-  // Recorded actuals accumulate here as the player advances. W0 captures the
-  // prescribed reps/weight/duration + per-set timestamps; W1 swaps in the
-  // user's entered values via SetRecorder. `order` keeps exercises in workout
-  // order for the persisted byExercise.
-  const actualsRef = useRef<Map<string, ExerciseActual & { order: number }>>(new Map());
+  const actualsRef = useRef<Map<string, ActualBucket>>(new Map());
   const recordedRef = useRef<Set<number>>(new Set());
   const stepStartRef = useRef<string>(new Date().toISOString());
   const indexRef = useRef(0);
+  const entryRef = useRef<SetEntry>({});
+  useEffect(() => {
+    entryRef.current = entry;
+  }, [entry]);
 
-  const recordStep = useCallback(
-    (i: number) => {
-      const s = steps[i];
-      if (!s || s.kind !== "work" || recordedRef.current.has(i)) return;
-      recordedRef.current.add(i);
-      const key = normalizeExerciseKey(s.exerciseName);
-      const bucket =
-        actualsRef.current.get(key) ??
-        { exerciseKey: key, name: s.exerciseName, sets: [], order: s.exerciseIndex };
-      bucket.sets.push({
-        reps: s.reps ?? undefined,
-        weightKg: s.weightKg,
-        durationSec: s.durationSec ?? undefined,
-        startedAt: stepStartRef.current,
-        completedAt: new Date().toISOString(),
-      });
-      actualsRef.current.set(key, bucket);
-    },
-    [steps],
-  );
+  // Load prior sessions once, for "last time" + overload suggestions.
+  useEffect(() => {
+    let alive = true;
+    getRepository()
+      .then((r) => r.listWorkoutSessions(200))
+      .then((s) => alive && setSessions(s))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  const advance = useCallback(() => {
-    recordStep(indexRef.current);
-    setIndex((i) => {
-      const next = i + 1;
-      if (next >= steps.length) return i; // hold on the last step; "Finish" exits
-      return next;
+  const isRepStep = (s: PlayerStep | undefined): s is Extract<PlayerStep, { kind: "work" }> =>
+    s?.kind === "work" && s.durationSec == null;
+
+  // Record the currently-active work step from the entered values (rep/weighted)
+  // or the prescribed duration (timed). Idempotent per step index.
+  const recordCurrent = useCallback(() => {
+    const i = indexRef.current;
+    const s = steps[i];
+    if (!s || s.kind !== "work" || recordedRef.current.has(i)) return;
+    recordedRef.current.add(i);
+    const key = normalizeExerciseKey(s.exerciseName);
+    const bucket =
+      actualsRef.current.get(key) ??
+      { exerciseKey: key, name: s.exerciseName, sets: [], order: s.exerciseIndex };
+    const timed = s.durationSec != null;
+    const e = entryRef.current;
+    bucket.sets.push({
+      reps: timed ? undefined : e.reps ?? s.reps ?? undefined,
+      weightKg: timed ? undefined : e.weightKg ?? s.weightKg,
+      durationSec: timed ? s.durationSec ?? undefined : undefined,
+      rpe: e.rpe,
+      startedAt: stepStartRef.current,
+      completedAt: new Date().toISOString(),
     });
-  }, [recordStep, steps.length]);
+    actualsRef.current.set(key, bucket);
+  }, [steps]);
 
-  // Persist the session (best-effort) then return to the list. Records the step
-  // being left first, so the final set is captured. Saves only if something was
-  // actually done, so an immediate back-out doesn't write an empty session.
-  const finish = useCallback(async () => {
-    recordStep(indexRef.current);
-    const byExercise: ExerciseActual[] = [...actualsRef.current.values()]
+  const buildByExercise = (): ExerciseActual[] =>
+    [...actualsRef.current.values()]
       .sort((a, b) => a.order - b.order)
       .map((e) => ({ exerciseKey: e.exerciseKey, name: e.name, sets: e.sets }));
-    if (byExercise.length > 0) {
-      try {
-        const repo = await getRepository();
-        await repo.saveWorkoutSession(newSessionFrom(workout, byExercise));
-      } catch {
-        /* mock persists; Supabase throws PLAN_REQUIRES_V2_BACKEND — non-fatal */
-      }
-    }
-    onExit();
-  }, [recordStep, workout, onExit]);
 
-  // Initialize the countdown whenever the step changes. Timed work + all rest
-  // steps count down; rep-based work waits for the user's "Done set" tap.
+  const advance = useCallback(() => {
+    recordCurrent();
+    setIndex((i) => {
+      const next = i + 1;
+      return next >= steps.length ? i : next;
+    });
+  }, [recordCurrent, steps.length]);
+
+  const finish = useCallback(() => {
+    recordCurrent();
+    const by = buildByExercise();
+    if (by.length === 0) onCancel();
+    else onFinish(by);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordCurrent, onCancel, onFinish]);
+
+  // Initialize each step: countdown for timed/rest, prefill the recorder for
+  // rep sets from the prescription then last time.
   useEffect(() => {
     if (!step) return;
     indexRef.current = index;
@@ -117,9 +177,18 @@ function WorkoutPlayer({ workout, onExit }: { workout: Workout; onExit: () => vo
     else if (step.durationSec != null) setSecondsLeft(step.durationSec);
     else setSecondsLeft(null);
     setRunning(true);
-  }, [index, step]);
+    if (isRepStep(step)) {
+      const last = lastSetFor(sessions, normalizeExerciseKey(step.exerciseName));
+      setEntry({
+        reps: step.reps ?? last?.reps ?? undefined,
+        weightKg: step.weightKg ?? last?.weightKg ?? undefined,
+      });
+    } else {
+      setEntry({});
+    }
+  }, [index, step, sessions]);
 
-  // The 1 Hz countdown tick.
+  // 1 Hz countdown tick for timed work + rest.
   useEffect(() => {
     if (!running || secondsLeft == null) return;
     if (secondsLeft <= 0) {
@@ -137,14 +206,13 @@ function WorkoutPlayer({ workout, onExit }: { workout: Workout; onExit: () => vo
   const isLast = index === steps.length - 1;
   const totalWork = steps.filter((s) => s.kind === "work").length;
   const workDone = steps.slice(0, index + 1).filter((s) => s.kind === "work").length;
-
-  // Ring fill = elapsed fraction of a timed/rest countdown; full for rep sets.
   const dur = step.durationSec ?? null;
-  const ringPct =
-    dur != null && dur > 0 ? ((dur - (secondsLeft ?? dur)) / dur) * 100 : 100;
+  const ringPct = dur != null && dur > 0 ? ((dur - (secondsLeft ?? dur)) / dur) * 100 : 100;
+
+  const frameTone = step.kind === "rest" ? "rest" : isRepStep(step) ? "reps" : "timed";
 
   return (
-    <div className={`player ${step.kind}`}>
+    <div className={`player ${step.kind} ${frameTone}`}>
       <div className="player-top">
         <button className="link-btn back-link" onClick={finish}>
           <ChevronLeft size={16} /> End
@@ -160,19 +228,20 @@ function WorkoutPlayer({ workout, onExit }: { workout: Workout; onExit: () => vo
           <h2 className="player-exercise">{step.exerciseName}</h2>
           <div className="player-setline">
             Set {step.setIndex + 1} of {step.setCount}
-            {step.weightKg ? ` · ${step.weightKg} kg` : ""}
           </div>
 
-          <ProgressRing pct={ringPct} tone={step.durationSec != null ? "accent" : "reps"}>
-            {step.durationSec != null ? (
+          {step.durationSec != null ? (
+            <ProgressRing pct={ringPct} tone="accent">
               <div className="timer big">{fmt(secondsLeft ?? step.durationSec)}</div>
-            ) : (
-              <div className="timer big reps">
-                {step.reps}
-                <span className="timer-unit">reps</span>
-              </div>
-            )}
-          </ProgressRing>
+            </ProgressRing>
+          ) : (
+            <SetRecorder
+              prescribed={{ reps: step.reps, weightKg: step.weightKg, durationSec: step.durationSec }}
+              last={lastSetFor(sessions, normalizeExerciseKey(step.exerciseName))}
+              value={entry}
+              onChange={setEntry}
+            />
+          )}
 
           {step.notes && <div className="player-notes">{step.notes}</div>}
         </div>
@@ -187,7 +256,7 @@ function WorkoutPlayer({ workout, onExit }: { workout: Workout; onExit: () => vo
       )}
 
       <div className="player-controls">
-        {step.kind === "work" && step.durationSec == null ? (
+        {isRepStep(step) ? (
           <button className="btn primary block" onClick={isLast ? finish : advance}>
             {isLast ? "Finish" : "Done set"}
           </button>
