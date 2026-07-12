@@ -6,6 +6,7 @@ import { lastSetFor } from "../features/workoutHistory";
 import { getRepository } from "../data/repository";
 import { ProgressRing } from "../components/rings";
 import { SetRecorder, type SetEntry } from "../components/SetRecorder";
+import { ExplainerDropdown } from "../components/ExplainerDropdown";
 import { WorkoutSummary } from "./WorkoutSummary";
 import { ChevronLeft, PlayIcon } from "../components/icons";
 
@@ -244,6 +245,7 @@ function StrengthPlayer({
           )}
 
           {step.notes && <div className="player-notes">{step.notes}</div>}
+          <ExplainerDropdown name={step.exerciseName} />
         </div>
       ) : (
         <div className="player-body">

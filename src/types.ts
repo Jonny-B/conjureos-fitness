@@ -230,6 +230,28 @@ export interface Exercise {
   sets: ExerciseSet[];
   /** Optional cue shown during the set. */
   notes?: string;
+  /** Inline explainer override; otherwise resolved by key (see ExerciseExplainer). */
+  explainer?: ExerciseExplainer;
+}
+
+/**
+ * How-to / muscles-worked / useful-data for an exercise. Resolved by
+ * `exerciseKey` from a layered source: the user's own VFS note first, then a
+ * trainer/DB entry (when trainers exist), then an AI-generated + cached one.
+ */
+export interface ExerciseExplainer {
+  exerciseKey: string;
+  /** Step-by-step how-to. */
+  howTo: string;
+  /** Primary muscles worked. */
+  worksMuscles?: string[];
+  /** Tips, typical ranges, common mistakes. */
+  usefulData?: string;
+  source: "user" | "coach" | "ai";
+  /** Set when source === "coach". */
+  author?: CoachProfile;
+  /** ISO timestamp — set for AI-generated entries so the cache can age out. */
+  cachedAt?: string;
 }
 
 /** Workout modality. Absent ⇒ "strength" (the guided step player); cardio
