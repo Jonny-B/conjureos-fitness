@@ -36,7 +36,7 @@ interface ProgramChange {
   toName?: string;
 }
 
-interface PlanAdjustment {
+export interface PlanAdjustment {
   /** One-line human summary of what changed and why. */
   summary: string;
   changes: ProgramChange[];

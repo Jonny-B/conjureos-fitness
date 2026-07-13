@@ -471,6 +471,15 @@ export interface DailyCheckoff {
   goalsCompleted: string[];
   /** Optional weigh-in for the day, kg. */
   weightKg?: number;
+  /** The evening "how did your day go?" coach check-in, once submitted. */
+  checkin?: DayCheckin;
+}
+
+/** A submitted end-of-day check-in — the answers as shown, verbatim. */
+export interface DayCheckin {
+  /** ISO timestamp of submission. */
+  at: string;
+  answers: { question: string; answer: string }[];
 }
 
 /** One mid-session "Tell coach" exchange logged on a WorkoutSession. */
