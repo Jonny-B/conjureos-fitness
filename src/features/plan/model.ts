@@ -13,8 +13,11 @@ export interface PlanInput {
   mode: PlanMode;
   /** Free-text goal, e.g. "lose a few pounds and feel less winded". */
   goalText: string;
-  /** 1–4. */
+  /** Whole weeks from today to the target date (derived; drives the prompt). */
   durationWeeks: number;
+  /** Target date the plan runs until, YYYY-MM-DD. When set, it's the plan's
+   *  exact endDate; otherwise endDate is derived from durationWeeks. */
+  endDate?: string;
   /** Workout days per week (get_fit / both). */
   daysPerWeek?: number;
   /** Equipment on hand, free text or "none". */

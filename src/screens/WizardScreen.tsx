@@ -9,6 +9,7 @@ import { AlertTriangle, CheckIcon } from "../components/icons";
 import { createPlan, type CreatePlanResult } from "../features/plan/generate";
 import type { PlanInput } from "../features/plan/model";
 import { modeHasWorkouts, modeTracksFood } from "../features/plan/model";
+import { todayISO, shiftDate } from "../features/diary";
 
 type Step = "disclaimer" | "mode" | "safety" | "inputs" | "review";
 
@@ -34,12 +35,19 @@ const AGE_BANDS: { id: AgeBand; label: string }[] = [
   { id: "60_plus", label: "60+" },
 ];
 
-const DURATIONS: { weeks: number; label: string }[] = [
-  { weeks: 1, label: "1 week" },
-  { weeks: 2, label: "2 weeks" },
-  { weeks: 3, label: "3 weeks" },
-  { weeks: 4, label: "1 month" },
-];
+// The plan runs from today until a target date the user picks. Bound the window
+// so a plan stays finite + motivating: at least a week out, at most ~6 months.
+const MIN_PLAN_DAYS = 7;
+const MAX_PLAN_DAYS = 182;
+/** Whole weeks between today and a target date (>=1) — for the AI prompt + display. */
+const weeksUntil = (targetISO: string): number =>
+  Math.max(1, Math.round((Date.parse(targetISO) - Date.parse(todayISO())) / 86_400_000 / 7));
+/** A friendly human date, e.g. "Aug 10, 2026". */
+const fmtTargetDate = (iso: string): string => {
+  const [y, m, d] = iso.split("-").map(Number);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${months[(m ?? 1) - 1]} ${d}, ${y}`;
+};
 
 export function WizardScreen({ onComplete, units = "metric" }: Props) {
   const [step, setStep] = useState<Step>("disclaimer");
@@ -55,7 +63,10 @@ export function WizardScreen({ onComplete, units = "metric" }: Props) {
   const activityLevel: ActivityLevel = "light";
   // Step 3 (inputs)
   const [goalText, setGoalText] = useState("");
-  const [durationWeeks, setDurationWeeks] = useState(2);
+  // "Reach it by" — the plan's target date (default ~4 weeks out). durationWeeks
+  // is derived from it for the AI prompt + back-compat.
+  const [targetDate, setTargetDate] = useState<string>(() => shiftDate(todayISO(), 28));
+  const durationWeeks = weeksUntil(targetDate);
   const [daysPerWeek, setDaysPerWeek] = useState(3);
   const [equipment, setEquipment] = useState("");
   const [heightCm, setHeightCm] = useState("");
@@ -84,6 +95,7 @@ export function WizardScreen({ onComplete, units = "metric" }: Props) {
     mode: effectiveMode,
     goalText: [goalText, extraGoal].filter(Boolean).join(". Also: "),
     durationWeeks,
+    endDate: targetDate,
     daysPerWeek: hasWorkouts ? daysPerWeek : undefined,
     equipment: hasWorkouts ? equipment : undefined,
     heightCm: tracksFood && heightCm ? Math.round(heightToCm(Number(heightCm), units)) : undefined,
@@ -235,20 +247,26 @@ export function WizardScreen({ onComplete, units = "metric" }: Props) {
             />
           </label>
 
-          <div className="field">
-            <span className="field-label">How long?</span>
-            <div className="chip-row">
-              {DURATIONS.map((d) => (
-                <button
-                  key={d.weeks}
-                  className={`chip${durationWeeks === d.weeks ? " active" : ""}`}
-                  onClick={() => setDurationWeeks(d.weeks)}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <label className="field">
+            <span className="field-label">Reach your goal by</span>
+            <input
+              className="text-input"
+              type="date"
+              value={targetDate}
+              min={shiftDate(todayISO(), MIN_PLAN_DAYS)}
+              max={shiftDate(todayISO(), MAX_PLAN_DAYS)}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                const min = shiftDate(todayISO(), MIN_PLAN_DAYS);
+                const max = shiftDate(todayISO(), MAX_PLAN_DAYS);
+                setTargetDate(v < min ? min : v > max ? max : v);
+              }}
+            />
+            <span className="field-hint">
+              {fmtTargetDate(targetDate)} · about {durationWeeks} week{durationWeeks === 1 ? "" : "s"}
+            </span>
+          </label>
 
           {hasWorkouts && (
             <>
