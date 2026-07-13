@@ -1,22 +1,18 @@
 name: Publish to ConjureOS App Store
 
-# Builds Conjure Fitness to a single self-contained HTML file and publishes a
-# new App Store version via the shared composite action in the conjureos repo.
+# THROWAWAY BRANCH (ci/publish-prod-1.2.0): publishes 1.2.0 to the PROD App Store
+# via a push-triggered run, because a GitHub Release can't be created and
+# workflow_dispatch needs actions:write the token lacks. The publish step +
+# stored secrets are IDENTICAL to the normal prod release path. main keeps its
+# release-only behavior; this branch is deleted after the publish.
 #
-# Two Supabase projects (Phase 24 split), selected by trigger:
+# Normal triggers on main:
 #   - workflow_dispatch  -> DEV  project (test against dev.conjureos.pages.dev)
 #   - release published  -> PROD project (ships to real users)
-#
-# THROWAWAY BRANCH: workflow_dispatch here honors an optional `target` input
-# (default prod) so 1.2.0 can be shipped to prod without a GitHub Release. The
-# publish step + secrets are unchanged. main keeps the release-only behavior.
-#
-# Only secret you must add per repo is the bot password (dev + prod). URL is
-# derived from the existing SUPABASE_DEV/PROD_PROJECT_REF secrets; anon key + bot
-# email are public/non-secret and inlined below. See ANCHOR_APP_CI_SETUP.md in
-# the conjureos repo.
 
 on:
+  push:
+    branches: [ci/publish-prod-1.2.0]
   release:
     types: [published]
   workflow_dispatch:
@@ -62,7 +58,7 @@ jobs:
         run: npm run build:inline
 
       - name: Build single-file HTML (prod project)
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target != 'dev')
+        if: github.event_name == 'release' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target != 'dev')
         env:
           VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
           VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50Z2VsYnRlcGVjcXNxbG94bWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTkzMzEsImV4cCI6MjA5MzY3NTMzMX0.fgRCszkeAbHANaK-JJAGmTwWHyOh-3b6-od1c3s3V0w
@@ -71,15 +67,15 @@ jobs:
       - name: Resolve changelog
         id: changelog
         # Read release/dispatch text via env vars, NOT ${{ }} interpolation:
-        # backticks and quotes in release notes (e.g. `npm packages`) otherwise
-        # land in the shell as command substitution and crash with exit 127.
-        # Same fix conjureos-app-recipes' workflow took (DECISIONS 2026-06-21).
+        # backticks and quotes in release notes otherwise land in the shell as
+        # command substitution and crash with exit 127.
         env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_BODY: ${{ github.event.release.body }}
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           DISPATCH_INPUT: ${{ github.event.inputs.changelog }}
+          FALLBACK: "v1.2.0 — first v2 store release. Plan wizard is now a dismissible banner above the Today tracker (no longer gates the app); one editor in the cog for profile, targets, plan mode & workout program; centralized plan service with plan-driven daily targets. Unified immersive barcode/food scanning with an in-app camera; fixed, US-biased food search. Includes all of v2: plan generation, workouts (guided player, adaptive program, benchmarks, cardio GPS), metric/imperial units."
         run: |
           if [ "$EVENT_NAME" = "release" ]; then
             text="$RELEASE_BODY"
@@ -88,6 +84,7 @@ jobs:
           else
             text="$DISPATCH_INPUT"
           fi
+          [ -z "$text" ] && text="$FALLBACK"
           {
             echo "text<<__CHANGELOG__"
             echo "$text"
@@ -120,9 +117,10 @@ jobs:
           slug: fitness
           changelog: ${{ steps.changelog.outputs.text }}
 
-      # release published (or dispatch target=prod) -> PROD project. Ships to real users.
+      # release published / push to this throwaway branch / dispatch target=prod
+      # -> PROD project. Ships to real users.
       - name: Publish to App Store (prod)
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target != 'dev')
+        if: github.event_name == 'release' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target != 'dev')
         uses: ./.conjureos/.github/actions/publish-anchor-app
         with:
           supabase-url: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
