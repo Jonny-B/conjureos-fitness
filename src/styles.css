@@ -2219,6 +2219,34 @@ body {
   min-width: 0;
 }
 
+/* ── Shared plan fields (wizard + cog) ────────────────────────────────── */
+/* Height/weight row with the units toggle to their left. */
+.body-stats {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: 10px;
+  align-items: end;
+}
+.units-toggle { flex-wrap: nowrap; }
+.units-toggle .chip { padding: 7px 10px; font-size: 12px; }
+.plan-dates { align-items: end; }
+.plan-dates .text-input { width: 100%; }
+
+/* Review-step workout list — surfaces the actual AI-authored exercises. */
+.plan-workouts { display: flex; flex-direction: column; gap: 10px; }
+.plan-workout {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+}
+.plan-workout-name { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+.plan-exercise-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.plan-exercise-list li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.plan-exercise-list .pe-sets { color: var(--muted); flex: 0 0 auto; }
+
+.btn.danger-subtle { color: var(--cui-accent, #ef4444); }
+
 /* ── W2: exercise explainer dropdown ──────────────────────────────────── */
 .explainer { width: 100%; max-width: 340px; margin: 6px auto 0; }
 .explainer-toggle { display: block; margin: 0 auto; }

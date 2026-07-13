@@ -1,0 +1,217 @@
+import type { ActivityLevel, ExperienceLevel, GoalDirection, Profile, Sex } from "../types";
+import { ACTIVITY_LABELS } from "../features/goals";
+import { NumberField } from "./NumberField";
+import { heightToCm, heightToDisplay, heightUnit, weightToDisplay, weightToKg, weightUnit } from "../features/units";
+
+/**
+ * Shared plan/profile field widgets used by BOTH the wizard and the Settings
+ * cog, so the two surfaces stay in lockstep (edit one field, it's the same
+ * everywhere). Storage is always metric; the display converts per `units`.
+ */
+
+export const SEX_LABELS: Record<Sex, string> = {
+  male: "Male",
+  female: "Female",
+  not_shared: "Not Shared",
+};
+
+const EXPERIENCE_LABELS: Record<ExperienceLevel, string> = {
+  beginner: "Beginner",
+  intermediate: "Intermediate",
+  advanced: "Advanced",
+};
+
+const DIRECTION_LABELS: Record<GoalDirection, string> = {
+  lose: "Lose weight",
+  maintain: "Maintain",
+  gain: "Gain weight",
+};
+
+export function UnitsToggle({
+  units,
+  onChange,
+}: {
+  units: Profile["units"];
+  onChange: (u: Profile["units"]) => void;
+}) {
+  return (
+    <div className="chip-row units-toggle">
+      {(["metric", "imperial"] as const).map((u) => (
+        <button key={u} type="button" className={`chip${units === u ? " active" : ""}`} onClick={() => onChange(u)}>
+          {u === "metric" ? "Metric" : "Imperial"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Height + weight number inputs with the metric/imperial toggle to their left. */
+export function BodyStatsFields({
+  units,
+  heightCm,
+  weightKg,
+  onUnits,
+  onHeightCm,
+  onWeightKg,
+}: {
+  units: Profile["units"];
+  heightCm: number | undefined;
+  weightKg: number | undefined;
+  onUnits: (u: Profile["units"]) => void;
+  onHeightCm: (cm: number | undefined) => void;
+  onWeightKg: (kg: number | undefined) => void;
+}) {
+  return (
+    <div className="body-stats">
+      <label className="field">
+        <span>Units</span>
+        <UnitsToggle units={units} onChange={onUnits} />
+      </label>
+      <label className="field">
+        <span>Height ({heightUnit(units)})</span>
+        <NumberField
+          value={heightCm == null ? undefined : heightToDisplay(heightCm, units)}
+          min={heightToDisplay(90, units)}
+          max={heightToDisplay(250, units)}
+          onChange={(n) => onHeightCm(n == null ? undefined : Math.round(heightToCm(n, units)))}
+          aria-label="Height"
+        />
+      </label>
+      <label className="field">
+        <span>Weight ({weightUnit(units)})</span>
+        <NumberField
+          value={weightKg == null ? undefined : weightToDisplay(weightKg, units)}
+          min={weightToDisplay(25, units)}
+          max={weightToDisplay(400, units)}
+          onChange={(n) => onWeightKg(n == null ? undefined : Math.round(weightToKg(n, units) * 10) / 10)}
+          aria-label="Weight"
+        />
+      </label>
+    </div>
+  );
+}
+
+export function AgeField({ age, onChange }: { age: number | undefined; onChange: (n: number | undefined) => void }) {
+  return (
+    <label className="field">
+      <span>Age</span>
+      <NumberField value={age} min={10} max={120} onChange={onChange} aria-label="Age" />
+    </label>
+  );
+}
+
+export function SexField({ sex, onChange }: { sex: Sex; onChange: (s: Sex) => void }) {
+  return (
+    <label className="field">
+      <span>Sex</span>
+      <select className="select" value={sex} onChange={(e) => onChange(e.target.value as Sex)}>
+        {(Object.keys(SEX_LABELS) as Sex[]).map((s) => (
+          <option key={s} value={s}>
+            {SEX_LABELS[s]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+export function ExperienceField({
+  value,
+  onChange,
+}: {
+  value: ExperienceLevel;
+  onChange: (v: ExperienceLevel) => void;
+}) {
+  return (
+    <label className="field">
+      <span>Experience level</span>
+      <select className="select" value={value} onChange={(e) => onChange(e.target.value as ExperienceLevel)}>
+        {(Object.keys(EXPERIENCE_LABELS) as ExperienceLevel[]).map((k) => (
+          <option key={k} value={k}>
+            {EXPERIENCE_LABELS[k]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+export function ActivityField({
+  value,
+  onChange,
+}: {
+  value: ActivityLevel;
+  onChange: (v: ActivityLevel) => void;
+}) {
+  return (
+    <label className="field">
+      <span>Activity level</span>
+      <select className="select" value={value} onChange={(e) => onChange(e.target.value as ActivityLevel)}>
+        {(Object.keys(ACTIVITY_LABELS) as ActivityLevel[]).map((k) => (
+          <option key={k} value={k}>
+            {ACTIVITY_LABELS[k]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+export function DirectionField({
+  value,
+  onChange,
+}: {
+  value: GoalDirection;
+  onChange: (v: GoalDirection) => void;
+}) {
+  return (
+    <label className="field">
+      <span>Goal</span>
+      <select className="select" value={value} onChange={(e) => onChange(e.target.value as GoalDirection)}>
+        {(Object.keys(DIRECTION_LABELS) as GoalDirection[]).map((k) => (
+          <option key={k} value={k}>
+            {DIRECTION_LABELS[k]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** Start (today by default) + end date pickers; the plan's length derives from
+ *  the span. Both editable in the wizard and the cog. */
+export function PlanDatesField({
+  startDate,
+  endDate,
+  onStart,
+  onEnd,
+}: {
+  startDate: string;
+  endDate: string;
+  onStart: (d: string) => void;
+  onEnd: (d: string) => void;
+}) {
+  return (
+    <div className="row gap plan-dates">
+      <label className="field">
+        <span>Start</span>
+        <input className="text-input" type="date" value={startDate} max={endDate || undefined} onChange={(e) => onStart(e.target.value)} />
+      </label>
+      <label className="field">
+        <span>End</span>
+        <input className="text-input" type="date" value={endDate} min={startDate || undefined} onChange={(e) => onEnd(e.target.value)} />
+      </label>
+    </div>
+  );
+}
+
+/** Inclusive whole-week count between two YYYY-MM-DD dates (min 1, cap 52). */
+export function weeksBetween(startISO: string, endISO: string): number {
+  const [ys, ms, ds] = startISO.split("-").map(Number);
+  const [ye, me, de] = endISO.split("-").map(Number);
+  if (!ys || !ye) return 1;
+  const start = Date.UTC(ys, (ms ?? 1) - 1, ds ?? 1);
+  const end = Date.UTC(ye, (me ?? 1) - 1, de ?? 1);
+  const days = Math.round((end - start) / 86400000) + 1;
+  return Math.min(52, Math.max(1, Math.round(days / 7)));
+}

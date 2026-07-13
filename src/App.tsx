@@ -5,6 +5,7 @@ import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
 import { todayISO } from "./features/diary";
 import {
+  archivePlan,
   commitNewPlan,
   loadPlan,
   targetsToGoals,
@@ -114,6 +115,10 @@ export function App() {
 
   const onWizardComplete = useCallback(
     async (created: Plan, body: WizardBody) => {
+      // Rebuilding over an existing plan: archive the outgoing one first so
+      // history/insight survives (diary/weight/workout history is separate and
+      // untouched).
+      if (plan) await archivePlan(plan);
       const res = await commitNewPlan(created, { body, currentProfile: profile, currentGoals: goals });
       setPlan(res.plan);
       setProfile(res.profile);
@@ -123,8 +128,13 @@ export function App() {
       setNonce((n) => n + 1);
       setTab("diary");
     },
-    [profile, goals],
+    [plan, profile, goals],
   );
+
+  const startNewPlan = useCallback(() => {
+    setSettingsOpen(false);
+    setPlanWizardOpen(true);
+  }, []);
 
   // The plan wizard, opened from the banner, owns the screen while active but is
   // fully dismissible (no longer a mandatory first-run gate).
@@ -232,6 +242,7 @@ export function App() {
           onClose={() => setSettingsOpen(false)}
           onSave={onSaveGoals}
           onPlanChange={setPlan}
+          onStartNewPlan={startNewPlan}
         />
       )}
     </div>
