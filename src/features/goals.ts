@@ -42,20 +42,26 @@ export function tdee(p: Profile): number {
 }
 
 /**
+ * Split a calorie target into macro grams: protein 1.6 g/kg bodyweight, fat 25%
+ * of calories, carbs fill the remainder — a sane, widely-used default split.
+ * Shared by `recommendGoals` (profile-derived) and the plan service (deriving
+ * targets from the plan's AI calorie target), so the split lives in one place.
+ */
+export function macrosForCalories(calories: number, weightKg: number): Omit<Goals, "calories"> {
+  const protein = Math.round(1.6 * weightKg);
+  const fat = Math.round((calories * 0.25) / 9);
+  const carbs = Math.max(0, Math.round((calories - protein * 4 - fat * 9) / 4));
+  return { protein, carbs, fat };
+}
+
+/**
  * Recommend goals from a profile. Calories = TDEE + direction delta, floored
- * at a safe minimum. Macros: protein 1.6 g/kg bodyweight, fat 25% of calories,
- * carbs fill the remainder — a sane, widely-used default split.
+ * at a safe minimum; macros via `macrosForCalories`.
  */
 export function recommendGoals(p: Profile): Goals {
   const minCalories = p.sex === "male" ? 1500 : 1200;
   const calories = Math.max(minCalories, Math.round(tdee(p) + DIRECTION_DELTA[p.direction]));
-
-  const protein = Math.round(1.6 * p.weightKg);
-  const fat = Math.round((calories * 0.25) / 9);
-  const carbsCalories = calories - protein * 4 - fat * 9;
-  const carbs = Math.max(0, Math.round(carbsCalories / 4));
-
-  return { calories, protein, carbs, fat };
+  return { calories, ...macrosForCalories(calories, p.weightKg) };
 }
 
 /** BMI from the profile's current weight + height. */

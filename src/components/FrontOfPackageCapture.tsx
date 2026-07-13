@@ -1,14 +1,16 @@
 /**
- * Sibling of NutritionLabelCapture: opens the device camera (or library
- * picker), shows a preview, runs frontParse.estimateFromFront, and hands the
- * result up. Same three-stage UX (frame guidance, preview, parsing),
- * different copy + system prompt + lower confidence floor.
+ * Sibling of NutritionLabelCapture: frames the front of a package in the in-app
+ * camera (CameraCapture — no OS-camera takeover), shows a preview, runs
+ * frontParse.estimateFromFront, and hands the result up. Same staged UX
+ * (framing guidance, preview, parsing), different copy + system prompt + lower
+ * confidence floor.
  */
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { ChatImage } from "../bridge/ai";
 import { estimateFromFront, type FrontEstimate } from "../features/foods/frontParse";
-import { ChevronLeft, PackageIcon } from "./icons";
+import { CameraCapture } from "./CameraCapture";
+import { ChevronLeft } from "./icons";
 
 interface Props {
   barcode?: string;
@@ -18,42 +20,28 @@ interface Props {
 
 type Phase = "capture" | "preview" | "parsing" | "failed";
 
-async function fileToChatImage(file: File): Promise<ChatImage> {
-  const buf = await file.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
-  }
-  return {
-    mediaType: file.type as ChatImage["mediaType"],
-    data: btoa(binary),
-  };
-}
-
 export function FrontOfPackageCapture({ barcode, onParsed, onCancel }: Props) {
   const [phase, setPhase] = useState<Phase>("capture");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [image, setImage] = useState<ChatImage | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
+  const onCaptured = (chatImage: ChatImage, url: string) => {
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return url;
     });
-    try {
-      setImage(await fileToChatImage(file));
-      setPhase("preview");
-    } catch {
-      setErrorMsg("Couldn't read that photo. Try again.");
-      setPhase("failed");
-    }
+    setImage(chatImage);
+    setPhase("preview");
+  };
+
+  const retake = () => {
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setImage(null);
+    setPhase("capture");
   };
 
   const onEstimate = async () => {
@@ -78,31 +66,10 @@ export function FrontOfPackageCapture({ barcode, onParsed, onCancel }: Props) {
       </button>
 
       {phase === "capture" && (
-        <>
-          <div className="snap-frame-hint">
-            <PackageIcon size={36} />
-            <div>
-              <div>Hold the front of the package flat in good light. Include the brand and product name.</div>
-              <div className="muted small">
-                Works for beer, produce, foreign packages: anything without a label.
-              </div>
-            </div>
-          </div>
-          <button
-            className="btn primary block"
-            onClick={() => inputRef.current?.click()}
-          >
-            Open camera
-          </button>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            capture="environment"
-            hidden
-            onChange={onPick}
-          />
-        </>
+        <CameraCapture
+          guide="Hold the front of the package flat in good light, with the brand and product name in frame. Works for beer, produce, foreign packages — anything without a label."
+          onCapture={onCaptured}
+        />
       )}
 
       {phase === "preview" && previewUrl && (
@@ -111,15 +78,7 @@ export function FrontOfPackageCapture({ barcode, onParsed, onCancel }: Props) {
             <img className="label-capture-preview" src={previewUrl} alt="Front of package preview" />
           </div>
           <div className="row gap">
-            <button
-              className="btn"
-              onClick={() => {
-                setPhase("capture");
-                setImage(null);
-                if (previewUrl) URL.revokeObjectURL(previewUrl);
-                setPreviewUrl(null);
-              }}
-            >
+            <button className="btn" onClick={retake}>
               Retake
             </button>
             <button className="btn primary" onClick={onEstimate}>

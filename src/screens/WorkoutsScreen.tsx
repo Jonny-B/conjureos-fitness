@@ -2,14 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Benchmark, ExerciseActual, Plan, Profile, Workout, WorkoutSession } from "../types";
 import { BUILT_IN_WORKOUTS, buildSteps, newCardioSession, newSessionFrom, type PlayerStep } from "../features/workouts";
 import { normalizeExerciseKey } from "../features/explainers/normalizeKey";
-import { benchmarkProgress, recordBenchmarkResult } from "../features/plan/program";
-import { maybeAdapt } from "../features/plan/analyze";
+import { benchmarkProgress } from "../features/plan/program";
+import { recordSessionAndAdapt } from "../features/plan/planService";
 import { lastSetFor } from "../features/workoutHistory";
 import { getRepository } from "../data/repository";
 import { ProgressRing } from "../components/rings";
 import { SetRecorder, type SetEntry } from "../components/SetRecorder";
 import { ExplainerDropdown } from "../components/ExplainerDropdown";
-import { ProgramEditor } from "../components/ProgramEditor";
 import { CardioPlayer } from "./CardioPlayer";
 import { WorkoutSummary } from "./WorkoutSummary";
 import { ChevronLeft, PlayIcon } from "../components/icons";
@@ -28,10 +27,9 @@ function metaLine(w: Workout): string {
   return `${w.exercises.length} exercises · ${setCount(w)} sets`;
 }
 
-export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
+export function WorkoutsScreen({ units, onEditPlan }: { units: Profile["units"]; onEditPlan: () => void }) {
   const [view, setView] = useState<View>({ screen: "list" });
   const [plan, setPlan] = useState<Plan | null>(null);
-  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -46,36 +44,12 @@ export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
     };
   }, []);
 
-  // Persist a finished session, then run the adaptive loop: fold any benchmark
-  // result into the plan's program (measurement half), then — every N sessions —
-  // let the AI propose a bounded, re-validated adjustment (adaptation half).
-  // The plan is saved at most once, with whatever the loop produced.
+  // Persist a finished session and run the adaptive loop via the plan service
+  // (benchmark fold-in + periodic AI adaptation), then reflect the result.
   const saveSession = useCallback(
     async (session: WorkoutSession) => {
-      try {
-        const repo = await getRepository();
-        await repo.saveWorkoutSession(session);
-        if (!plan?.program) return;
-
-        // 1. Measurement: benchmark baseline/history from this session.
-        let next: Plan = plan;
-        if (session.benchmarkId) {
-          const program = recordBenchmarkResult(plan.program, session);
-          if (program !== plan.program) next = { ...plan, program };
-        }
-
-        // 2. Adaptation: periodic, over the full session history including this one.
-        const sessions = await repo.listWorkoutSessions(200);
-        const adapted = await maybeAdapt(next, sessions);
-        if (adapted) next = adapted;
-
-        if (next !== plan) {
-          await repo.savePlan(next);
-          setPlan(next);
-        }
-      } catch {
-        /* mock persists; Supabase throws — non-fatal */
-      }
+      const next = await recordSessionAndAdapt(plan, session);
+      setPlan(next);
     },
     [plan],
   );
@@ -129,32 +103,11 @@ export function WorkoutsScreen({ units }: { units: Profile["units"] }) {
     <div className="workouts">
       <h1 className="screen-title">Workouts</h1>
 
-      {editing && program && (
-        <ProgramEditor
-          program={program}
-          mode={plan!.mode}
-          injuries={plan!.safety.injuries ?? []}
-          units={units}
-          onCancel={() => setEditing(false)}
-          onSave={async (updated) => {
-            const next = { ...plan!, program: updated };
-            try {
-              const repo = await getRepository();
-              await repo.savePlan(next);
-            } catch {
-              /* mock persists; Supabase throws — non-fatal */
-            }
-            setPlan(next);
-            setEditing(false);
-          }}
-        />
-      )}
-
       {program && program.workouts.length > 0 && (
         <section className="program-section">
           <div className="section-label">
             Your plan
-            <button className="link-btn section-action" onClick={() => setEditing(true)}>
+            <button className="link-btn section-action" onClick={onEditPlan}>
               Edit plan
             </button>
           </div>

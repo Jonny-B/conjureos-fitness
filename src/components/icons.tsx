@@ -132,6 +132,34 @@ export const PackageIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const BarcodeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 7V5.5A1.5 1.5 0 0 1 5.5 4H7M17 4h1.5A1.5 1.5 0 0 1 20 5.5V7M20 17v1.5a1.5 1.5 0 0 1-1.5 1.5H17M7 20H5.5A1.5 1.5 0 0 1 4 18.5V17" />
+    <path d="M7 8v8M10 8v8M13 8v8M16.5 8v8" />
+  </Svg>
+);
+
+export const FlashlightIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9 3h6l-.3 3.5a2 2 0 0 1-.5 1.2L13 9v9a1 1 0 0 1-1 1 1 1 0 0 1-1-1V9L9.8 7.7a2 2 0 0 1-.5-1.2L9 3z" />
+    <path d="M9.2 6h5.6" />
+  </Svg>
+);
+
+export const KeyboardIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.5" y="6" width="19" height="12" rx="2" />
+    <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8" />
+  </Svg>
+);
+
+export const CameraIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 8a2 2 0 0 1 2-2h1.5l1-1.5A1 1 0 0 1 8.3 4h7.4a1 1 0 0 1 .8.5L17.5 6H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z" />
+    <circle cx="12" cy="13" r="3.5" />
+  </Svg>
+);
+
 export const CheckIcon = (p: IconProps) => (
   <Svg {...p}>
     <polyline points="20 6 9 17 4 12" />

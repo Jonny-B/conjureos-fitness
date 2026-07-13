@@ -11,6 +11,7 @@
  */
 
 import type { FoodItem, Macros } from "../../types";
+import { SEARCH_TIMEOUT_MS, withTimeout } from "./http";
 
 const BASE = "https://api.nal.usda.gov/fdc/v1";
 const KEY = import.meta.env.VITE_USDA_API_KEY ?? "DEMO_KEY";
@@ -126,7 +127,7 @@ export async function searchText(
   url.searchParams.set("dataType", "Foundation,SR Legacy,Branded");
   let resp: Response;
   try {
-    resp = await fetch(url.toString(), { signal });
+    resp = await fetch(url.toString(), { signal: withTimeout(signal, SEARCH_TIMEOUT_MS) });
   } catch {
     return [];
   }

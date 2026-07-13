@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { DayView, DiaryEntry, Goals, MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
@@ -10,6 +10,8 @@ import { AiEstimateBadge } from "../components/AiEstimateBadge";
 interface Props {
   date: string;
   goals: Goals;
+  /** Optional banner (e.g. "build your plan") shown above the Today tracker. */
+  banner?: ReactNode;
   nonce: number;
   onChangeDate: (date: string) => void;
   onAddToMeal: (meal: MealType) => void;
@@ -17,7 +19,7 @@ interface Props {
   onMutated: () => void;
 }
 
-export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onOpenMeal, onMutated }: Props) {
+export function DiaryScreen({ date, goals, banner, nonce, onChangeDate, onAddToMeal, onOpenMeal, onMutated }: Props) {
   const [view, setView] = useState<DayView | null>(null);
 
   useEffect(() => {
@@ -52,6 +54,7 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onO
 
   return (
     <div className="diary">
+      {banner}
       <div className="date-nav">
         <button className="icon-btn" aria-label="Previous day" onClick={() => onChangeDate(shiftDate(date, -1))}>
           <ChevronLeft size={20} />

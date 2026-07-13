@@ -10,10 +10,11 @@
  * assembled, ready-to-save domain `Plan` plus whether the fallback was used.
  */
 
-import type { LiabilityAck, Plan, PlanGoal } from "../../types";
+import type { LiabilityAck, Plan, PlanGoal, PlanTargets } from "../../types";
 import { complete } from "../../bridge/ai";
 import { newId } from "../../data/id";
 import { shiftDate, todayISO } from "../diary";
+import { macrosForCalories } from "../goals";
 import { movementsExcludedFor } from "../safety/injuryExclusions";
 import type { GeneratedGoal, GeneratedPlan, PlanInput } from "./model";
 import { modeHasWorkouts, modeTracksFood } from "./model";
@@ -135,11 +136,17 @@ export function buildPlan(gen: GeneratedPlan, input: PlanInput, liability: Liabi
   const endDate = shiftDate(startDate, input.durationWeeks * 7 - 1);
   const goals: PlanGoal[] = gen.goals.map((g, i) => {
     const goal: PlanGoal = { id: `${i}-${newId()}`, label: g.label, kind: g.kind };
-    // Stash the calorie target on the first nutrition goal so the home screen
-    // can read it back; otherwise carry the AI's movement detail through.
+    // Carry the AI's movement/nutrition detail through for future automation.
     if (g.detail) goal.detail = g.detail;
     return goal;
   });
+  // Structured targets: the calorie target (previously dropped) plus a macro
+  // split, so the plan — not a free-text goal string — is the source of truth
+  // the diary rings read from. Weight defaults keep the split sane when the
+  // mode didn't collect a bodyweight.
+  const kcal = gen.dailyCalorieTarget;
+  const targets: PlanTargets =
+    kcal != null ? { dailyCalories: kcal, ...macrosForCalories(kcal, input.weightKg ?? 70) } : { dailyCalories: null };
   return {
     id: newId(),
     mode: input.mode,
@@ -147,6 +154,7 @@ export function buildPlan(gen: GeneratedPlan, input: PlanInput, liability: Liabi
     startDate,
     endDate,
     goals,
+    targets,
     safety: input.safety,
     liability,
     createdAt: new Date().toISOString(),

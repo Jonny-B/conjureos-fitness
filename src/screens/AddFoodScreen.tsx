@@ -80,7 +80,7 @@ export function AddFoodScreen({ date, defaultMeal, defaultMode = "search", onLog
 const MODE_LABELS: Record<Mode, string> = {
   search: "Search",
   scan: "Scan",
-  describe: "Describe",
+  describe: "Describe to AI",
   recipes: "Recipes",
 };
 
@@ -110,7 +110,11 @@ function SearchMode({ onPick }: { onPick: (food: FoodItem) => void }) {
     const controller = new AbortController();
     const t = setTimeout(async () => {
       try {
-        const found = await searchFoods(trimmed, 20, controller.signal);
+        // Paint each provider's hits as they land so a fast USDA response shows
+        // immediately instead of waiting on a slow Open Food Facts request.
+        const found = await searchFoods(trimmed, 20, controller.signal, (partial) => {
+          if (!controller.signal.aborted) setResults(partial);
+        });
         if (!controller.signal.aborted) {
           setResults(found);
           setSearching(false);
@@ -169,9 +173,11 @@ interface PendingPreview {
 
 function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
   const [manual, setManual] = useState("");
+  const [manualOpen, setManualOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [missedBarcode, setMissedBarcode] = useState<string | null>(null);
-  const [capture, setCapture] = useState<CaptureMode>(null);
+  // "choose" = user opened the photo fallback themselves (no barcode miss).
+  const [capture, setCapture] = useState<CaptureMode | "choose">(null);
   const [pendingPreview, setPendingPreview] = useState<PendingPreview | null>(null);
   const busy = useRef(false);
 
@@ -217,7 +223,7 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
         onParsed={(food, confidence) =>
           setPendingPreview({ food, source: "ai_label", confidence })
         }
-        onCancel={() => setCapture(null)}
+        onCancel={() => setCapture(missedBarcode ? "choose" : null)}
       />
     );
   }
@@ -234,88 +240,122 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
             warningNote: est.warningNote,
           })
         }
-        onCancel={() => setCapture(null)}
+        onCancel={() => setCapture(missedBarcode ? "choose" : null)}
       />
     );
   }
 
-  if (missedBarcode) {
+  // Photo chooser — reached either from a barcode miss or from the "snap a
+  // photo" shortcut on the scanner. Same two paths, framed by context.
+  if (capture === "choose" || missedBarcode) {
     return (
       <div className="mode-body snap-miss">
-        <div className="snap-miss-barcode-row">
-          <span className="chip muted">No match</span>
-          <span className="muted small">{missedBarcode}</span>
-        </div>
-        <div className="snap-miss-copy">
-          <div>We don't have this one yet. Help us teach Conjure.</div>
-          <div className="muted small">
-            We checked our database and Open Food Facts. Snap a photo and we'll do the rest.
+        {missedBarcode ? (
+          <>
+            <div className="snap-miss-barcode-row">
+              <span className="chip muted">No match</span>
+              <span className="muted small">{missedBarcode}</span>
+            </div>
+            <div className="snap-miss-copy">
+              <div>We don't have this one yet. Help us teach Conjure.</div>
+              <div className="muted small">
+                We checked our database and Open Food Facts. Snap a photo and we'll do the rest.
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="snap-miss-copy">
+            <div>Scan it from a photo</div>
+            <div className="muted small">
+              No barcode, or it won't read? Snap the label or the package and we'll log it.
+            </div>
           </div>
-        </div>
+        )}
 
-        <button
-          className="snap-cta-card primary"
-          onClick={() => setCapture("label")}
-          aria-label="Snap the nutrition label, recommended for best accuracy"
-        >
-          <span className="snap-cta-icon">
-            <NutritionPanelIcon size={28} />
-          </span>
-          <span className="snap-cta-text">
-            <span className="snap-cta-title">Snap the nutrition label</span>
-            <span className="snap-cta-sub">Best accuracy. Reads the panel directly.</span>
-          </span>
-          <ChevronRight size={20} />
-          <span className="snap-cta-pill">Recommended</span>
-        </button>
-
-        <button className="snap-cta-card secondary" onClick={() => setCapture("front")}>
-          <span className="snap-cta-icon">
-            <PackageIcon size={28} />
-          </span>
-          <span className="snap-cta-text">
-            <span className="snap-cta-title">Snap the front of the package</span>
-            <span className="snap-cta-sub">
-              For produce, beer, or anything without a label. We'll estimate.
-            </span>
-          </span>
-          <ChevronRight size={20} />
-        </button>
+        <PhotoChoiceCards
+          onLabel={() => setCapture("label")}
+          onFront={() => setCapture("front")}
+        />
 
         <button
           className="link-btn"
           onClick={() => {
+            setCapture(null);
             setMissedBarcode(null);
             setManual("");
           }}
         >
-          Try another barcode
+          {missedBarcode ? "Try another barcode" : "Back to scanner"}
         </button>
       </div>
     );
   }
 
   return (
-    <div className="mode-body">
-      <BarcodeScanner onDetected={resolve} onError={(m) => setStatus(m)} />
-      <div className="manual-barcode">
-        <input
-          className="text-input"
-          placeholder="Barcode number"
-          inputMode="numeric"
-          value={manual}
-          onChange={(e) => setManual(e.target.value)}
-        />
-        <button
-          className="btn"
-          disabled={!isValidBarcode(manual)}
-          onClick={() => resolve(manual.replace(/\D/g, ""))}
-        >
-          Look up
-        </button>
-      </div>
+    <div className="mode-body scan-surface">
+      <BarcodeScanner
+        onDetected={resolve}
+        onError={(m) => setStatus(m)}
+        onEnterBarcode={() => setManualOpen((v) => !v)}
+        onSnapPhoto={() => setCapture("choose")}
+      />
+      {manualOpen && (
+        <div className="manual-barcode">
+          <input
+            className="text-input"
+            placeholder="Barcode number"
+            inputMode="numeric"
+            autoFocus
+            value={manual}
+            onChange={(e) => setManual(e.target.value)}
+          />
+          <button
+            className="btn"
+            disabled={!isValidBarcode(manual)}
+            onClick={() => resolve(manual.replace(/\D/g, ""))}
+          >
+            Look up
+          </button>
+        </div>
+      )}
       {status && <div className="muted small">{status}</div>}
     </div>
+  );
+}
+
+/** The two photo-capture paths, shared by the miss screen and the shortcut. */
+function PhotoChoiceCards({ onLabel, onFront }: { onLabel: () => void; onFront: () => void }) {
+  return (
+    <>
+      <button
+        className="snap-cta-card primary"
+        onClick={onLabel}
+        aria-label="Snap the nutrition label, recommended for best accuracy"
+      >
+        <span className="snap-cta-icon">
+          <NutritionPanelIcon size={28} />
+        </span>
+        <span className="snap-cta-text">
+          <span className="snap-cta-title">Snap the nutrition label</span>
+          <span className="snap-cta-sub">Best accuracy. Reads the panel directly.</span>
+        </span>
+        <ChevronRight size={20} />
+        <span className="snap-cta-pill">Recommended</span>
+      </button>
+
+      <button className="snap-cta-card secondary" onClick={onFront}>
+        <span className="snap-cta-icon">
+          <PackageIcon size={28} />
+        </span>
+        <span className="snap-cta-text">
+          <span className="snap-cta-title">Snap the front of the package</span>
+          <span className="snap-cta-sub">
+            For produce, beer, or anything without a label. We'll estimate.
+          </span>
+        </span>
+        <ChevronRight size={20} />
+      </button>
+    </>
   );
 }
 

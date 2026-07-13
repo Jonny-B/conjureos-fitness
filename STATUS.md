@@ -1,6 +1,6 @@
 # Conjure Health, project status
 
-> **Last updated: 2026-07-11. ACTIVE — relaunched + live in both stores at `0.4.2`.**
+> **Last updated: 2026-07-12. ACTIVE — relaunched + live in both stores; plan-as-banner + centralized plan API on branch at `1.2.0`.**
 > Development resumed and the app is back in the App Store on **dev** (version 2)
 > and **prod** (fresh row `bfce8c94…`, featured, v1). Note: the dev `store_apps`
 > row survived the pause (version-bump); the **prod** row had been deleted, so it
@@ -45,7 +45,58 @@ Working branch: `claude/conjure-barcode-scanning-6y7f65`.
 The last pre-pause work made barcode scanning actually useful, then built a
 community food database so misses get easier over time.
 
-### What we accomplished (most recent session)
+### Latest session — plan as banner + one editor + centralized plan API (`1.2.0`)
+
+Branch: `claude/plan-centralize-wizard-banner` (cut from `dev`).
+
+- **Plan wizard is no longer a full-screen gate.** It's a dismissible `PlanBanner`
+  above the Today calorie tracker; tapping opens the wizard (disclaimer and all)
+  as a dismissible full-page dialog. The app is usable for logging without a plan.
+- **One editor in the cog.** `SettingsSheet` ("Profile & plan") now edits profile,
+  daily targets, plan mode, plan-goal lines, and the workout program (via
+  `ProgramEditor` sub-view). Workouts' "Edit plan" deep-links into it. The two
+  previously-disjoint edit surfaces are merged.
+- **Centralized `planService.ts`** is the single API for all plan reads/writes +
+  reconciliation (`loadPlan`, `commitNewPlan`, `updatePlan`, `saveProgram`,
+  `recordSessionAndAdapt`, `clearPlan`, `targetsToGoals`). No screen calls
+  `savePlan` directly anymore. Wraps the pure `features/plan/*` logic.
+- **Plan drives the diary targets.** New optional `Plan.targets` (the metrics
+  seam for future fields) holds the calorie + macro targets; the diary reads them
+  via `targetsToGoals`, falling back to stored `Goals` when there's no plan.
+  Finishing the wizard now also writes Profile + Goals — the height/weight
+  double-entry is gone.
+- **Retired** the separate `SetupBanner` + `ProfileSetupWizard` + `features/setup`
+  (onboarding unified into the plan flow).
+
+### Barcode scan UX + search fix (`0.5.0`)
+
+- **One unified Scan surface.** Barcode scanning and the photo "scan the
+  food/product" fallback now live on a single surface. The immersive scanner is
+  primary; inline shortcuts (keyboard → manual barcode entry, camera → snap a
+  photo) are always available, and a barcode miss still auto-surfaces the photo
+  chooser. Branch: `claude/barcode-scan-ui-consolidate-q0w6i4`.
+- **Immersive in-page scanner** (matches the MyFitnessPal-style reference):
+  corner-bracket reticle, sweeping scan line, dimmed surround, framing guidance,
+  and floating flashlight (torch via `applyConstraints`) / keyboard / camera
+  controls — all while the mode tabs stay visible. No more full-screen takeover.
+- **In-app camera for photo capture.** The nutrition-label and
+  front-of-package captures now use a live in-app camera (`CameraCapture`,
+  getUserMedia → canvas still) instead of the jarring OS camera that
+  `<input capture>` launched. Falls back to a file/library picker when the
+  camera is unavailable or denied.
+- **Fixed "no hits" food search.** Text search fanned out to Open Food Facts +
+  USDA with `Promise.all` and no timeout, so a slow/dead OFF request (its search
+  endpoint is often slow or 503s) wedged the whole search — and a bad OFF draw
+  plus a rate-limited USDA `DEMO_KEY` could yield zero. Now each provider is
+  timed out (7s), results paint progressively as each lands (fast USDA no longer
+  waits on OFF), and OFF sorts by scan popularity. "Milk" returns hits again.
+- **Biased food search toward US (`0.5.1`).** USDA (a US database) is now the
+  primary source — pulled at a higher share and front-loaded 2:1 in the merge
+  (`mergeUsFirst`) — while OFF adds a `cc=us` + United-States country filter and
+  drops results not tagged US. "Milk" now leads with real US USDA entries; OFF's
+  noisy multi-country data still leaks a few branded items as the minority.
+
+### What we accomplished (session before)
 
 - **Renamed the app** from "Conjure Fitness" to "Conjure Health" everywhere it
   shows (display name, window title, brand text). The slug stayed `fitness` and
