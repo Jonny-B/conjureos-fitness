@@ -89,20 +89,26 @@ export async function lookupBarcode(
   return null;
 }
 
-/** Interleave two ordered lists so neither source buries the other. */
-function interleave<T>(a: T[], b: T[]): T[] {
+/**
+ * Weighted merge that front-loads `primary`, taking `pw` from it for every `sw`
+ * from `secondary`. Used to bias results toward USDA (a US database) over Open
+ * Food Facts' noisy global catalog, while still surfacing OFF's branded items.
+ * Leftovers from either list are appended once the other runs dry.
+ */
+function mergeUsFirst<T>(primary: T[], secondary: T[], pw = 2, sw = 1): T[] {
   const out: T[] = [];
-  const max = Math.max(a.length, b.length);
-  for (let i = 0; i < max; i++) {
-    if (i < a.length) out.push(a[i]!);
-    if (i < b.length) out.push(b[i]!);
+  let i = 0;
+  let j = 0;
+  while (i < primary.length || j < secondary.length) {
+    for (let p = 0; p < pw && i < primary.length; p++) out.push(primary[i++]!);
+    for (let s = 0; s < sw && j < secondary.length; s++) out.push(secondary[j++]!);
   }
   return out;
 }
 
 /**
  * Text search across Open Food Facts (branded) + USDA (whole foods), run in
- * parallel and interleaved so neither source dominates.
+ * parallel and merged USDA-first to bias toward US results (see mergeUsFirst).
  *
  * `onPartial`, when given, fires with the merged list as each provider lands so
  * the UI can paint the fast provider's hits (USDA is usually sub-second) without
@@ -117,21 +123,24 @@ export async function searchFoods(
 ): Promise<FoodItem[]> {
   const q = query.trim();
   if (q.length < 3) return [];
-  const half = Math.ceil(limit / 2);
+  // US bias: pull more from USDA (a US database) than OFF, and front-load it in
+  // the merge. OFF still contributes branded items USDA lacks.
+  const usdaWant = Math.ceil(limit * 0.7);
+  const offWant = Math.ceil(limit * 0.5);
 
   let offResults: FoodItem[] = [];
   let usdaResults: FoodItem[] = [];
-  const merged = () => interleave(offResults, usdaResults).slice(0, limit);
+  const merged = () => mergeUsFirst(usdaResults, offResults, 2, 1).slice(0, limit);
 
   const offP = off
-    .searchText(q, half, signal)
+    .searchText(q, offWant, signal)
     .then((r) => {
       offResults = r;
       if (!signal?.aborted) onPartial?.(merged());
     })
     .catch(() => {});
   const usdaP = usda
-    .searchText(q, half, signal)
+    .searchText(q, usdaWant, signal)
     .then((r) => {
       usdaResults = r;
       if (!signal?.aborted) onPartial?.(merged());

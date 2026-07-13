@@ -53,6 +53,11 @@ community food database so misses get easier over time.
   plus a rate-limited USDA `DEMO_KEY` could yield zero. Now each provider is
   timed out (7s), results paint progressively as each lands (fast USDA no longer
   waits on OFF), and OFF sorts by scan popularity. "Milk" returns hits again.
+- **Biased food search toward US (`0.5.1`).** USDA (a US database) is now the
+  primary source — pulled at a higher share and front-loaded 2:1 in the merge
+  (`mergeUsFirst`) — while OFF adds a `cc=us` + United-States country filter and
+  drops results not tagged US. "Milk" now leads with real US USDA entries; OFF's
+  noisy multi-country data still leaks a few branded items as the minority.
 
 ### What we accomplished (session before)
 

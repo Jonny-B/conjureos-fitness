@@ -70,6 +70,7 @@ interface OffProduct {
   brands?: string;
   serving_size?: string;
   serving_quantity?: number | string;
+  countries_tags?: string[];
   nutriments?: OffNutriments;
 }
 
@@ -161,8 +162,15 @@ export async function searchText(
   url.searchParams.set("search_simple", "1");
   url.searchParams.set("action", "process");
   url.searchParams.set("json", "1");
-  // Ask OFF for English labels to bias the source toward English-region results.
+  // US bias: English labels + United-States country context/filter so we lean
+  // toward products a US shopper actually sees. OFF's country data is noisy
+  // (many items are tagged with several countries), so this is a soft nudge —
+  // USDA carries the primary US signal; see foodSearch.mergeUsFirst.
   url.searchParams.set("lc", "en");
+  url.searchParams.set("cc", "us");
+  url.searchParams.set("tagtype_0", "countries");
+  url.searchParams.set("tag_contains_0", "contains");
+  url.searchParams.set("tag_0", "united-states");
   // Sort by scan popularity so common terms ("milk", "bread") surface real,
   // complete products first instead of the arbitrary newest-edited foreign
   // entries the default order returns — most of which we drop below for having
@@ -173,7 +181,7 @@ export async function searchText(
   url.searchParams.set("page_size", String(Math.min(limit * 3, 40)));
   url.searchParams.set(
     "fields",
-    "code,product_name,brands,serving_size,serving_quantity,nutriments",
+    "code,product_name,brands,serving_size,serving_quantity,countries_tags,nutriments",
   );
   let resp: Response;
   try {
@@ -191,9 +199,16 @@ export async function searchText(
   const out: FoodItem[] = [];
   for (const p of json.products ?? []) {
     const item = toFoodItem(p);
+    if (!item) continue;
     // Drop entries with no usable energy (OFF has many incomplete records) and
     // anything not labeled in English/Latin script (no more Arabic, CJK, etc.).
-    if (item && item.perServing.calories > 0 && isEnglishName(item.name)) out.push(item);
+    if (item.perServing.calories <= 0 || !isEnglishName(item.name)) continue;
+    // US bias: when a product declares its countries, keep it only if the US is
+    // one of them. Products with no country data are kept (US entries often
+    // omit the tag) rather than thrown away.
+    const countries = p.countries_tags;
+    if (countries?.length && !countries.includes("en:united-states")) continue;
+    out.push(item);
     if (out.length >= limit) break;
   }
   return out;
