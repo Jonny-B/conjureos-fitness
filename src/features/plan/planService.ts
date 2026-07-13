@@ -34,8 +34,13 @@ export interface WizardBody {
   sex?: Profile["sex"];
   heightCm?: number;
   weightKg?: number;
+  /** Exact age (preferred); ageBand is the coarse fallback. */
+  age?: number;
   ageBand?: AgeBand;
   activityLevel?: Profile["activityLevel"];
+  experienceLevel?: Profile["experienceLevel"];
+  direction?: Profile["direction"];
+  units?: Profile["units"];
 }
 
 /** Coarse age bands → a representative age for Mifflin-based recompute later. */
@@ -102,15 +107,19 @@ export async function commitNewPlan(
 
   let profile = ctx.currentProfile;
   const b = ctx.body;
-  if (b && (b.heightCm != null || b.weightKg != null || b.sex != null)) {
+  if (b && (b.heightCm != null || b.weightKg != null || b.sex != null || b.age != null)) {
     const base = ctx.currentProfile ?? DEFAULT_PROFILE;
     profile = {
       ...base,
       sex: b.sex ?? base.sex,
       heightCm: b.heightCm ?? base.heightCm,
       weightKg: b.weightKg ?? base.weightKg,
-      age: b.ageBand ? AGE_FOR_BAND[b.ageBand] : base.age,
+      // Prefer the exact age; fall back to the age-band's representative age.
+      age: b.age ?? (b.ageBand ? AGE_FOR_BAND[b.ageBand] : base.age),
       activityLevel: b.activityLevel ?? base.activityLevel,
+      experienceLevel: b.experienceLevel ?? base.experienceLevel,
+      direction: b.direction ?? base.direction,
+      units: b.units ?? base.units,
     };
     await repo.saveProfile(profile).catch(() => {});
   }
@@ -134,6 +143,24 @@ export interface PlanPatch {
   mode?: Plan["mode"];
   goals?: PlanGoal[];
   targets?: PlanTargets;
+  startDate?: string;
+  endDate?: string;
+  durationWeeks?: number;
+}
+
+/** Archive the outgoing plan so history/insight survives a "start a new plan"
+ *  reset. Diary/weight/workout-session history live in separate stores and are
+ *  never touched here. */
+const PLAN_ARCHIVE_PATH = "plan-archive.json";
+export async function archivePlan(plan: Plan): Promise<void> {
+  try {
+    const { readJson, writeJson } = await import("../../bridge/vfs");
+    const prev = await readJson<Plan[]>(PLAN_ARCHIVE_PATH, []);
+    const next = [{ ...plan }, ...prev].slice(0, 20);
+    await writeJson(PLAN_ARCHIVE_PATH, next);
+  } catch {
+    /* archiving is best-effort */
+  }
 }
 
 /**
