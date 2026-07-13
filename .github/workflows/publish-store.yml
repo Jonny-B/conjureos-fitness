@@ -1,18 +1,17 @@
 name: Publish to ConjureOS App Store
 
-# Builds Conjure Fitness to a single self-contained HTML file and publishes a
-# new App Store version via the shared composite action in the conjureos repo.
+# THROWAWAY BRANCH (ci/publish-dev-1.2.1): publishes 1.2.1 to the DEV App Store
+# via a push-triggered run, to bring dev in line with prod. Publish step + stored
+# secrets IDENTICAL to the normal dev (workflow_dispatch) path. main keeps its
+# release-only behavior; delete this branch after the publish.
 #
-# Two Supabase projects (Phase 24 split), selected by trigger:
-#   - workflow_dispatch  -> DEV  project (test against dev.conjureos.pages.dev)
-#   - release published  -> PROD project (ships to real users)
-#
-# Only secret you must add per repo is the bot password (dev + prod). URL is
-# derived from the existing SUPABASE_DEV/PROD_PROJECT_REF secrets; anon key + bot
-# email are public/non-secret and inlined below. See ANCHOR_APP_CI_SETUP.md in
-# the conjureos repo.
+# Normal triggers on main:
+#   - workflow_dispatch  -> DEV  project
+#   - release published  -> PROD project
 
 on:
+  push:
+    branches: [ci/publish-dev-1.2.1]
   release:
     types: [published]
   workflow_dispatch:
@@ -42,12 +41,9 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      # Two build steps, gated by trigger, so the bundle bakes the right Supabase
-      # URL + anon key for the target project. Anon keys are public by design
-      # (shipped in every browser); RLS gates everything. The client SDK needs
-      # them to call the health-foods-db Edge Function.
+      # push (this throwaway branch) or workflow_dispatch -> DEV project.
       - name: Build single-file HTML (dev project)
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
           VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_REF }}.supabase.co
           VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xcHZqbHN5d3JwdGVmZ3d1enRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTA3OTMsImV4cCI6MjA5NTQ4Njc5M30.ITZjX5KkMNgbJuFEHS5-IqFFJC6A39OynVgOznZeqD8
@@ -62,16 +58,13 @@ jobs:
 
       - name: Resolve changelog
         id: changelog
-        # Read release/dispatch text via env vars, NOT ${{ }} interpolation:
-        # backticks and quotes in release notes (e.g. `npm packages`) otherwise
-        # land in the shell as command substitution and crash with exit 127.
-        # Same fix conjureos-app-recipes' workflow took (DECISIONS 2026-06-21).
         env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_BODY: ${{ github.event.release.body }}
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           DISPATCH_INPUT: ${{ github.event.inputs.changelog }}
+          FALLBACK: "v1.2.1 (dev) — bring dev in line with prod: v2 (plans, workouts), plan-as-banner, unified cog, barcode/search, demo tag removed."
         run: |
           if [ "$EVENT_NAME" = "release" ]; then
             text="$RELEASE_BODY"
@@ -80,16 +73,13 @@ jobs:
           else
             text="$DISPATCH_INPUT"
           fi
+          [ -z "$text" ] && text="$FALLBACK"
           {
             echo "text<<__CHANGELOG__"
             echo "$text"
             echo "__CHANGELOG__"
           } >> "$GITHUB_OUTPUT"
 
-      # The shared publish action lives in the (private) ConjureOS repo. GitHub
-      # can't resolve an action in another private *personal* repo via
-      # `uses: Jonny-B/ConjureOS/...@dev`, so check ConjureOS out with a
-      # read-only PAT and reference the action by local path below.
       - name: Checkout ConjureOS (shared publish action)
         uses: actions/checkout@v4
         with:
@@ -98,13 +88,11 @@ jobs:
           token: ${{ secrets.CONJUREOS_REPO_TOKEN }}
           path: .conjureos
 
-      # workflow_dispatch -> DEV project. Test path; publishes to dev users.
       - name: Publish to App Store (dev)
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: ./.conjureos/.github/actions/publish-anchor-app
         with:
           supabase-url: https://${{ secrets.SUPABASE_DEV_PROJECT_REF }}.supabase.co
-          # Anon key is public by design (shipped in every browser); RLS applies.
           supabase-anon-key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xcHZqbHN5d3JwdGVmZ3d1enRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTA3OTMsImV4cCI6MjA5NTQ4Njc5M30.ITZjX5KkMNgbJuFEHS5-IqFFJC6A39OynVgOznZeqD8
           bot-email: conjureosbot@gmail.com
           bot-password: ${{ secrets.PUBLISH_BOT_DEV_PASSWORD }}
@@ -112,7 +100,6 @@ jobs:
           slug: fitness
           changelog: ${{ steps.changelog.outputs.text }}
 
-      # release published -> PROD project. Ships to real users.
       - name: Publish to App Store (prod)
         if: github.event_name == 'release'
         uses: ./.conjureos/.github/actions/publish-anchor-app
