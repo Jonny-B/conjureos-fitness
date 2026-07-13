@@ -1,20 +1,23 @@
 import { useState, type ReactNode } from "react";
-import type { ActivityLevel, GoalDirection, Goals, Profile, Sex } from "../types";
-import { DEFAULT_GOALS } from "../types";
+import type { ActivityLevel, GoalDirection, Goals, Plan, PlanGoal, PlanMode, Profile, Sex } from "../types";
+import { DEFAULT_GOALS, DEFAULT_PROFILE } from "../types";
 import { getRepository } from "../data/repository";
 import { ACTIVITY_LABELS, recommendGoals } from "../features/goals";
+import { goalsToTargets, saveProgram, targetsToGoals, updatePlan } from "../features/plan/planService";
+import { ProgramEditor } from "../components/ProgramEditor";
 import { NumberField } from "../components/NumberField";
 import { heightToCm, heightToDisplay, heightUnit, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { CloseIcon } from "../components/icons";
 
-const DEFAULT_PROFILE: Profile = {
-  sex: "female",
-  age: 30,
-  heightCm: 170,
-  weightKg: 70,
-  activityLevel: "moderate",
-  direction: "maintain",
-  units: "metric",
+/** Which surface the settings sheet opens on. "program" deep-links straight to
+ *  the workout-program editor (e.g. from the Workouts tab's "Edit plan"). */
+export type SettingsView = "main" | "program";
+
+const PLAN_MODE_LABELS: Record<PlanMode, string> = {
+  eat_better: "Eat better (food only)",
+  get_fit: "Get fit (workouts only)",
+  both: "Both — food & workouts",
+  logging_only: "Just logging (no plan prescriptions)",
 };
 
 // While editing, the numeric fields may be empty (undefined). They're coerced
@@ -48,24 +51,37 @@ function toGoals(d: GoalsDraft): Goals {
 }
 
 /**
- * Profile + goals editor. Editing the profile recomputes recommended goals
- * (Mifflin-St Jeor) on demand; the user can still hand-override any goal
- * number. Numeric fields hold a raw string while editing (via NumberField) so
- * typing and clearing work; values are clamped only at save.
+ * The single plan + profile + goals editor (the cog). Edits body/activity, the
+ * daily nutrition targets, the plan's mode + goal lines, and — via a sub-view —
+ * the workout program. All plan writes route through `planService`; when a plan
+ * exists the nutrition targets are stored ON the plan (so the diary rings track
+ * it), otherwise they fall back to the standalone Goals store.
  */
 export function SettingsSheet({
   goals,
   profile,
+  plan,
+  initialView = "main",
   onClose,
   onSave,
+  onPlanChange,
 }: {
   goals: Goals;
   profile: Profile | null;
+  plan: Plan | null;
+  initialView?: SettingsView;
   onClose: () => void;
   onSave: (goals: Goals, profile: Profile) => void;
+  onPlanChange: (plan: Plan) => void;
 }) {
   const [p, setP] = useState<ProfileDraft>(profile ?? DEFAULT_PROFILE);
-  const [g, setG] = useState<GoalsDraft>(goals);
+  // Nutrition targets shown reflect the plan when it drives them.
+  const [g, setG] = useState<GoalsDraft>(targetsToGoals(plan, goals));
+  const [mode, setMode] = useState<PlanMode>(plan?.mode ?? "both");
+  const [planGoals, setPlanGoals] = useState<PlanGoal[]>(plan?.goals ?? []);
+  const [view, setView] = useState<SettingsView>(
+    initialView === "program" && plan?.program ? "program" : "main",
+  );
   const [busy, setBusy] = useState(false);
 
   const set = <K extends keyof ProfileDraft>(key: K, value: ProfileDraft[K]) =>
@@ -79,18 +95,48 @@ export function SettingsSheet({
       const fp = toProfile(p);
       const fg = toGoals(g);
       const repo = await getRepository();
-      await Promise.all([repo.saveProfile(fp), repo.saveGoals(fg)]);
-      onSave(fg, fp);
+      await repo.saveProfile(fp);
+      if (plan) {
+        const { plan: next, goals: ng } = await updatePlan(
+          plan,
+          { mode, goals: planGoals, targets: goalsToTargets(fg) },
+          { currentGoals: fg },
+        );
+        onPlanChange(next);
+        onSave(ng, fp);
+      } else {
+        await repo.saveGoals(fg);
+        onSave(fg, fp);
+      }
+      onClose();
     } finally {
       setBusy(false);
     }
   };
 
+  // Sub-view: the workout-program editor is its own full overlay.
+  if (view === "program" && plan?.program) {
+    return (
+      <ProgramEditor
+        program={plan.program}
+        mode={plan.mode}
+        injuries={plan.safety.injuries ?? []}
+        units={p.units}
+        onCancel={() => setView("main")}
+        onSave={async (updated) => {
+          const next = await saveProgram(plan, updated);
+          onPlanChange(next);
+          setView("main");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <header className="sheet-head">
-          <h2>Profile &amp; goals</h2>
+          <h2>Profile &amp; plan</h2>
           <button className="icon-btn" aria-label="Close" onClick={onClose}>
             <CloseIcon size={20} />
           </button>
@@ -181,6 +227,50 @@ export function SettingsSheet({
               <NumberField value={g.fat} min={0} max={400} onChange={(n) => setG({ ...g, fat: n })} aria-label="Fat grams" />
             </Field>
           </div>
+
+          {plan && (
+            <>
+              <div className="section-label">Your plan</div>
+              <Field label="Focus">
+                <select className="select" value={mode} onChange={(e) => setMode(e.target.value as PlanMode)}>
+                  {(Object.keys(PLAN_MODE_LABELS) as PlanMode[]).map((m) => (
+                    <option key={m} value={m}>
+                      {PLAN_MODE_LABELS[m]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              {planGoals.length > 0 && (
+                <div className="field">
+                  <span>Plan goals</span>
+                  <div className="plan-goal-edit-list">
+                    {planGoals.map((pg, i) => (
+                      <div className="plan-goal-edit" key={pg.id}>
+                        <span className={`goal-kind goal-${pg.kind}`}>{pg.kind}</span>
+                        <input
+                          className="text-input"
+                          value={pg.label}
+                          aria-label={`Plan goal ${i + 1}`}
+                          onChange={(e) =>
+                            setPlanGoals((prev) =>
+                              prev.map((x, xi) => (xi === i ? { ...x, label: e.target.value } : x)),
+                            )
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {plan.program && (
+                <button className="btn block" onClick={() => setView("program")}>
+                  Edit workout program
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         <footer className="sheet-foot">

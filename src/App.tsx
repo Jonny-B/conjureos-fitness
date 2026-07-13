@@ -1,18 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Goals, MealType, Plan, Profile } from "./types";
 import { DEFAULT_GOALS } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
 import { todayISO } from "./features/diary";
+import {
+  commitNewPlan,
+  loadPlan,
+  targetsToGoals,
+  type WizardBody,
+} from "./features/plan/planService";
 import { DiaryScreen } from "./screens/DiaryScreen";
 import { MealDetailScreen } from "./screens/MealDetailScreen";
 import { WizardScreen } from "./screens/WizardScreen";
-import { ProfileSetupWizard } from "./screens/ProfileSetupWizard";
-import { SetupBanner } from "./components/SetupBanner";
+import { PlanBanner } from "./components/PlanBanner";
 import { AddFoodScreen } from "./screens/AddFoodScreen";
 import { TrendsScreen } from "./screens/TrendsScreen";
 import { WorkoutsScreen } from "./screens/WorkoutsScreen";
-import { SettingsSheet } from "./screens/SettingsSheet";
+import { SettingsSheet, type SettingsView } from "./screens/SettingsSheet";
 import {
   AddIcon,
   DiaryIcon,
@@ -32,15 +37,17 @@ export function App() {
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [backend, setBackend] = useState<"mock" | "supabase">("mock");
-  // v2: the active plan. null → the first-run wizard gates the app.
+  // v2: the active plan. null → show the "build your plan" banner (no longer a
+  // full-screen gate; the app is usable for logging without a plan).
   const [plan, setPlan] = useState<Plan | null>(null);
   const [ready, setReady] = useState(false);
+  // Settings sheet: closed, or open on a specific sub-view (main / program editor).
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // Guided profile/goals setup: the step id the wizard is open on (null = closed),
-  // and a per-session dismiss for the Home banner (resets on reload = "shows again
-  // when they open again").
-  const [setupStep, setSetupStep] = useState<string | null>(null);
-  const [setupDismissed, setSetupDismissed] = useState(false);
+  const [settingsView, setSettingsView] = useState<SettingsView>("main");
+  // Plan wizard as a dismissible dialog, plus a per-session dismiss for its
+  // banner (resets on reload = shows again while there's still no plan).
+  const [planWizardOpen, setPlanWizardOpen] = useState(false);
+  const [planBannerDismissed, setPlanBannerDismissed] = useState(false);
   // The meal the Add flow should default to when opened from a meal's "+".
   const [addMeal, setAddMeal] = useState<MealType>("breakfast");
   // Which input the Add screen opens on (Scan when launched from a meal's Scan CTA).
@@ -57,11 +64,7 @@ export function App() {
     let alive = true;
     (async () => {
       const repo = await getRepository();
-      const [g, p, existingPlan] = await Promise.all([
-        repo.getGoals(),
-        repo.getProfile(),
-        repo.getPlan().catch(() => null), // Supabase throws PLAN_REQUIRES_V2_BACKEND
-      ]);
+      const [g, p, existingPlan] = await Promise.all([repo.getGoals(), repo.getProfile(), loadPlan()]);
       if (!alive) return;
       setGoals(g);
       setProfile(p);
@@ -76,6 +79,10 @@ export function App() {
       alive = false;
     };
   }, []);
+
+  // The diary's rings read from the plan's targets when it tracks food, falling
+  // back to the separately-stored goals otherwise.
+  const effectiveGoals = useMemo(() => targetsToGoals(plan, goals), [plan, goals]);
 
   const openAdd = useCallback(
     (meal: MealType, mode: AddMode = "search", returnTo: Tab = "diary") => {
@@ -92,6 +99,11 @@ export function App() {
     setTab("meal");
   }, []);
 
+  const openSettings = useCallback((view: SettingsView = "main") => {
+    setSettingsView(view);
+    setSettingsOpen(true);
+  }, []);
+
   const onLogged = useCallback(() => {
     setNonce((n) => n + 1);
     setTab(addReturn);
@@ -100,45 +112,32 @@ export function App() {
   const onSaveGoals = useCallback((g: Goals, p: Profile | null) => {
     setGoals(g);
     if (p) setProfile(p);
-    setSettingsOpen(false);
   }, []);
 
-  const onWizardComplete = useCallback(async (created: Plan) => {
-    const repo = await getRepository();
-    await repo.savePlan(created).catch(() => {
-      /* Supabase throws PLAN_REQUIRES_V2_BACKEND; the mock persists it */
-    });
-    setPlan(created);
-    setTab("diary");
-  }, []);
+  const onWizardComplete = useCallback(
+    async (created: Plan, body: WizardBody) => {
+      const res = await commitNewPlan(created, { body, currentProfile: profile, currentGoals: goals });
+      setPlan(res.plan);
+      setProfile(res.profile);
+      setGoals(res.goals);
+      setPlanWizardOpen(false);
+      setPlanBannerDismissed(false);
+      setNonce((n) => n + 1);
+      setTab("diary");
+    },
+    [profile, goals],
+  );
 
-  // First run (no plan yet): the wizard owns the whole screen — no tabs, no
-  // topbar chrome — until a plan exists.
-  if (ready && !plan) {
+  // The plan wizard, opened from the banner, owns the screen while active but is
+  // fully dismissible (no longer a mandatory first-run gate).
+  if (ready && planWizardOpen) {
     return (
       <div className="app">
         <main className="screen">
-          <WizardScreen onComplete={onWizardComplete} units={profile?.units ?? "metric"} />
-        </main>
-      </div>
-    );
-  }
-
-  // Guided profile/goals setup (opened from the Home banner) owns the screen
-  // while active, but is fully dismissible.
-  if (ready && setupStep !== null) {
-    return (
-      <div className="app">
-        <main className="screen">
-          <ProfileSetupWizard
-            profile={profile}
-            goals={goals}
-            initialStepId={setupStep}
-            onSaved={(p, gg) => {
-              setProfile(p);
-              setGoals(gg);
-            }}
-            onClose={() => setSetupStep(null)}
+          <WizardScreen
+            onComplete={onWizardComplete}
+            onClose={() => setPlanWizardOpen(false)}
+            units={profile?.units ?? "metric"}
           />
         </main>
       </div>
@@ -146,6 +145,24 @@ export function App() {
   }
 
   const loggingOnly = plan?.mode === "logging_only";
+
+  const planBanner =
+    ready && !plan && !planBannerDismissed ? (
+      <PlanBanner onOpen={() => setPlanWizardOpen(true)} onDismiss={() => setPlanBannerDismissed(true)} />
+    ) : null;
+
+  const diaryScreen = (
+    <DiaryScreen
+      date={date}
+      goals={effectiveGoals}
+      banner={planBanner}
+      nonce={nonce}
+      onChangeDate={setDate}
+      onAddToMeal={openAdd}
+      onOpenMeal={openMeal}
+      onMutated={() => setNonce((n) => n + 1)}
+    />
+  );
 
   return (
     <div className="app">
@@ -158,18 +175,10 @@ export function App() {
         </div>
         <div className="topbar-spacer" />
         {backend === "mock" && <span className="env-pill" title="No backend session — data is local to this device">demo</span>}
-        <button className="icon-btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
+        <button className="icon-btn" aria-label="Settings" onClick={() => openSettings("main")}>
           <SettingsIcon size={20} />
         </button>
       </header>
-
-      {ready && !setupDismissed && (
-        <SetupBanner
-          profile={profile}
-          onStart={(stepId) => setSetupStep(stepId)}
-          onDismiss={() => setSetupDismissed(true)}
-        />
-      )}
 
       <main className="screen">
         {!ready ? (
@@ -177,20 +186,12 @@ export function App() {
             <div className="spinner" />
           </div>
         ) : tab === "diary" ? (
-          <DiaryScreen
-            date={date}
-            goals={goals}
-            nonce={nonce}
-            onChangeDate={setDate}
-            onAddToMeal={openAdd}
-            onOpenMeal={openMeal}
-            onMutated={() => setNonce((n) => n + 1)}
-          />
+          diaryScreen
         ) : tab === "meal" ? (
           <MealDetailScreen
             date={date}
             meal={activeMeal}
-            goals={goals}
+            goals={effectiveGoals}
             nonce={nonce}
             onBack={() => setTab("diary")}
             onAdd={() => openAdd(activeMeal, "search", "meal")}
@@ -208,17 +209,9 @@ export function App() {
         ) : tab === "trends" ? (
           <TrendsScreen profile={profile} />
         ) : tab === "workouts" && !loggingOnly ? (
-          <WorkoutsScreen units={profile?.units ?? "metric"} />
+          <WorkoutsScreen units={profile?.units ?? "metric"} onEditPlan={() => openSettings("program")} />
         ) : (
-          <DiaryScreen
-            date={date}
-            goals={goals}
-            nonce={nonce}
-            onChangeDate={setDate}
-            onAddToMeal={openAdd}
-            onOpenMeal={openMeal}
-            onMutated={() => setNonce((n) => n + 1)}
-          />
+          diaryScreen
         )}
       </main>
 
@@ -237,8 +230,11 @@ export function App() {
         <SettingsSheet
           goals={goals}
           profile={profile}
+          plan={plan}
+          initialView={settingsView}
           onClose={() => setSettingsOpen(false)}
           onSave={onSaveGoals}
+          onPlanChange={setPlan}
         />
       )}
     </div>

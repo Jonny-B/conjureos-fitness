@@ -1,6 +1,6 @@
 # Conjure Health, project status
 
-> **Last updated: 2026-07-12. ACTIVE — relaunched + live in both stores; barcode/search UX merged to dev at `1.1.0`.**
+> **Last updated: 2026-07-12. ACTIVE — relaunched + live in both stores; plan-as-banner + centralized plan API on branch at `1.2.0`.**
 > Development resumed and the app is back in the App Store on **dev** (version 2)
 > and **prod** (fresh row `bfce8c94…`, featured, v1). Note: the dev `store_apps`
 > row survived the pause (version-bump); the **prod** row had been deleted, so it
@@ -45,7 +45,30 @@ Working branch: `claude/conjure-barcode-scanning-6y7f65`.
 The last pre-pause work made barcode scanning actually useful, then built a
 community food database so misses get easier over time.
 
-### Latest session — barcode scan UX + search fix (`0.5.0`)
+### Latest session — plan as banner + one editor + centralized plan API (`1.2.0`)
+
+Branch: `claude/plan-centralize-wizard-banner` (cut from `dev`).
+
+- **Plan wizard is no longer a full-screen gate.** It's a dismissible `PlanBanner`
+  above the Today calorie tracker; tapping opens the wizard (disclaimer and all)
+  as a dismissible full-page dialog. The app is usable for logging without a plan.
+- **One editor in the cog.** `SettingsSheet` ("Profile & plan") now edits profile,
+  daily targets, plan mode, plan-goal lines, and the workout program (via
+  `ProgramEditor` sub-view). Workouts' "Edit plan" deep-links into it. The two
+  previously-disjoint edit surfaces are merged.
+- **Centralized `planService.ts`** is the single API for all plan reads/writes +
+  reconciliation (`loadPlan`, `commitNewPlan`, `updatePlan`, `saveProgram`,
+  `recordSessionAndAdapt`, `clearPlan`, `targetsToGoals`). No screen calls
+  `savePlan` directly anymore. Wraps the pure `features/plan/*` logic.
+- **Plan drives the diary targets.** New optional `Plan.targets` (the metrics
+  seam for future fields) holds the calorie + macro targets; the diary reads them
+  via `targetsToGoals`, falling back to stored `Goals` when there's no plan.
+  Finishing the wizard now also writes Profile + Goals — the height/weight
+  double-entry is gone.
+- **Retired** the separate `SetupBanner` + `ProfileSetupWizard` + `features/setup`
+  (onboarding unified into the plan flow).
+
+### Barcode scan UX + search fix (`0.5.0`)
 
 - **One unified Scan surface.** Barcode scanning and the photo "scan the
   food/product" fallback now live on a single surface. The immersive scanner is

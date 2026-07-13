@@ -2188,6 +2188,37 @@ body {
 }
 .icon-btn-spacer { width: 38px; height: 38px; display: inline-block; }
 
+/* Plan wizard, as a dismissible dialog: a top bar holding the close button. */
+.wizard-top {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+/* The plan banner sits inside the Today list, so give it a self-contained,
+   rounded card look rather than the full-bleed under-topbar bar. */
+.diary > .setup-banner {
+  border: 1px solid var(--cui-accent-tint, rgba(124, 106, 247, 0.3));
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+/* Editable plan-goal rows in the settings sheet. */
+.plan-goal-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-goal-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plan-goal-edit .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ── W2: exercise explainer dropdown ──────────────────────────────────── */
 .explainer { width: 100%; max-width: 340px; margin: 6px auto 0; }
 .explainer-toggle { display: block; margin: 0 auto; }

@@ -5,18 +5,22 @@ import { INJURY_REGIONS } from "../features/safety/injuryExclusions";
 import { requiresLoggingOnly, resolveSafeMode } from "../features/safety/intakeGate";
 import { DisclaimerCard, DISCLAIMER_SHORT } from "../components/DisclaimerCard";
 import { ProgramEditor } from "../components/ProgramEditor";
-import { AlertTriangle, CheckIcon } from "../components/icons";
+import { AlertTriangle, CheckIcon, CloseIcon } from "../components/icons";
 import { createPlan, type CreatePlanResult } from "../features/plan/generate";
 import type { PlanInput } from "../features/plan/model";
 import { modeHasWorkouts, modeTracksFood } from "../features/plan/model";
+import type { WizardBody } from "../features/plan/planService";
 
 type Step = "disclaimer" | "mode" | "safety" | "inputs" | "review";
 
 const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
 interface Props {
-  /** Fired with the saved-ready Plan when the user taps "Start the plan". */
-  onComplete: (plan: Plan) => void;
+  /** Fired with the saved-ready Plan (and the body stats it collected, for
+   *  Profile reconciliation) when the user taps "Start the plan". */
+  onComplete: (plan: Plan, body: WizardBody) => void;
+  /** Dismiss the wizard dialog without creating a plan. */
+  onClose?: () => void;
   /** Display units for the height/weight inputs (storage stays metric). */
   units?: Profile["units"];
 }
@@ -41,7 +45,7 @@ const DURATIONS: { weeks: number; label: string }[] = [
   { weeks: 4, label: "1 month" },
 ];
 
-export function WizardScreen({ onComplete, units = "metric" }: Props) {
+export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
   const [step, setStep] = useState<Step>("disclaimer");
 
   // Step 1
@@ -133,11 +137,27 @@ export function WizardScreen({ onComplete, units = "metric" }: Props) {
         appVersion: APP_VERSION,
       },
     };
-    onComplete(plan);
+    // Hand the body stats up too so the plan service can fill the Profile and
+    // the user never re-enters height/weight in settings.
+    const body: WizardBody = {
+      sex: tracksFood ? sex : undefined,
+      heightCm: tracksFood && heightCm ? Math.round(heightToCm(Number(heightCm), units)) : undefined,
+      weightKg: tracksFood && weightKg ? Math.round(weightToKg(Number(weightKg), units) * 10) / 10 : undefined,
+      ageBand,
+      activityLevel,
+    };
+    onComplete(plan, body);
   };
 
   return (
     <div className="wizard">
+      {onClose && (
+        <div className="wizard-top">
+          <button className="icon-btn" aria-label="Close" onClick={onClose}>
+            <CloseIcon size={20} />
+          </button>
+        </div>
+      )}
       {step === "disclaimer" && (
         <DisclaimerCard onAccept={() => setStep("mode")} />
       )}
