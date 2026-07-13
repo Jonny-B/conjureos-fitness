@@ -3,6 +3,7 @@ import type { Profile, WeightEntry } from "../types";
 import { getRepository } from "../data/repository";
 import { todayISO } from "../features/diary";
 import { bmi } from "../features/goals";
+import { fmtWeight, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 
 /**
  * Weight tracking + trend. A functional slice (reads/writes through the
@@ -22,9 +23,13 @@ export function TrendsScreen({ profile }: { profile: Profile | null }) {
     reload();
   }, []);
 
+  // Display in the user's units; storage stays metric (WU).
+  const units = profile?.units ?? "metric";
+
   const add = async () => {
-    const kg = Number(input);
-    if (!Number.isFinite(kg) || kg <= 0) return;
+    const shown = Number(input);
+    if (!Number.isFinite(shown) || shown <= 0) return;
+    const kg = weightToKg(shown, units);
     const repo = await getRepository();
     await repo.upsertWeight({ date: todayISO(), weightKg: Math.round(kg * 10) / 10 });
     setInput("");
@@ -33,7 +38,11 @@ export function TrendsScreen({ profile }: { profile: Profile | null }) {
 
   const latest = weights[0];
   const oldest = weights[weights.length - 1];
-  const change = latest && oldest && weights.length > 1 ? latest.weightKg - oldest.weightKg : 0;
+  const changeKg = latest && oldest && weights.length > 1 ? latest.weightKg - oldest.weightKg : 0;
+  const changeDisplay =
+    units === "imperial"
+      ? Math.round((changeKg * 2.2046226218) * 10) / 10
+      : Math.round(changeKg * 10) / 10;
 
   return (
     <div className="trends">
@@ -41,14 +50,14 @@ export function TrendsScreen({ profile }: { profile: Profile | null }) {
 
       <section className="summary-card column">
         <div className="big-stat">
-          <span className="big-number">{latest ? latest.weightKg : "—"}</span>
-          <span className="big-unit">kg</span>
+          <span className="big-number">{latest ? weightToDisplay(latest.weightKg, units) : "—"}</span>
+          <span className="big-unit">{weightUnit(units)}</span>
         </div>
         <div className="stat-row">
           {weights.length > 1 && (
-            <span className={change <= 0 ? "good" : "bad"}>
-              {change > 0 ? "+" : ""}
-              {Math.round(change * 10) / 10} kg overall
+            <span className={changeKg <= 0 ? "good" : "bad"}>
+              {changeKg > 0 ? "+" : ""}
+              {changeDisplay} {weightUnit(units)} overall
             </span>
           )}
           {profile && <span className="muted">BMI {bmi({ ...profile, weightKg: latest?.weightKg ?? profile.weightKg })}</span>}
@@ -61,7 +70,7 @@ export function TrendsScreen({ profile }: { profile: Profile | null }) {
           className="text-input"
           type="number"
           inputMode="decimal"
-          placeholder="Today's weight (kg)"
+          placeholder={`Today's weight (${weightUnit(units)})`}
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
@@ -74,7 +83,7 @@ export function TrendsScreen({ profile }: { profile: Profile | null }) {
         {weights.map((w) => (
           <li key={w.date} className="weight-row">
             <span>{w.date}</span>
-            <span>{w.weightKg} kg</span>
+            <span>{fmtWeight(w.weightKg, units)}</span>
           </li>
         ))}
         {weights.length === 0 && <li className="muted small">No weigh-ins yet.</li>}

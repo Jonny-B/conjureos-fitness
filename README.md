@@ -1,9 +1,8 @@
 # Conjure Health, an app for ConjureOS
 
-> **DEVELOPMENT PAUSED (2026-06-25).** Parked to focus on the ConjureOS platform
-> and the Recipes app, and REMOVED from both App Stores. The code is intact and
-> re-publishable anytime. See [STATUS.md](STATUS.md) for what shipped, what is
-> pending, and how to put it back in the stores.
+> **ACTIVE (relaunched 2026-07-11).** Back in development and returning to the
+> App Stores. See [STATUS.md](STATUS.md) for what shipped, what is in flight, and
+> the current focus.
 
 > Renamed from "Conjure Fitness" on 2026-06-24 as v2 (plan wizard + daily check-off home + AI workout coach) was scoped. Slug `fitness` + repo `conjureos-fitness` unchanged for now to avoid a disruptive App Store re-publish; revisit when v2 publishes.
 

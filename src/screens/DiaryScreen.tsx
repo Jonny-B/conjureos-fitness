@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import type { DayView, DiaryEntry, Goals, MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
-import { buildDayView, entryMacros, shiftDate, todayISO } from "../features/diary";
+import { buildDayView, entryMacros, isAiEstimate, shiftDate, todayISO } from "../features/diary";
 import { CalorieRing, MacroBars } from "../components/rings";
 import { ChevronLeft, ChevronRight, TrashIcon } from "../components/icons";
+import { AiEstimateBadge } from "../components/AiEstimateBadge";
 
 interface Props {
   date: string;
@@ -12,10 +13,11 @@ interface Props {
   nonce: number;
   onChangeDate: (date: string) => void;
   onAddToMeal: (meal: MealType) => void;
+  onOpenMeal: (meal: MealType) => void;
   onMutated: () => void;
 }
 
-export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onMutated }: Props) {
+export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onOpenMeal, onMutated }: Props) {
   const [view, setView] = useState<DayView | null>(null);
 
   useEffect(() => {
@@ -79,13 +81,13 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
 
         <div className="budget-grid">
           <div className="budget-col">
-            <MealStat label={MEAL_LABELS.breakfast} cal={mealCal("breakfast")} onClick={() => onAddToMeal("breakfast")} />
-            <MealStat label={MEAL_LABELS.lunch} cal={mealCal("lunch")} onClick={() => onAddToMeal("lunch")} />
+            <MealStat label={MEAL_LABELS.breakfast} cal={mealCal("breakfast")} onClick={() => onOpenMeal("breakfast")} />
+            <MealStat label={MEAL_LABELS.lunch} cal={mealCal("lunch")} onClick={() => onOpenMeal("lunch")} />
           </div>
           <CalorieRing consumed={total.calories} goal={goals.calories} />
           <div className="budget-col">
-            <MealStat label={MEAL_LABELS.dinner} cal={mealCal("dinner")} onClick={() => onAddToMeal("dinner")} />
-            <MealStat label={MEAL_LABELS.snacks} cal={mealCal("snacks")} onClick={() => onAddToMeal("snacks")} />
+            <MealStat label={MEAL_LABELS.dinner} cal={mealCal("dinner")} onClick={() => onOpenMeal("dinner")} />
+            <MealStat label={MEAL_LABELS.snacks} cal={mealCal("snacks")} onClick={() => onOpenMeal("snacks")} />
           </div>
         </div>
 
@@ -103,17 +105,20 @@ export function DiaryScreen({ date, goals, nonce, onChangeDate, onAddToMeal, onM
         const m = view?.perMeal[meal];
         return (
           <section className="meal" key={meal}>
-            <header className="meal-head">
+            <button className="meal-head" onClick={() => onOpenMeal(meal)} aria-label={`Open ${MEAL_LABELS[meal]}`}>
               <h2>{MEAL_LABELS[meal]}</h2>
               <span className="meal-cal">{m?.calories ?? 0} cal</span>
-            </header>
+            </button>
             <ul className="entry-list">
               {entries.map((e) => {
                 const em = entryMacros(e);
                 return (
                   <li className="entry" key={e.id}>
                     <div className="entry-main">
-                      <div className="entry-name">{e.food.name}</div>
+                      <div className="entry-title">
+                        <span className="entry-name">{e.food.name}</span>
+                        {isAiEstimate(e) && <AiEstimateBadge />}
+                      </div>
                       <div className="entry-sub">
                         {e.quantity}× {e.food.servingSize}
                         {e.food.brand ? ` · ${e.food.brand}` : ""}

@@ -144,6 +144,14 @@ export interface Profile {
   goalWeightKg?: number;
   /** Display unit preference. Storage is always metric. */
   units: "metric" | "imperial";
+  /** Guided-setup progress. Absent ⇒ setup never started. Additive; rides
+   *  saveProfile, so it works on both the mock and Supabase backends. */
+  setup?: ProfileSetup;
+}
+
+/** Which steps of the guided profile/goals setup the user has completed. */
+export interface ProfileSetup {
+  completedSteps: string[];
 }
 
 /**
@@ -222,7 +230,33 @@ export interface Exercise {
   sets: ExerciseSet[];
   /** Optional cue shown during the set. */
   notes?: string;
+  /** Inline explainer override; otherwise resolved by key (see ExerciseExplainer). */
+  explainer?: ExerciseExplainer;
 }
+
+/**
+ * How-to / muscles-worked / useful-data for an exercise. Resolved by
+ * `exerciseKey` from a layered source: the user's own VFS note first, then a
+ * trainer/DB entry (when trainers exist), then an AI-generated + cached one.
+ */
+export interface ExerciseExplainer {
+  exerciseKey: string;
+  /** Step-by-step how-to. */
+  howTo: string;
+  /** Primary muscles worked. */
+  worksMuscles?: string[];
+  /** Tips, typical ranges, common mistakes. */
+  usefulData?: string;
+  source: "user" | "coach" | "ai";
+  /** Set when source === "coach". */
+  author?: CoachProfile;
+  /** ISO timestamp — set for AI-generated entries so the cache can age out. */
+  cachedAt?: string;
+}
+
+/** Workout modality. Absent ⇒ "strength" (the guided step player); cardio
+ *  kinds route to the distance tracker instead of buildSteps. */
+export type WorkoutKind = "strength" | "run" | "bike";
 
 export interface Workout {
   id: string;
@@ -230,10 +264,255 @@ export interface Workout {
   /** Short pitch / focus, e.g. "Full-body, 20 min, no equipment". */
   summary?: string;
   exercises: Exercise[];
+  /** Modality — absent means strength (back-compat with the built-in seeds). */
+  kind?: WorkoutKind;
+  /** For cardio kinds: an optional distance/time goal shown during the run. */
+  cardioTarget?: { distanceKm?: number; durationSec?: number };
   /** Provenance — defaults to built-in when omitted. */
   origin?: WorkoutOrigin;
   /** Coach credit, present when origin === "coach". Additive — see CoachProfile. */
   author?: CoachProfile;
+}
+
+// ── v2: plans, check-off, coached sessions ───────────────────────────
+//
+// These persist as VFS app data via MockRepository (owner call, DECISIONS
+// 2026-06-24) — no new Supabase tables. The SupabaseRepository throws
+// PLAN_REQUIRES_V2_BACKEND for every method below. All shapes are additive and
+// self-contained so Phase 9 platform sync can back the JSON up as-is.
+
+/**
+ * How a plan is oriented. `logging_only` is the safety fallback: the intake
+ * gate (under-18 / pregnant / cardiac) forces it, hiding the workout surface.
+ */
+export type PlanMode = "eat_better" | "get_fit" | "both" | "logging_only";
+
+/** Coarse age bands — we never store an exact DOB for the safety intake. */
+export type AgeBand = "under_18" | "18_39" | "40_59" | "60_plus";
+
+/**
+ * The short safety questionnaire captured at wizard step 2. Drives the intake
+ * gate (layer 1) and the injury-region exclusion list (layer 2). Deliberately
+ * coarse: bands and booleans, no medical detail.
+ */
+export interface SafetyIntake {
+  ageBand: AgeBand;
+  /** Currently pregnant or postpartum — forces logging_only. */
+  pregnant: boolean;
+  /** Any cardiac condition / doctor advisory — forces logging_only. */
+  cardiacFlag: boolean;
+  /** Injury regions to exclude movements for (keys into the exclusion map). */
+  injuries: string[];
+  /** Self-reported baseline, reuses the profile scale. */
+  activityLevel: ActivityLevel;
+}
+
+/**
+ * One trackable item in a plan — the unit a DailyCheckoff ticks off. Ids are
+ * stable within a plan so check-off history references survive a reload.
+ */
+export interface PlanGoal {
+  id: string;
+  /** User-facing line, e.g. "Hit 120 g protein" or "20-min workout". */
+  label: string;
+  kind: "nutrition" | "workout" | "habit";
+  /** Optional machine detail (target grams, workout id) for future automation. */
+  detail?: string;
+}
+
+/**
+ * Liability acknowledgement. The timestamp is the audit record for the
+ * first-run "I understand" acceptance; lives on the plan (`plan.json.liability`).
+ */
+export interface LiabilityAck {
+  acknowledged: boolean;
+  /** ISO timestamp of acceptance. */
+  acceptedAt: string;
+  /** App version at acceptance, for audit. */
+  appVersion?: string;
+}
+
+/**
+ * What a benchmark measures. Determines how a finished session's result maps to
+ * a single comparable number, and (with `lowerIsBetter`) which direction counts
+ * as improvement.
+ */
+export type BenchmarkMetric = "reps" | "weightKg" | "durationSec" | "distanceKm";
+
+/** One measurement of a benchmark over time. */
+export interface BenchmarkPoint {
+  value: number;
+  /** ISO timestamp. */
+  at: string;
+  /** The WorkoutSession this measurement came from. */
+  sessionId?: string;
+}
+
+/**
+ * A measurable baseline the plan is built to improve — the heart of the
+ * adaptive loop. `baseline` is null until the benchmark workout is first
+ * completed; that completion sets `baseline` and pushes the first `history`
+ * point. `target` is the value to reach. For most metrics higher is better;
+ * a timed effort over a fixed distance sets `lowerIsBetter`.
+ */
+export interface Benchmark {
+  id: string;
+  /** Exercise this benchmark tracks — normalized join key to sessions. */
+  exerciseKey: string;
+  /** Display name of the tracked effort. */
+  name: string;
+  metric: BenchmarkMetric;
+  /** First measured value; null until the benchmark session finishes. */
+  baseline: number | null;
+  /** The value to reach (improvement goal). */
+  target: number;
+  /** Display unit, e.g. "reps", "kg", "min", "km". */
+  unit: string;
+  /** True when a smaller number is the improvement (e.g. a timed distance). */
+  lowerIsBetter?: boolean;
+  /** ISO timestamp of the baseline measurement. */
+  measuredAt?: string;
+  /** All measurements, oldest first. */
+  history: BenchmarkPoint[];
+}
+
+/** One workout within a program, optionally the benchmark-measuring one. */
+export interface ProgramWorkout {
+  id: string;
+  workout: Workout;
+  /** True when finishing this workout measures a benchmark. */
+  isBenchmark?: boolean;
+  /** Which Benchmark this workout measures (Benchmark.id). */
+  benchmarkId?: string;
+}
+
+/**
+ * A structured workout program attached to a Plan (get_fit / both). Additive —
+ * absent for eat_better / logging_only and all pre-W4 plans. `analysisCursor`
+ * is the session count at the last AI adaptation pass (W5).
+ */
+export interface WorkoutProgram {
+  workouts: ProgramWorkout[];
+  benchmarks: Benchmark[];
+  /** Sessions logged when the adaptation engine last ran (W5). */
+  analysisCursor?: number;
+}
+
+/**
+ * A finite 1–4 week plan. At most one is active at a time (`getPlan` returns it
+ * or null). Generated by the wizard, validated by the safety layers, then
+ * persisted whole so history never silently rewrites.
+ */
+export interface Plan {
+  id: string;
+  mode: PlanMode;
+  /** 1–4. */
+  durationWeeks: number;
+  /** Inclusive start, YYYY-MM-DD. */
+  startDate: string;
+  /** Inclusive end, YYYY-MM-DD. */
+  endDate: string;
+  goals: PlanGoal[];
+  safety: SafetyIntake;
+  liability: LiabilityAck;
+  /** ISO timestamp the plan was created. */
+  createdAt: string;
+  /** Structured, adaptive workout program (W4). Additive — absent on food-only
+   *  and all pre-W4 plans. */
+  program?: WorkoutProgram;
+}
+
+/**
+ * A single day's plan progress. Meals are NOT duplicated here — they live in
+ * the diary and are read by date; this record only holds what the diary can't
+ * express (which plan goals were ticked, the day's weigh-in).
+ */
+export interface DailyCheckoff {
+  /** YYYY-MM-DD. */
+  date: string;
+  /** Ids of PlanGoals completed this day. */
+  goalsCompleted: string[];
+  /** Optional weigh-in for the day, kg. */
+  weightKg?: number;
+}
+
+/** One mid-session "Tell coach" exchange logged on a WorkoutSession. */
+export interface CoachReprompt {
+  /** ISO timestamp. */
+  at: string;
+  /** What the user told the coach. */
+  userText: string;
+  /** The coach's adjustment / reply. */
+  coachText: string;
+  /** True when the symptom classifier (layer 3) ended the session here. */
+  endedSession?: boolean;
+}
+
+/**
+ * One recorded set. Timestamps bound the set so a "slow set" (the adaptation
+ * engine's key signal) is derivable as completedAt − startedAt vs the
+ * prescribed duration. All metric fields optional so a single shape covers
+ * rep, timed, and weighted sets.
+ */
+export interface SetActual {
+  reps?: number;
+  weightKg?: number;
+  durationSec?: number;
+  /** Subjective exertion, 1–10 (RPE), when the user records it. */
+  rpe?: number;
+  /** ISO timestamp the set became active. */
+  startedAt: string;
+  /** ISO timestamp the user marked it done. */
+  completedAt: string;
+  /** Actual rest taken after this set, seconds. */
+  restActualSec?: number;
+}
+
+/** A workout's recorded sets for one exercise, keyed for cross-session joins. */
+export interface ExerciseActual {
+  /** Normalized exercise name — the join key across sessions + explainers. */
+  exerciseKey: string;
+  /** Display name as prescribed. */
+  name: string;
+  sets: SetActual[];
+}
+
+/** Recorded result of a cardio (run/bike) session. */
+export interface CardioActual {
+  distanceKm: number;
+  durationSec: number;
+  avgPaceSecPerKm?: number;
+  /** Where the distance came from. */
+  source: "gps" | "steps" | "manual";
+  /** Per-km split times, seconds. */
+  splits?: number[];
+  /** Raw GPS breadcrumb when tracked (t = epoch ms). */
+  track?: { lat: number; lon: number; t: number; accuracy?: number }[];
+}
+
+/**
+ * A completed (or abandoned) workout run. `planned`/`actual` are the legacy
+ * flat snapshots (kept populated for back-compat); the structured
+ * `byExercise` (strength) and `cardio` fields are the v2 record. Readers prefer
+ * the structured fields when present.
+ */
+export interface WorkoutSession {
+  id: string;
+  /** YYYY-MM-DD. */
+  date: string;
+  /** The Workout this session was based on, when it came from the library. */
+  workoutId?: string;
+  planned: ExerciseSet[];
+  actual: ExerciseSet[];
+  reprompts: CoachReprompt[];
+  /** Structured strength result — recorded sets grouped by exercise. */
+  byExercise?: ExerciseActual[];
+  /** Structured cardio result, for run/bike sessions. */
+  cardio?: CardioActual;
+  /** Set when this session was a benchmark run (links to Plan benchmark). */
+  benchmarkId?: string;
+  /** ISO timestamp the session finished. */
+  completedAt: string;
 }
 
 // ── Derived view models ──────────────────────────────────────────────

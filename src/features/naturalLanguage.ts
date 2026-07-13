@@ -107,5 +107,8 @@ function toFoodItem(v: unknown): FoodItem | null {
       fat: clampInt(o.fat, 500),
     },
     servingSize,
+    // Flag the numbers as an unreviewed AI estimate so the diary can warn the
+    // user they may be inaccurate (see isAiEstimate + the "AI estimate" badge).
+    provenance: { sourceTag: "ai_estimate" },
   };
 }

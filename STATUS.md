@@ -1,17 +1,49 @@
 # Conjure Health, project status
 
-> **Last updated: 2026-06-25. DEVELOPMENT PAUSED.**
-> Paused to focus on the ConjureOS platform and the Recipes app. The app has
-> been REMOVED from both the dev and prod App Stores (the `store_apps` rows were
-> deleted, which also cleared version history and install records). The code in
-> this repo is untouched and can be re-published anytime via the normal release
-> flow. Nothing here is abandoned; it is parked.
+> **Last updated: 2026-07-11. ACTIVE — relaunched + live in both stores at `0.4.2`.**
+> Development resumed and the app is back in the App Store on **dev** (version 2)
+> and **prod** (fresh row `bfce8c94…`, featured, v1). Note: the dev `store_apps`
+> row survived the pause (version-bump); the **prod** row had been deleted, so it
+> was recreated via a first-publish. Current focus: Conjure Health v2.
 
-## Where we left off
+## How the relaunch was published (2026-07-11)
 
-The last work was making barcode scanning actually useful, then building a
-community food database so misses get easier over time. All of it shipped to
-dev and prod before the pause.
+CI's `workflow_dispatch` couldn't be triggered from the automation (GitHub App
+can't dispatch Actions), and the prod row was missing (a plain Release would
+have failed the version-bump path). So both stores were published via the
+**sanctioned backdoor** (ANCHOR_APP_CI_SETUP.md → "Manual / backdoor publish"):
+mint a bot token from the service-role key (`scripts/mint-bot-token.mjs`), then
+`scripts/publish-app.mjs` with `PUBLISH_BOT_ACCESS_TOKEN` — dev as a version
+bump, prod as `--first-publish --featured`. Now that the prod row exists again,
+future publishes can go through normal CI (Release) with no bootstrap.
+
+## Current focus
+
+1. Un-pause docs + bump to `0.3.0` → shipped forward to `0.4.2` (done).
+2. **Dev** App Store — **published** (version 2, 0.4.2).
+3. **Prod** App Store — **published** (row `bfce8c94…`, featured, v1, 0.4.2).
+4. Backend extras: `conjure_project_url` Vault secret (moderation email) + Open
+   Food Facts push-back bot (issue #63).
+5. **v2** (issues #57–62): plan wizard + daily check-off home + AI coach.
+   - P0 (#57) domain model + Repository extension — **done** (mock v1→v2 migration,
+     Supabase stubs throw `PLAN_REQUIRES_V2_BACKEND`).
+   - P1 (#58) safety static assets — **done** (`src/features/safety/*` intake gate,
+     injury exclusions, symptom keywords; `DisclaimerCard`).
+   - P2 (#59) first-run wizard + plan-gen + validator + fallback — **done**
+     (`src/screens/WizardScreen.tsx` + `src/features/plan/*`; App renders it when
+     `getPlan()` is null; logging-only gate hides the Workouts tab). App at `0.5.0`.
+   - P3 (#60) home + check-off — next · P4 (#61) AI coach · P5 (#62) settings + publish.
+
+> Note: P2 lives on the branch only — **not published** to the stores yet (dev/prod
+> are on `0.4.2`). The wizard gates the whole app on first run, so publish P3+ or a
+> deliberate v2 cut, not this commit, unless you want testers to hit the wizard now.
+
+Working branch: `claude/conjure-barcode-scanning-6y7f65`.
+
+## What was already built (foundation, all shipped to dev + prod pre-pause)
+
+The last pre-pause work made barcode scanning actually useful, then built a
+community food database so misses get easier over time.
 
 ### What we accomplished (most recent session)
 

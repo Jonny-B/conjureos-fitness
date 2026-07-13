@@ -23,12 +23,14 @@ type Mode = "search" | "scan" | "describe" | "recipes";
 interface Props {
   date: string;
   defaultMeal: MealType;
+  /** Which input mode to open on. Defaults to "search". */
+  defaultMode?: Mode;
   onLogged: () => void;
   onCancel: () => void;
 }
 
-export function AddFoodScreen({ date, defaultMeal, onLogged, onCancel }: Props) {
-  const [mode, setMode] = useState<Mode>("search");
+export function AddFoodScreen({ date, defaultMeal, defaultMode = "search", onLogged, onCancel }: Props) {
+  const [mode, setMode] = useState<Mode>(defaultMode);
   const [selected, setSelected] = useState<{ food: FoodItem; recipeSlug?: string } | null>(null);
 
   if (selected) {
