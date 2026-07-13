@@ -36,7 +36,6 @@ export function App() {
   const [date, setDate] = useState<string>(todayISO());
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [backend, setBackend] = useState<"mock" | "supabase">("mock");
   // v2: the active plan. null → show the "build your plan" banner (no longer a
   // full-screen gate; the app is usable for logging without a plan).
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -69,7 +68,6 @@ export function App() {
       setGoals(g);
       setProfile(p);
       setPlan(existingPlan);
-      setBackend(repo.kind);
       setReady(true);
     })();
     registerActions().catch(() => {
@@ -174,7 +172,6 @@ export function App() {
           Conjure Health
         </div>
         <div className="topbar-spacer" />
-        {backend === "mock" && <span className="env-pill" title="No backend session — data is local to this device">demo</span>}
         <button className="icon-btn" aria-label="Settings" onClick={() => openSettings("main")}>
           <SettingsIcon size={20} />
         </button>
