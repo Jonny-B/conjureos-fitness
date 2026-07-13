@@ -2,18 +2,16 @@ import { useState } from "react";
 import { parseNutritionLabel } from "../features/foods/labelParse";
 import type { FoodItem } from "../types";
 import type { ChatImage } from "../bridge/ai";
+import { CameraCapture } from "./CameraCapture";
 import { ChevronLeft } from "./icons";
 
 /**
  * Snap-the-label fallback when a barcode misses Open Food Facts / USDA.
  *
- * Flow: user picks (or snaps) a nutrition-label photo with the rear camera,
- * the photo is sent to the AI bridge for per-serving extraction, and the
- * parsed FoodItem is handed up so the existing LogPanel renders + saves it.
- *
- * Uses <input type="file" accept="image/*" capture="environment"> so it works
- * on every modern phone browser without a separate camera API and falls back
- * to a normal file picker on desktop.
+ * Flow: user frames the nutrition-facts panel in the in-app camera
+ * (CameraCapture — no jarring OS-camera takeover), the still is sent to the AI
+ * bridge for per-serving extraction, and the parsed FoodItem is handed up so
+ * the existing LogPanel renders + saves it.
  */
 export function NutritionLabelCapture({
   barcode,
@@ -29,26 +27,24 @@ export function NutritionLabelCapture({
   const [status, setStatus] = useState<"idle" | "parsing" | "error" | "low-confidence">("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const handleFile = async (file: File) => {
-    if (!isAcceptedImage(file)) {
-      setError("That file doesn't look like a photo. Try again with a clear shot of the label.");
-      setStatus("error");
-      return;
-    }
-    const blobUrl = URL.createObjectURL(file);
+  const onCaptured = (chatImage: ChatImage, url: string) => {
     setPreview((prev) => {
       if (prev) URL.revokeObjectURL(prev);
-      return blobUrl;
+      return url;
     });
-    try {
-      const chatImage = await fileToChatImage(file);
-      setImage(chatImage);
-      setStatus("idle");
-      setError(null);
-    } catch {
-      setError("Couldn't read that photo. Try again.");
-      setStatus("error");
-    }
+    setImage(chatImage);
+    setStatus("idle");
+    setError(null);
+  };
+
+  const retake = () => {
+    setPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setImage(null);
+    setStatus("idle");
+    setError(null);
   };
 
   const parse = async () => {
@@ -78,25 +74,13 @@ export function NutritionLabelCapture({
         <>
           <div className="muted small">
             {barcode
-              ? `We don't have ${barcode} yet. Snap the nutrition-facts panel and we'll log it from the photo.`
-              : "Snap the nutrition-facts panel and we'll log it from the photo."}
+              ? `We don't have ${barcode} yet. Frame the nutrition-facts panel and we'll log it from the photo.`
+              : "Frame the nutrition-facts panel and we'll log it from the photo."}
           </div>
-          <label className="btn primary block label-capture-cta">
-            Snap the nutrition label
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              capture="environment"
-              className="visually-hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
-              }}
-            />
-          </label>
-          <div className="muted small">
-            Tip: hold the package flat, fill the frame with just the nutrition panel, and avoid glare.
-          </div>
+          <CameraCapture
+            guide="Hold the package flat, fill the frame with just the nutrition panel, and avoid glare."
+            onCapture={onCaptured}
+          />
         </>
       )}
 
@@ -104,19 +88,9 @@ export function NutritionLabelCapture({
         <>
           <img className="label-capture-preview" src={preview} alt="Nutrition label preview" />
           <div className="row gap">
-            <label className="btn">
+            <button className="btn" onClick={retake}>
               Retake
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                capture="environment"
-                className="visually-hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleFile(f);
-                }}
-              />
-            </label>
+            </button>
             <button
               className="btn primary"
               disabled={!image || status === "parsing"}
@@ -132,34 +106,9 @@ export function NutritionLabelCapture({
       {status === "low-confidence" && !error && (
         <div className="notice">
           Couldn't read the macros confidently from that photo. Try a tighter shot with the
-          nutrition panel filling the frame, or use Describe to type what you ate.
+          nutrition panel filling the frame, or use Describe to AI to type what you ate.
         </div>
       )}
     </div>
   );
-}
-
-const ACCEPTED_MIMES: ReadonlyArray<ChatImage["mediaType"]> = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-];
-
-function isAcceptedImage(file: File): file is File {
-  return ACCEPTED_MIMES.includes(file.type as ChatImage["mediaType"]);
-}
-
-async function fileToChatImage(file: File): Promise<ChatImage> {
-  const buf = await file.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  // Stream-encode to base64 to avoid choking on large photos via apply(stack overflow).
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
-  }
-  return {
-    mediaType: file.type as ChatImage["mediaType"],
-    data: btoa(binary),
-  };
 }
