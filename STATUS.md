@@ -1,6 +1,7 @@
 # Conjure Health, project status
 
-> **Last updated: 2026-07-13. ACTIVE — v2 is LIVE in the PROD store at `1.2.0` (store version 3). dev + main both at `1.2.0`.**
+> **Last updated: 2026-07-13. ACTIVE — LIVE in the PROD store at `1.2.1` (store version 4; dropped the "demo" header tag). dev + main both at `1.2.1`.**
+> Note: mobile doesn't auto-detect store publishes — its Home grid syncs `public.files` (no version concept), and the only update check (`get_my_app_updates` RPC on the Store screen) needs a `store_app_installs` row. A store publish never rotates the user's `public.files`, so nothing lights up on the grid. This is a mobile/backend gap, not a publish-flag problem — the publish correctly bumped `store_apps.current_version_id`.
 > Development resumed and the app is back in the App Store on **dev** (version 2)
 > and **prod** (fresh row `bfce8c94…`, featured, v1). Note: the dev `store_apps`
 > row survived the pause (version-bump); the **prod** row had been deleted, so it
