@@ -2444,3 +2444,103 @@ body {
   .snap-cta-card, .snap-spinner, .disclosure-chevron { transition: none; animation: none; }
   .scanner-line { animation: none; top: 50%; }
 }
+
+/* ── Coach (Phase 2): check-ins + trainer chat ─────────────────────── */
+
+.checkin-form { display: flex; flex-direction: column; gap: 18px; }
+.checkin-q { display: flex; flex-direction: column; gap: 8px; }
+.checkin-q-text { font-size: 15px; font-weight: 600; }
+.checkin-scale { display: flex; align-items: center; gap: 10px; }
+.checkin-scale-label { font-size: 11px; color: var(--muted); flex: 0 0 auto; max-width: 72px; }
+.checkin-scale .chip-row { flex: 1; justify-content: center; flex-wrap: nowrap; }
+.checkin-scale .chip,
+.coach-suggestions .chip {
+  padding: 8px 14px;
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: normal;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.checkin-scale .chip.active {
+  border-color: var(--accent);
+  background: var(--cui-accent-mute, rgba(124, 106, 247, 0.14));
+  color: var(--accent);
+}
+.checkin-text { resize: vertical; }
+.checkin-sheet .center-fill { min-height: 160px; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; }
+.checkin-banner .setup-banner-text::before { content: "💬 "; }
+
+.coach-reply-card {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  padding: 14px 16px;
+  margin: 8px 0 16px;
+}
+.coach-reply-card p { margin: 6px 0 0; line-height: 1.5; }
+.coach-reply-tag {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  font-weight: 700;
+}
+.coach-plan-note { margin-top: 10px; font-size: 13px; color: var(--good); }
+.coach-reflect .center-fill { display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; min-height: 200px; }
+
+/* Trainer chat */
+.coach-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.coach-thread {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 0 12px;
+}
+.coach-empty { text-align: center; padding: 32px 12px 8px; }
+.coach-empty h2 { margin: 0 0 8px; }
+.coach-empty p { margin: 0 auto 16px; max-width: 420px; line-height: 1.5; }
+.coach-suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.coach-msg {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  line-height: 1.45;
+  font-size: 15px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.coach-msg.user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 6px;
+}
+.coach-msg.assistant {
+  align-self: flex-start;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 6px;
+}
+.coach-msg.typing { color: var(--muted); letter-spacing: 2px; }
+.coach-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  position: sticky;
+  bottom: 0;
+}
+.coach-input { flex: 1; resize: none; min-height: 42px; max-height: 120px; }
