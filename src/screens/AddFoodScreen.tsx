@@ -80,7 +80,7 @@ export function AddFoodScreen({ date, defaultMeal, defaultMode = "search", onLog
 const MODE_LABELS: Record<Mode, string> = {
   search: "Search",
   scan: "Scan",
-  describe: "Describe",
+  describe: "Describe to AI",
   recipes: "Recipes",
 };
 

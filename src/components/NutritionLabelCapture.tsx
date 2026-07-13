@@ -106,7 +106,7 @@ export function NutritionLabelCapture({
       {status === "low-confidence" && !error && (
         <div className="notice">
           Couldn't read the macros confidently from that photo. Try a tighter shot with the
-          nutrition panel filling the frame, or use Describe to type what you ate.
+          nutrition panel filling the frame, or use Describe to AI to type what you ate.
         </div>
       )}
     </div>
