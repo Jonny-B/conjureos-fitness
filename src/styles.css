@@ -2229,7 +2229,8 @@ body {
 }
 .units-toggle { flex-wrap: nowrap; }
 .units-toggle .chip { padding: 7px 10px; font-size: 12px; }
-.plan-dates { align-items: end; }
+.plan-dates { align-items: end; gap: 14px; }
+.plan-dates .field { flex: 1 1 0; min-width: 0; }
 .plan-dates .text-input { width: 100%; }
 
 /* Review-step workout list — surfaces the actual AI-authored exercises. */

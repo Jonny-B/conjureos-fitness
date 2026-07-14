@@ -65,6 +65,10 @@ function buildUserPrompt(input: PlanInput, priorReasons?: string[]): string {
   if (modeTracksFood(input.mode)) {
     if (input.heightCm) lines.push(`Height: ${input.heightCm} cm.`);
     if (input.weightKg) lines.push(`Weight: ${input.weightKg} kg.`);
+    if (input.goalWeightKg) {
+      const dir = input.weightKg && input.goalWeightKg < input.weightKg ? "lose" : input.weightKg && input.goalWeightKg > input.weightKg ? "gain" : "reach";
+      lines.push(`Goal weight: ${input.goalWeightKg} kg (they want to ${dir} weight to reach it) — reference it in the plan.`);
+    }
     if (input.age) lines.push(`Age: ${input.age}.`);
     if (input.sex) lines.push(`Sex (for calorie floor only): ${input.sex}.`);
   }
@@ -83,6 +87,8 @@ function buildUserPrompt(input: PlanInput, priorReasons?: string[]): string {
   return lines.join("\n");
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 const clampKcal = (v: unknown): number | null => {
   const n = typeof v === "number" ? v : Number(v);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -100,6 +106,48 @@ function extractJson(raw: string): string {
 
 const VALID_KINDS = new Set<GeneratedGoal["kind"]>(["nutrition", "workout", "habit"]);
 
+/** Keys a model might use for a goal's user-facing text (schema drift tolerance). */
+const GOAL_LABEL_KEYS = ["label", "text", "name", "title", "goal", "description"];
+
+/** Guess a goal's kind from its wording when the model omits/mislabels it. */
+function inferKind(text: string): GeneratedGoal["kind"] {
+  const t = text.toLowerCase();
+  if (/\b(cal|calorie|protein|carb|fat|eat|food|meal|nutrition|hydrat|water|diet)\b/.test(t)) return "nutrition";
+  if (/\b(workout|exercise|run|walk|jog|bike|lift|rep|set|squat|push|pull|plank|cardio|strength|train|session|mile|5k|murph)\b/.test(t))
+    return "workout";
+  return "habit";
+}
+
+/**
+ * Coerce one goal entry into our shape. Tolerant on purpose: the hosted
+ * free-tier model (Haiku) often returns goals as plain strings or with a
+ * different key than "label"/"kind" — the strict old parser rejected those and
+ * forced the fallback ("AI response couldn't be understood"). Accept strings,
+ * alternate label keys, and a missing/odd kind (inferred from the wording).
+ */
+function coerceGoal(g: unknown): GeneratedGoal | null {
+  if (typeof g === "string") {
+    const label = g.trim().slice(0, 120);
+    return label ? { label, kind: inferKind(label) } : null;
+  }
+  if (!g || typeof g !== "object") return null;
+  const go = g as Record<string, unknown>;
+  let label = "";
+  for (const k of GOAL_LABEL_KEYS) {
+    const v = go[k];
+    if (typeof v === "string" && v.trim()) {
+      label = v.trim().slice(0, 120);
+      break;
+    }
+  }
+  if (!label) return null;
+  const detail = typeof go.detail === "string" ? go.detail.trim().slice(0, 200) : undefined;
+  const kind = VALID_KINDS.has(go.kind as GeneratedGoal["kind"])
+    ? (go.kind as GeneratedGoal["kind"])
+    : inferKind(`${label} ${detail ?? ""}`);
+  return detail ? { label, kind, detail } : { label, kind };
+}
+
 function parseGenerated(raw: string): GeneratedPlan | null {
   let json: unknown;
   try {
@@ -109,24 +157,29 @@ function parseGenerated(raw: string): GeneratedPlan | null {
   }
   if (!json || typeof json !== "object") return null;
   const o = json as Record<string, unknown>;
-  const rawGoals = Array.isArray(o.goals) ? o.goals : [];
+  // Some models nest everything under a top-level "plan" wrapper.
+  const inner = (o.plan && typeof o.plan === "object" ? (o.plan as Record<string, unknown>) : o);
+
+  // Goals may arrive as an array (of objects OR strings) or an object map.
+  const rawGoals = Array.isArray(inner.goals)
+    ? inner.goals
+    : inner.goals && typeof inner.goals === "object"
+      ? Object.values(inner.goals as Record<string, unknown>)
+      : [];
   const goals: GeneratedGoal[] = [];
   for (const g of rawGoals.slice(0, MAX_GOALS)) {
-    if (!g || typeof g !== "object") continue;
-    const go = g as Record<string, unknown>;
-    const label = typeof go.label === "string" ? go.label.trim().slice(0, 120) : "";
-    if (!label) continue;
-    const kind = VALID_KINDS.has(go.kind as GeneratedGoal["kind"])
-      ? (go.kind as GeneratedGoal["kind"])
-      : "habit";
-    const detail = typeof go.detail === "string" ? go.detail.trim().slice(0, 200) : undefined;
-    goals.push(detail ? { label, kind, detail } : { label, kind });
+    const goal = coerceGoal(g);
+    if (goal) goals.push(goal);
   }
   if (goals.length === 0) return null;
-  const program = parseProgram(o.program) ?? undefined;
+  const program = parseProgram(inner.program) ?? undefined;
+  const summary =
+    typeof inner.summary === "string" ? inner.summary.trim().slice(0, 200)
+    : typeof inner.overview === "string" ? (inner.overview as string).trim().slice(0, 200)
+    : "Your plan";
   return {
-    summary: typeof o.summary === "string" ? o.summary.trim().slice(0, 200) : "Your plan",
-    dailyCalorieTarget: clampKcal(o.dailyCalorieTarget),
+    summary,
+    dailyCalorieTarget: clampKcal(inner.dailyCalorieTarget ?? inner.calorieTarget ?? inner.calories),
     goals,
     ...(program ? { program } : {}),
   };
@@ -207,7 +260,6 @@ export async function createPlan(
 ): Promise<CreatePlanResult> {
   const ctx = { mode: input.mode, sex: input.sex, safety: input.safety };
   const onStage = opts?.onStage;
-  onStage?.("calories");
 
   // The app owns the calorie target; the AI never needs to supply it.
   const withTarget = (g: GeneratedPlan): GeneratedPlan =>
@@ -215,6 +267,12 @@ export async function createPlan(
 
   let lastReasons: string[] = [];
   let lastError: string | undefined;
+
+  // The calorie + safety phases are near-instant, so without a small dwell the
+  // spinner would only ever visibly show "Building your workouts". These pauses
+  // make the honest three-stage readout actually readable.
+  onStage?.("calories");
+  await sleep(650);
 
   if (!isAiAvailable()) {
     lastError = "the AI service isn't available in this environment";
@@ -225,10 +283,15 @@ export async function createPlan(
         const raw = await generatePlan(input, attempt > 0 ? lastReasons : undefined);
         if (!raw) {
           lastError = "the AI response couldn't be understood";
+          // Give the retry concrete guidance instead of repeating the mistake.
+          lastReasons = [
+            'return ONLY a JSON object with a top-level "goals" array of 3-6 items, each { "label": string, "kind": "nutrition"|"workout"|"habit" }',
+          ];
           continue;
         }
         const candidate = withTarget(raw);
         onStage?.("checking");
+        await sleep(500);
         const v = validatePlan(candidate, ctx);
         if (v.ok) {
           return { plan: buildPlan(candidate, input, liability), gen: candidate, usedFallback: false };
@@ -242,6 +305,7 @@ export async function createPlan(
   }
 
   onStage?.("checking");
+  await sleep(500);
   const gen = withTarget(fallbackPlan(input.mode, input));
   const failureReason = lastError ?? (lastReasons.length ? lastReasons.join("; ") : "unknown");
   return { plan: buildPlan(gen, input, liability), gen, usedFallback: true, failureReason };
