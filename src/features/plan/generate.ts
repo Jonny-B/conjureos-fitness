@@ -29,6 +29,7 @@ Design a specific, personalized wellness plan from the user's inputs — tailore
     "goals": [ { "label": string, "kind": "nutrition" | "workout" | "habit", "detail"?: string } ],
     "program"?: {
       "workouts": [ { "name": string, "kind"?: "strength" | "run" | "bike",
+                      "description"?: string,
                       "exercises": [ { "name": string,
                                        "sets": [ { "reps"?: number, "durationSec"?: number, "restSec"?: number, "weightKg"?: number } ],
                                        "notes"?: string } ] } ],
@@ -39,7 +40,7 @@ Rules:
 - "dailyCalorieTarget" is optional — if unsure, use null; the app supplies its own number.
 - 3 to 6 goals, each a short daily/weekly action tied to their goal. Use "nutrition" for food, "workout" for exercise, "habit" for everything else. For a "workout" goal, put the specific movements in "detail".
 - Include "program" whenever the mode prescribes workouts (get_fit / both). Make it SPECIFIC to their goal and experience:
-  - Give one workout per training day (match "days per week"), up to 6, each a distinct session (e.g. push / pull / legs / conditioning), 3-8 exercises each.
+  - Give one workout per training day (match "days per week"), up to 6, each a distinct session (e.g. push / pull / legs / conditioning), 3-8 exercises each. Give each workout a 1-2 sentence "description" saying what it trains and how to approach it.
   - If the user named a specific target (e.g. "the Murph", a 5k, a pull-up), build the workouts to train for it and set the benchmark to that exact effort.
   - Scale difficulty to experience: beginner = form + lighter volume; intermediate/advanced = higher volume, progression, named lifts. Include a warmup note in the first exercise's "notes".
   - Sets have reps OR durationSec, plus restSec (metric units: kg, km, seconds).

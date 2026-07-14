@@ -11,11 +11,13 @@ import { SetRecorder, type SetEntry } from "../components/SetRecorder";
 import { ExplainerDropdown } from "../components/ExplainerDropdown";
 import { CardioPlayer } from "./CardioPlayer";
 import { WorkoutSummary } from "./WorkoutSummary";
+import { WorkoutOverview } from "./WorkoutOverview";
 import { CoachReflect } from "./CoachReflect";
 import { ChevronLeft, PlayIcon } from "../components/icons";
 
 type View =
   | { screen: "list" }
+  | { screen: "overview"; workout: Workout; benchmarkId?: string; isBenchmark?: boolean; fromPlan?: boolean }
   | { screen: "player"; workout: Workout; benchmarkId?: string }
   | { screen: "cardio"; workout: Workout; benchmarkId?: string }
   | { screen: "summary"; workout: Workout; byExercise: ExerciseActual[]; benchmarkId?: string }
@@ -55,6 +57,14 @@ export function WorkoutsScreen({ units, onEditPlan }: { units: Profile["units"];
     },
     [plan],
   );
+
+  // Tapping a workout opens its overview splash first; the player starts from
+  // there. `begin` is the actual entry into the guided session. Declared before
+  // the view branches so the overview's onStart closure can reference it.
+  const openOverview = (workout: Workout, benchmarkId?: string, isBenchmark?: boolean, fromPlan?: boolean) =>
+    setView({ screen: "overview", workout, benchmarkId, isBenchmark, fromPlan });
+  const begin = (workout: Workout, benchmarkId?: string) =>
+    setView({ screen: isCardio(workout) ? "cardio" : "player", workout, benchmarkId });
 
   if (view.screen === "cardio") {
     return (
@@ -102,8 +112,18 @@ export function WorkoutsScreen({ units, onEditPlan }: { units: Profile["units"];
     return <CoachReflect session={view.session} onDone={() => setView({ screen: "list" })} onPlanChange={setPlan} />;
   }
 
-  const start = (workout: Workout, benchmarkId?: string) =>
-    setView({ screen: isCardio(workout) ? "cardio" : "player", workout, benchmarkId });
+  if (view.screen === "overview") {
+    const { workout, benchmarkId, isBenchmark, fromPlan } = view;
+    return (
+      <WorkoutOverview
+        workout={workout}
+        isBenchmark={isBenchmark}
+        onBack={() => setView({ screen: "list" })}
+        onStart={() => begin(workout, benchmarkId)}
+        onEdit={fromPlan ? onEditPlan : undefined}
+      />
+    );
+  }
 
   const program = plan?.program;
 
@@ -125,7 +145,10 @@ export function WorkoutsScreen({ units, onEditPlan }: { units: Profile["units"];
           <ul className="workout-list">
             {program.workouts.map((pw) => (
               <li key={pw.id}>
-                <button className="workout-card" onClick={() => start(pw.workout, pw.benchmarkId)}>
+                <button
+                  className="workout-card"
+                  onClick={() => openOverview(pw.workout, pw.benchmarkId, pw.isBenchmark, true)}
+                >
                   <div className="workout-card-text">
                     <div className="workout-name">
                       {pw.workout.name}
@@ -148,7 +171,7 @@ export function WorkoutsScreen({ units, onEditPlan }: { units: Profile["units"];
       <ul className="workout-list">
         {BUILT_IN_WORKOUTS.map((w) => (
           <li key={w.id}>
-            <button className="workout-card" onClick={() => start(w)}>
+            <button className="workout-card" onClick={() => openOverview(w)}>
               <div className="workout-card-text">
                 <div className="workout-name">{w.name}</div>
                 <div className="workout-summary">{w.summary}</div>
