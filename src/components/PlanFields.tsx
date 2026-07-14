@@ -91,6 +91,30 @@ export function BodyStatsFields({
   );
 }
 
+/** Target weight, shown for lose/gain goals. Storage metric; display per units. */
+export function GoalWeightField({
+  units,
+  goalWeightKg,
+  onChange,
+}: {
+  units: Profile["units"];
+  goalWeightKg: number | undefined;
+  onChange: (kg: number | undefined) => void;
+}) {
+  return (
+    <label className="field">
+      <span>Goal weight ({weightUnit(units)})</span>
+      <NumberField
+        value={goalWeightKg == null ? undefined : weightToDisplay(goalWeightKg, units)}
+        min={weightToDisplay(25, units)}
+        max={weightToDisplay(400, units)}
+        onChange={(n) => onChange(n == null ? undefined : Math.round(weightToKg(n, units) * 10) / 10)}
+        aria-label="Goal weight"
+      />
+    </label>
+  );
+}
+
 export function AgeField({ age, onChange }: { age: number | undefined; onChange: (n: number | undefined) => void }) {
   return (
     <label className="field">
@@ -178,19 +202,31 @@ export function DirectionField({
   );
 }
 
-/** Start (today by default) + end date pickers; the plan's length derives from
- *  the span. Both editable in the wizard and the cog. */
+/** End date picker (+ optional Start). The wizard hides Start — today is
+ *  implied — and shows a single "Plan until" date; the cog shows both to edit
+ *  an existing plan's window. Plan length derives from the span. */
 export function PlanDatesField({
   startDate,
   endDate,
   onStart,
   onEnd,
+  hideStart = false,
 }: {
   startDate: string;
   endDate: string;
   onStart: (d: string) => void;
   onEnd: (d: string) => void;
+  /** Wizard sets this — start stays today implicitly, only the end is picked. */
+  hideStart?: boolean;
 }) {
+  if (hideStart) {
+    return (
+      <label className="field">
+        <span>Plan until</span>
+        <input className="text-input" type="date" value={endDate} min={startDate || undefined} onChange={(e) => onEnd(e.target.value)} />
+      </label>
+    );
+  }
   return (
     <div className="row gap plan-dates">
       <label className="field">

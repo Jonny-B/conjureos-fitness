@@ -22,6 +22,7 @@ import {
   BodyStatsFields,
   DirectionField,
   ExperienceField,
+  GoalWeightField,
   PlanDatesField,
   SexField,
   weeksBetween,
@@ -90,6 +91,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
   const [unitPref, setUnitPref] = useState<Profile["units"]>(units);
   const [heightCm, setHeightCm] = useState<number | undefined>(undefined);
   const [weightKg, setWeightKg] = useState<number | undefined>(undefined);
+  const [goalWeightKg, setGoalWeightKg] = useState<number | undefined>(undefined);
   const [sex, setSex] = useState<Sex>("female");
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>("moderate");
   const [direction, setDirection] = useState<GoalDirection>("maintain");
@@ -141,6 +143,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
     equipment: hasWorkouts ? equipment : undefined,
     heightCm: tracksFood ? heightCm : undefined,
     weightKg: tracksFood ? weightKg : undefined,
+    goalWeightKg: tracksFood && direction !== "maintain" ? goalWeightKg : undefined,
     age: tracksFood ? age : undefined,
     sex: tracksFood ? sex : undefined,
     calorieTarget: localCalorieTarget(),
@@ -188,6 +191,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
       sex: tracksFood ? sex : undefined,
       heightCm: tracksFood ? heightCm : undefined,
       weightKg: tracksFood ? weightKg : undefined,
+      goalWeightKg: tracksFood && direction !== "maintain" ? goalWeightKg : undefined,
       age,
       ageBand,
       activityLevel,
@@ -295,7 +299,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
             />
           </label>
 
-          <PlanDatesField startDate={startDate} endDate={endDate} onStart={setStartDate} onEnd={setEndDate} />
+          <PlanDatesField startDate={startDate} endDate={endDate} onStart={setStartDate} onEnd={setEndDate} hideStart />
 
           {hasWorkouts && (
             <>
@@ -329,6 +333,9 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
               <SexField sex={sex} onChange={setSex} />
               <ActivityField value={activityLevel} onChange={setActivityLevel} />
               <DirectionField value={direction} onChange={setDirection} />
+              {direction !== "maintain" && (
+                <GoalWeightField units={unitPref} goalWeightKg={goalWeightKg} onChange={setGoalWeightKg} />
+              )}
             </>
           )}
 

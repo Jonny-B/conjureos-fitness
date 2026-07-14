@@ -34,6 +34,8 @@ export interface PlanInput {
   /** Required when calorie tracking (eat_better / both). */
   heightCm?: number;
   weightKg?: number;
+  /** Target weight in kg (lose/gain goals); referenced in the plan. */
+  goalWeightKg?: number;
   /** Age in years (for the calorie estimate). */
   age?: number;
   /** Used for the sex-specific kcal floor + calorie estimate. */

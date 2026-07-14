@@ -5,7 +5,7 @@ import { getRepository } from "../data/repository";
 import { ACTIVITY_LABELS, recommendGoals } from "../features/goals";
 import { goalsToTargets, saveProgram, targetsToGoals, updatePlan } from "../features/plan/planService";
 import { ProgramEditor } from "../components/ProgramEditor";
-import { PlanDatesField, weeksBetween } from "../components/PlanFields";
+import { GoalWeightField, PlanDatesField, weeksBetween } from "../components/PlanFields";
 import { NumberField } from "../components/NumberField";
 import { heightToCm, heightToDisplay, heightUnit, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { CloseIcon } from "../components/icons";
@@ -226,6 +226,14 @@ export function SettingsSheet({
               <option value="gain">Gain weight</option>
             </select>
           </Field>
+
+          {p.direction !== "maintain" && (
+            <GoalWeightField
+              units={p.units}
+              goalWeightKg={p.goalWeightKg}
+              onChange={(kg) => set("goalWeightKg", kg)}
+            />
+          )}
 
           <Field label="Experience level">
             <select

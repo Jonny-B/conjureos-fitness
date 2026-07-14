@@ -34,6 +34,7 @@ export interface WizardBody {
   sex?: Profile["sex"];
   heightCm?: number;
   weightKg?: number;
+  goalWeightKg?: number;
   /** Exact age (preferred); ageBand is the coarse fallback. */
   age?: number;
   ageBand?: AgeBand;
@@ -114,6 +115,7 @@ export async function commitNewPlan(
       sex: b.sex ?? base.sex,
       heightCm: b.heightCm ?? base.heightCm,
       weightKg: b.weightKg ?? base.weightKg,
+      goalWeightKg: b.goalWeightKg ?? base.goalWeightKg,
       // Prefer the exact age; fall back to the age-band's representative age.
       age: b.age ?? (b.ageBand ? AGE_FOR_BAND[b.ageBand] : base.age),
       activityLevel: b.activityLevel ?? base.activityLevel,
