@@ -5,6 +5,7 @@ import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
 import { todayISO } from "./features/diary";
 import {
+  archivePlan,
   commitNewPlan,
   loadPlan,
   targetsToGoals,
@@ -14,12 +15,16 @@ import { DiaryScreen } from "./screens/DiaryScreen";
 import { MealDetailScreen } from "./screens/MealDetailScreen";
 import { WizardScreen } from "./screens/WizardScreen";
 import { PlanBanner } from "./components/PlanBanner";
+import { DayCheckinBanner, DayCheckinSheet, isEvening } from "./components/DayCheckin";
+import { recordPlanStarted } from "./features/coach/memory";
 import { AddFoodScreen } from "./screens/AddFoodScreen";
 import { TrendsScreen } from "./screens/TrendsScreen";
 import { WorkoutsScreen } from "./screens/WorkoutsScreen";
+import { CoachScreen } from "./screens/CoachScreen";
 import { SettingsSheet, type SettingsView } from "./screens/SettingsSheet";
 import {
   AddIcon,
+  CoachIcon,
   DiaryIcon,
   Logo,
   SettingsIcon,
@@ -28,7 +33,7 @@ import {
 } from "./components/icons";
 import type { ComponentType } from "react";
 
-type Tab = "diary" | "meal" | "add" | "trends" | "workouts";
+type Tab = "diary" | "meal" | "add" | "trends" | "workouts" | "coach";
 type AddMode = "search" | "scan";
 
 export function App() {
@@ -58,6 +63,11 @@ export function App() {
   const [activeMeal, setActiveMeal] = useState<MealType>("breakfast");
   // Bumped after any write so the Diary reloads from the repository.
   const [nonce, setNonce] = useState(0);
+  // End-of-day coach check-in (banner only): whether today is already checked
+  // in, a per-session dismiss, and the sheet's open state.
+  const [checkinDone, setCheckinDone] = useState(true);
+  const [checkinDismissed, setCheckinDismissed] = useState(false);
+  const [checkinOpen, setCheckinOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -77,6 +87,19 @@ export function App() {
       alive = false;
     };
   }, []);
+
+  // Whether today's coach check-in exists (drives the evening banner).
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const repo = await getRepository();
+      const log = await repo.getDayLog(todayISO()).catch(() => null);
+      if (alive) setCheckinDone(Boolean(log?.checkin));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [nonce]);
 
   // The diary's rings read from the plan's targets when it tracks food, falling
   // back to the separately-stored goals otherwise.
@@ -114,7 +137,14 @@ export function App() {
 
   const onWizardComplete = useCallback(
     async (created: Plan, body: WizardBody) => {
+      // Rebuilding over an existing plan: archive the outgoing one first so
+      // history/insight survives (diary/weight/workout history is separate and
+      // untouched).
+      if (plan) await archivePlan(plan);
       const res = await commitNewPlan(created, { body, currentProfile: profile, currentGoals: goals });
+      // Coach continuity: the plan swap is a new episode on an unbroken
+      // history — record it so the coach references the archive, not confusion.
+      recordPlanStarted(res.plan, plan).catch(() => {});
       setPlan(res.plan);
       setProfile(res.profile);
       setGoals(res.goals);
@@ -123,8 +153,13 @@ export function App() {
       setNonce((n) => n + 1);
       setTab("diary");
     },
-    [profile, goals],
+    [plan, profile, goals],
   );
+
+  const startNewPlan = useCallback(() => {
+    setSettingsOpen(false);
+    setPlanWizardOpen(true);
+  }, []);
 
   // The plan wizard, opened from the banner, owns the screen while active but is
   // fully dismissible (no longer a mandatory first-run gate).
@@ -149,11 +184,26 @@ export function App() {
       <PlanBanner onOpen={() => setPlanWizardOpen(true)} onDismiss={() => setPlanBannerDismissed(true)} />
     ) : null;
 
+  // Evening-only, banner-only (no notifications by design): nudge a coach
+  // check-in until today has one.
+  const checkinBanner =
+    ready && !checkinDone && !checkinDismissed && isEvening() ? (
+      <DayCheckinBanner onOpen={() => setCheckinOpen(true)} onDismiss={() => setCheckinDismissed(true)} />
+    ) : null;
+
+  const banners =
+    planBanner || checkinBanner ? (
+      <>
+        {planBanner}
+        {checkinBanner}
+      </>
+    ) : null;
+
   const diaryScreen = (
     <DiaryScreen
       date={date}
       goals={effectiveGoals}
-      banner={planBanner}
+      banner={banners}
       nonce={nonce}
       onChangeDate={setDate}
       onAddToMeal={openAdd}
@@ -207,6 +257,8 @@ export function App() {
           <TrendsScreen profile={profile} />
         ) : tab === "workouts" && !loggingOnly ? (
           <WorkoutsScreen units={profile?.units ?? "metric"} onEditPlan={() => openSettings("program")} />
+        ) : tab === "coach" ? (
+          <CoachScreen onPlanChange={setPlan} />
         ) : (
           diaryScreen
         )}
@@ -219,9 +271,22 @@ export function App() {
         {!loggingOnly && (
           <TabButton label="Workouts" Icon={WorkoutsIcon} active={tab === "workouts"} onClick={() => setTab("workouts")} />
         )}
+        <TabButton label="Coach" Icon={CoachIcon} active={tab === "coach"} onClick={() => setTab("coach")} />
       </nav>
 
       <div className="app-version">v{__APP_VERSION__}</div>
+
+      {checkinOpen && (
+        <DayCheckinSheet
+          date={todayISO()}
+          onClose={() => setCheckinOpen(false)}
+          onComplete={() => {
+            setCheckinDone(true);
+            setNonce((n) => n + 1);
+          }}
+          onPlanChange={setPlan}
+        />
+      )}
 
       {settingsOpen && (
         <SettingsSheet
@@ -232,6 +297,7 @@ export function App() {
           onClose={() => setSettingsOpen(false)}
           onSave={onSaveGoals}
           onPlanChange={setPlan}
+          onStartNewPlan={startNewPlan}
         />
       )}
     </div>

@@ -114,7 +114,9 @@ export interface DiaryEntry {
 
 // ── Profile & goals ──────────────────────────────────────────────────
 
-export type Sex = "male" | "female";
+/** Biological sex for the Mifflin calorie estimate. `not_shared` = undisclosed;
+ *  it's treated like the safe (higher) default floor and the male BMR constant. */
+export type Sex = "male" | "female" | "not_shared";
 
 export type ActivityLevel =
   | "sedentary"
@@ -124,6 +126,9 @@ export type ActivityLevel =
   | "very_active";
 
 export type GoalDirection = "lose" | "maintain" | "gain";
+
+/** How much training background the user has — tunes workout difficulty. */
+export type ExperienceLevel = "beginner" | "intermediate" | "advanced";
 
 /**
  * The user's body + activity inputs. Used to derive recommended goals via
@@ -140,6 +145,8 @@ export interface Profile {
   weightKg: number;
   activityLevel: ActivityLevel;
   direction: GoalDirection;
+  /** Training background — tunes generated workout difficulty. */
+  experienceLevel?: ExperienceLevel;
   /** Target weight in kilograms (for lose/gain). */
   goalWeightKg?: number;
   /** Display unit preference. Storage is always metric. */
@@ -464,6 +471,15 @@ export interface DailyCheckoff {
   goalsCompleted: string[];
   /** Optional weigh-in for the day, kg. */
   weightKg?: number;
+  /** The evening "how did your day go?" coach check-in, once submitted. */
+  checkin?: DayCheckin;
+}
+
+/** A submitted end-of-day check-in — the answers as shown, verbatim. */
+export interface DayCheckin {
+  /** ISO timestamp of submission. */
+  at: string;
+  answers: { question: string; answer: string }[];
 }
 
 /** One mid-session "Tell coach" exchange logged on a WorkoutSession. */

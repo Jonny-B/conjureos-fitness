@@ -11,13 +11,15 @@ import { SetRecorder, type SetEntry } from "../components/SetRecorder";
 import { ExplainerDropdown } from "../components/ExplainerDropdown";
 import { CardioPlayer } from "./CardioPlayer";
 import { WorkoutSummary } from "./WorkoutSummary";
+import { CoachReflect } from "./CoachReflect";
 import { ChevronLeft, PlayIcon } from "../components/icons";
 
 type View =
   | { screen: "list" }
   | { screen: "player"; workout: Workout; benchmarkId?: string }
   | { screen: "cardio"; workout: Workout; benchmarkId?: string }
-  | { screen: "summary"; workout: Workout; byExercise: ExerciseActual[]; benchmarkId?: string };
+  | { screen: "summary"; workout: Workout; byExercise: ExerciseActual[]; benchmarkId?: string }
+  | { screen: "reflect"; session: WorkoutSession };
 
 const isCardio = (w: Workout) => w.kind === "run" || w.kind === "bike";
 const setCount = (w: Workout) => w.exercises.reduce((s, e) => s + e.sets.length, 0);
@@ -60,8 +62,9 @@ export function WorkoutsScreen({ units, onEditPlan }: { units: Profile["units"];
         workout={view.workout}
         units={units}
         onFinish={async (cardio) => {
-          await saveSession(newCardioSession(view.workout, cardio, view.benchmarkId));
-          setView({ screen: "list" });
+          const session = newCardioSession(view.workout, cardio, view.benchmarkId);
+          await saveSession(session);
+          setView({ screen: "reflect", session });
         }}
         onCancel={() => setView({ screen: "list" })}
       />
@@ -86,12 +89,17 @@ export function WorkoutsScreen({ units, onEditPlan }: { units: Profile["units"];
         workout={view.workout}
         byExercise={view.byExercise}
         onSave={async () => {
-          await saveSession(newSessionFrom(view.workout, view.byExercise, view.benchmarkId));
-          setView({ screen: "list" });
+          const session = newSessionFrom(view.workout, view.byExercise, view.benchmarkId);
+          await saveSession(session);
+          setView({ screen: "reflect", session });
         }}
         onDiscard={() => setView({ screen: "list" })}
       />
     );
+  }
+
+  if (view.screen === "reflect") {
+    return <CoachReflect session={view.session} onDone={() => setView({ screen: "list" })} onPlanChange={setPlan} />;
   }
 
   const start = (workout: Workout, benchmarkId?: string) =>
