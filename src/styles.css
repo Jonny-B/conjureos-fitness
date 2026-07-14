@@ -2545,3 +2545,52 @@ body {
   bottom: 0;
 }
 .coach-input { flex: 1; resize: none; min-height: 42px; max-height: 120px; }
+
+/* ── Pre-workout overview / splash (tap a workout → overview → Start) ───── */
+
+.workout-overview { display: flex; flex-direction: column; gap: 14px; padding-bottom: 96px; }
+.overview-head { display: flex; flex-direction: column; gap: 8px; }
+.overview-title {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.15;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.overview-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.overview-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.overview-description { margin: 0; line-height: 1.55; color: var(--text); }
+
+.overview-exercises { display: flex; flex-direction: column; gap: 8px; }
+.overview-ex-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.overview-ex {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  padding: 12px 14px;
+}
+.overview-ex-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.overview-ex-name { font-weight: 600; }
+.overview-ex-sets { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.overview-ex-notes { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+.overview-actions {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: calc(var(--tabbar-h) + var(--version-h));
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+.overview-actions .overview-start { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }

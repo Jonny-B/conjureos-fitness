@@ -29,6 +29,8 @@ export const BUILT_IN_WORKOUTS: Workout[] = [
     id: "full-body-no-equipment",
     name: "Full-Body Express",
     summary: "20 min · no equipment · bodyweight",
+    description:
+      "A quick full-body circuit you can do anywhere — no equipment needed. It warms you up, then hits legs, chest, and core so you get a complete session in about 20 minutes. Move at a steady pace and scale any movement to your level.",
     exercises: [
       ex("Jumping Jacks", [timedSet(40, 20), timedSet(40, 20)], "Steady pace, full range."),
       ex("Bodyweight Squats", [repSet(15, 30), repSet(15, 30), repSet(15, 45)], "Sit back, chest up."),
@@ -41,6 +43,8 @@ export const BUILT_IN_WORKOUTS: Workout[] = [
     id: "core-finisher",
     name: "Core Finisher",
     summary: "10 min · no equipment · abs",
+    description:
+      "A short, focused core burner to tack onto the end of any session — or do on its own. Four ab-focused movements with minimal rest to keep the intensity up. Keep your movements controlled and your lower back supported.",
     exercises: [
       ex("Crunches", [repSet(20, 20), repSet(20, 20)]),
       ex("Bicycle Kicks", [timedSet(40, 20), timedSet(40, 20)]),
@@ -52,6 +56,8 @@ export const BUILT_IN_WORKOUTS: Workout[] = [
     id: "dumbbell-upper",
     name: "Dumbbell Upper",
     summary: "25 min · dumbbells · push/pull",
+    description:
+      "An upper-body strength session built around a pair of dumbbells, balancing pushing and pulling movements for the chest, back, shoulders, and arms. Pick a weight that challenges the last few reps of each set, and rest fully between sets.",
     exercises: [
       ex("Dumbbell Press", [repSet(10, 60, 12), repSet(10, 60, 12), repSet(8, 75, 14)]),
       ex("Bent-Over Row", [repSet(10, 60, 12), repSet(10, 60, 12), repSet(8, 75, 14)]),
@@ -63,6 +69,8 @@ export const BUILT_IN_WORKOUTS: Workout[] = [
     id: "morning-run",
     name: "Morning Run",
     summary: "Cardio · GPS distance + pace",
+    description:
+      "A steady outdoor run tracked by GPS for distance and pace. Great for building aerobic base and clearing your head. Start easy, settle into a conversational effort, and let the pace come to you.",
     kind: "run",
     cardioTarget: { distanceKm: 5 },
     exercises: [],
@@ -71,6 +79,8 @@ export const BUILT_IN_WORKOUTS: Workout[] = [
     id: "bike-ride",
     name: "Bike Ride",
     summary: "Cardio · GPS distance",
+    description:
+      "A GPS-tracked ride for low-impact cardio that's easy on the joints. Keep a smooth, steady cadence and use the distance goal to pace yourself.",
     kind: "bike",
     cardioTarget: { distanceKm: 15 },
     exercises: [],

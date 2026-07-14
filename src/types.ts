@@ -282,6 +282,9 @@ export interface Workout {
   name: string;
   /** Short pitch / focus, e.g. "Full-body, 20 min, no equipment". */
   summary?: string;
+  /** Longer overview shown on the pre-workout splash — what it trains, who
+   *  it's for, how to approach it. Falls back to `summary` when absent. */
+  description?: string;
   exercises: Exercise[];
   /** Modality — absent means strength (back-compat with the built-in seeds). */
   kind?: WorkoutKind;

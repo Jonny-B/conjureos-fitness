@@ -77,6 +77,7 @@ function parseWorkout(raw: unknown): Workout | null {
   if (!name) return null;
   const kind = KINDS.has(o.kind as WorkoutKind) ? (o.kind as WorkoutKind) : undefined;
   const summary = typeof o.summary === "string" ? o.summary.trim().slice(0, 120) : undefined;
+  const description = typeof o.description === "string" ? o.description.trim().slice(0, 400) : undefined;
   // Cardio workouts legitimately carry no exercises; strength must have some.
   const rawEx = Array.isArray(o.exercises) ? o.exercises : [];
   const exercises = rawEx
@@ -89,6 +90,7 @@ function parseWorkout(raw: unknown): Workout | null {
     id: newId(),
     name,
     ...(summary ? { summary } : {}),
+    ...(description ? { description } : {}),
     ...(kind ? { kind } : {}),
     exercises,
     origin: "built-in",
