@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "description": "Conjure Health: plans, daily check-off, calorie + nutrition logging, weight, and an AI-guided workout coach for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -27,21 +27,63 @@
         "params": {
           "type": "object",
           "properties": {
-            "name": { "type": "string", "maxLength": 80 },
-            "calories": { "type": "integer", "minimum": 0, "maximum": 5000 },
-            "protein": { "type": "integer", "minimum": 0, "maximum": 500, "description": "Grams." },
-            "carbs": { "type": "integer", "minimum": 0, "maximum": 800, "description": "Grams." },
-            "fat": { "type": "integer", "minimum": 0, "maximum": 500, "description": "Grams." },
-            "meal": { "type": "string", "enum": ["breakfast", "lunch", "dinner", "snacks"], "description": "Defaults by time of day when omitted." },
-            "date": { "type": "string", "description": "YYYY-MM-DD; defaults to today." }
+            "name": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "calories": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000
+            },
+            "protein": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 500,
+              "description": "Grams."
+            },
+            "carbs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 800,
+              "description": "Grams."
+            },
+            "fat": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 500,
+              "description": "Grams."
+            },
+            "meal": {
+              "type": "string",
+              "enum": [
+                "breakfast",
+                "lunch",
+                "dinner",
+                "snacks"
+              ],
+              "description": "Defaults by time of day when omitted."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD; defaults to today."
+            }
           },
-          "required": ["name"]
+          "required": [
+            "name"
+          ]
         },
         "returns": {
           "type": "object",
           "properties": {
-            "id": { "type": "string", "description": "The new diary entry's id." }
-          }
+            "id": {
+              "type": "string",
+              "description": "The new diary entry's id."
+            }
+          },
+          "required": [
+            "id"
+          ]
         }
       },
       "todayTotals": {
@@ -54,27 +96,66 @@
         "returns": {
           "type": "object",
           "properties": {
-            "date": { "type": "string", "description": "YYYY-MM-DD." },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD."
+            },
             "total": {
               "type": "object",
               "properties": {
-                "calories": { "type": "number" },
-                "protein": { "type": "number" },
-                "carbs": { "type": "number" },
-                "fat": { "type": "number" }
-              }
+                "calories": {
+                  "type": "number"
+                },
+                "protein": {
+                  "type": "number"
+                },
+                "carbs": {
+                  "type": "number"
+                },
+                "fat": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "calories",
+                "protein",
+                "carbs",
+                "fat"
+              ]
             },
             "goals": {
               "type": "object",
               "properties": {
-                "calories": { "type": "number" },
-                "protein": { "type": "number" },
-                "carbs": { "type": "number" },
-                "fat": { "type": "number" }
-              }
+                "calories": {
+                  "type": "number"
+                },
+                "protein": {
+                  "type": "number"
+                },
+                "carbs": {
+                  "type": "number"
+                },
+                "fat": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "calories",
+                "protein",
+                "carbs",
+                "fat"
+              ]
             },
-            "caloriesRemaining": { "type": "number" }
-          }
+            "caloriesRemaining": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "date",
+            "total",
+            "goals",
+            "caloriesRemaining"
+          ]
         }
       },
       "logRecipeMeal": {
@@ -83,22 +164,140 @@
         "params": {
           "type": "object",
           "properties": {
-            "slug": { "type": "string", "maxLength": 80, "description": "The Recipes app slug of the saved recipe." },
-            "servings": { "type": "number", "minimum": 0.1, "maximum": 20, "description": "Defaults to 1." },
-            "meal": { "type": "string", "enum": ["breakfast", "lunch", "dinner", "snacks"], "description": "Defaults by time of day when omitted." },
-            "date": { "type": "string", "description": "YYYY-MM-DD; defaults to today." }
+            "slug": {
+              "type": "string",
+              "maxLength": 80,
+              "description": "The Recipes app slug of the saved recipe."
+            },
+            "servings": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 20,
+              "description": "Defaults to 1."
+            },
+            "meal": {
+              "type": "string",
+              "enum": [
+                "breakfast",
+                "lunch",
+                "dinner",
+                "snacks"
+              ],
+              "description": "Defaults by time of day when omitted."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD; defaults to today."
+            }
           },
-          "required": ["slug"]
+          "required": [
+            "slug"
+          ]
         },
         "returns": {
           "type": "object",
           "properties": {
-            "id": { "type": "string", "description": "The new diary entry's id." },
-            "logged": { "type": "boolean" }
-          }
+            "id": {
+              "type": "string",
+              "description": "The new diary entry's id."
+            },
+            "logged": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "logged"
+          ]
         }
       }
     },
+    "needs": [
+      {
+        "id": "recipeSource",
+        "description": "A source of saved recipes with per-serving nutrition (calories/protein/fat/carbs), so the user can log a cooked recipe as a meal.",
+        "shape": {
+          "type": "object",
+          "properties": {
+            "recipes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "description": "Stable id used to reference the recipe in later calls."
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "servings": {
+                    "type": "number",
+                    "description": "How many servings the recipe yields."
+                  },
+                  "ingredients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "savedAt": {
+                    "type": "string",
+                    "description": "ISO timestamp when the recipe was saved."
+                  },
+                  "madeCount": {
+                    "type": "number",
+                    "description": "How many times the user has cooked it."
+                  },
+                  "nutrition": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "description": "Per-serving estimate, or null when unknown.",
+                    "properties": {
+                      "calories": {
+                        "type": "number"
+                      },
+                      "protein": {
+                        "type": "number",
+                        "description": "Grams."
+                      },
+                      "fat": {
+                        "type": "number",
+                        "description": "Grams."
+                      },
+                      "carbs": {
+                        "type": "number",
+                        "description": "Grams."
+                      }
+                    },
+                    "required": [
+                      "calories",
+                      "protein",
+                      "fat",
+                      "carbs"
+                    ]
+                  }
+                },
+                "required": [
+                  "slug",
+                  "title",
+                  "servings",
+                  "ingredients",
+                  "savedAt",
+                  "madeCount",
+                  "nutrition"
+                ]
+              }
+            }
+          },
+          "required": [
+            "recipes"
+          ]
+        }
+      }
+    ],
     "promptSuggestions": [
       "Log a chicken sandwich and a beer for lunch",
       "How many calories do I have left today?",
@@ -110,7 +309,8 @@
     "build": "tsc -b && vite build",
     "build:inline": "tsc -b && vite build --mode inline",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@conjureos/ui": "^0.1.1",
@@ -124,6 +324,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^2.1.9"
   }
 }
