@@ -1,27 +1,46 @@
 import { useState } from "react";
-import type { AgeBand, ActivityLevel, Plan, PlanMode, Profile, SafetyIntake, Sex } from "../types";
-import { heightToCm, heightUnit, weightToKg, weightUnit } from "../features/units";
+import type {
+  ActivityLevel,
+  AgeBand,
+  ExperienceLevel,
+  GoalDirection,
+  Plan,
+  PlanMode,
+  Profile,
+  SafetyIntake,
+  Sex,
+} from "../types";
 import { INJURY_REGIONS } from "../features/safety/injuryExclusions";
 import { requiresLoggingOnly, resolveSafeMode } from "../features/safety/intakeGate";
+import { recommendGoals } from "../features/goals";
+import { shiftDate, todayISO } from "../features/diary";
 import { DisclaimerCard, DISCLAIMER_SHORT } from "../components/DisclaimerCard";
 import { ProgramEditor } from "../components/ProgramEditor";
+import {
+  ActivityField,
+  AgeField,
+  BodyStatsFields,
+  DirectionField,
+  ExperienceField,
+  GoalWeightField,
+  PlanDatesField,
+  SexField,
+  weeksBetween,
+} from "../components/PlanFields";
 import { AlertTriangle, CheckIcon, CloseIcon } from "../components/icons";
-import { createPlan, type CreatePlanResult } from "../features/plan/generate";
+import { createPlan, type CreatePlanResult, type PlanStage } from "../features/plan/generate";
 import type { PlanInput } from "../features/plan/model";
 import { modeHasWorkouts, modeTracksFood } from "../features/plan/model";
 import type { WizardBody } from "../features/plan/planService";
+import type { ExerciseSet, ProgramWorkout } from "../types";
 
 type Step = "disclaimer" | "mode" | "safety" | "inputs" | "review";
 
 const APP_VERSION = typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev";
 
 interface Props {
-  /** Fired with the saved-ready Plan (and the body stats it collected, for
-   *  Profile reconciliation) when the user taps "Start the plan". */
   onComplete: (plan: Plan, body: WizardBody) => void;
-  /** Dismiss the wizard dialog without creating a plan. */
   onClose?: () => void;
-  /** Display units for the height/weight inputs (storage stays metric). */
   units?: Profile["units"];
 }
 
@@ -31,47 +50,60 @@ const MODE_CARDS: { mode: PlanMode; title: string; blurb: string; recommended?: 
   { mode: "get_fit", title: "Get fit", blurb: "Movement only — short, guided sessions." },
 ];
 
-const AGE_BANDS: { id: AgeBand; label: string }[] = [
-  { id: "under_18", label: "Under 18" },
-  { id: "18_39", label: "18–39" },
-  { id: "40_59", label: "40–59" },
-  { id: "60_plus", label: "60+" },
-];
+const STAGE_LABELS: Record<PlanStage, string> = {
+  calories: "Calculating your calories…",
+  workouts: "Building your workouts…",
+  checking: "Checking it's safe for you…",
+};
 
-const DURATIONS: { weeks: number; label: string }[] = [
-  { weeks: 1, label: "1 week" },
-  { weeks: 2, label: "2 weeks" },
-  { weeks: 3, label: "3 weeks" },
-  { weeks: 4, label: "1 month" },
-];
+function ageToBand(age: number): AgeBand {
+  if (age < 18) return "under_18";
+  if (age <= 39) return "18_39";
+  if (age <= 59) return "40_59";
+  return "60_plus";
+}
+
+/** Terse "3 × 10" / "4 × 30s" summary of an exercise's sets for the review list. */
+function setSummary(sets: ExerciseSet[]): string {
+  if (!sets.length) return "";
+  const s = sets[0]!;
+  const per = s.durationSec != null ? `${s.durationSec}s` : s.reps != null ? `${s.reps}` : "";
+  return per ? `${sets.length} × ${per}` : `${sets.length} sets`;
+}
 
 export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
   const [step, setStep] = useState<Step>("disclaimer");
 
   // Step 1
   const [mode, setMode] = useState<PlanMode>("both");
-  // Step 2 (safety intake)
-  const [ageBand, setAgeBand] = useState<AgeBand>("18_39");
+  // Step 2 (safety intake) — age is a number now; the band is derived.
+  const [age, setAge] = useState<number | undefined>(30);
   const [pregnant, setPregnant] = useState(false);
   const [cardiacFlag, setCardiacFlag] = useState(false);
   const [injuries, setInjuries] = useState<Set<string>>(new Set());
-  // Activity level isn't asked yet (keeps the intake short); default to light.
-  const activityLevel: ActivityLevel = "light";
   // Step 3 (inputs)
   const [goalText, setGoalText] = useState("");
-  const [durationWeeks, setDurationWeeks] = useState(2);
+  const [startDate, setStartDate] = useState(todayISO());
+  const [endDate, setEndDate] = useState(shiftDate(todayISO(), 13)); // ~2 weeks
   const [daysPerWeek, setDaysPerWeek] = useState(3);
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>("beginner");
   const [equipment, setEquipment] = useState("");
-  const [heightCm, setHeightCm] = useState("");
-  const [weightKg, setWeightKg] = useState("");
+  const [unitPref, setUnitPref] = useState<Profile["units"]>(units);
+  const [heightCm, setHeightCm] = useState<number | undefined>(undefined);
+  const [weightKg, setWeightKg] = useState<number | undefined>(undefined);
+  const [goalWeightKg, setGoalWeightKg] = useState<number | undefined>(undefined);
   const [sex, setSex] = useState<Sex>("female");
+  const [activityLevel, setActivityLevel] = useState<ActivityLevel>("moderate");
+  const [direction, setDirection] = useState<GoalDirection>("maintain");
   // Step 4 (review)
   const [preview, setPreview] = useState<CreatePlanResult | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [stage, setStage] = useState<PlanStage | null>(null);
   const [tweakOpen, setTweakOpen] = useState(false);
   const [tweakText, setTweakText] = useState("");
   const [editOpen, setEditOpen] = useState(false);
 
+  const ageBand = ageToBand(age ?? 30);
   const intake: SafetyIntake = {
     ageBand,
     pregnant,
@@ -84,15 +116,37 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
   const tracksFood = modeTracksFood(effectiveMode);
   const hasWorkouts = modeHasWorkouts(effectiveMode);
 
+  /** Calorie target computed from the profile (Mifflin) — the app owns this, so
+   *  a plan is never rejected just because the AI omitted the number. */
+  const localCalorieTarget = (): number | null => {
+    if (!tracksFood || heightCm == null || weightKg == null) return null;
+    const p: Profile = {
+      sex,
+      age: age ?? 30,
+      heightCm,
+      weightKg,
+      activityLevel,
+      direction,
+      units: unitPref,
+    };
+    return recommendGoals(p).calories;
+  };
+
   const buildInput = (extraGoal = ""): PlanInput => ({
     mode: effectiveMode,
     goalText: [goalText, extraGoal].filter(Boolean).join(". Also: "),
-    durationWeeks,
+    durationWeeks: weeksBetween(startDate, endDate),
+    startDate,
+    endDate,
     daysPerWeek: hasWorkouts ? daysPerWeek : undefined,
+    experienceLevel: hasWorkouts ? experienceLevel : undefined,
     equipment: hasWorkouts ? equipment : undefined,
-    heightCm: tracksFood && heightCm ? Math.round(heightToCm(Number(heightCm), units)) : undefined,
-    weightKg: tracksFood && weightKg ? Math.round(weightToKg(Number(weightKg), units) * 10) / 10 : undefined,
+    heightCm: tracksFood ? heightCm : undefined,
+    weightKg: tracksFood ? weightKg : undefined,
+    goalWeightKg: tracksFood && direction !== "maintain" ? goalWeightKg : undefined,
+    age: tracksFood ? age : undefined,
     sex: tracksFood ? sex : undefined,
+    calorieTarget: localCalorieTarget(),
     safety: intake,
   });
 
@@ -105,18 +159,18 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
     });
   };
 
-  // A preview plan is generated with a placeholder ack; the real liability
-  // timestamp is stamped only when the user taps "Start the plan".
   const PLACEHOLDER_ACK = { acknowledged: false, acceptedAt: "" };
 
   const runPreview = async (extraGoal = "") => {
     setPreviewLoading(true);
     setPreview(null);
+    setStage("calories");
     try {
-      const result = await createPlan(buildInput(extraGoal), PLACEHOLDER_ACK);
+      const result = await createPlan(buildInput(extraGoal), PLACEHOLDER_ACK, { onStage: setStage });
       setPreview(result);
     } finally {
       setPreviewLoading(false);
+      setStage(null);
     }
   };
 
@@ -125,26 +179,25 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
     void runPreview();
   };
 
-  const inputsValid = tracksFood ? Number(heightCm) > 0 && Number(weightKg) > 0 : true;
+  const inputsValid = tracksFood ? heightCm != null && weightKg != null : true;
 
   const start = () => {
     if (!preview) return;
     const plan: Plan = {
       ...preview.plan,
-      liability: {
-        acknowledged: true,
-        acceptedAt: new Date().toISOString(),
-        appVersion: APP_VERSION,
-      },
+      liability: { acknowledged: true, acceptedAt: new Date().toISOString(), appVersion: APP_VERSION },
     };
-    // Hand the body stats up too so the plan service can fill the Profile and
-    // the user never re-enters height/weight in settings.
     const body: WizardBody = {
       sex: tracksFood ? sex : undefined,
-      heightCm: tracksFood && heightCm ? Math.round(heightToCm(Number(heightCm), units)) : undefined,
-      weightKg: tracksFood && weightKg ? Math.round(weightToKg(Number(weightKg), units) * 10) / 10 : undefined,
+      heightCm: tracksFood ? heightCm : undefined,
+      weightKg: tracksFood ? weightKg : undefined,
+      goalWeightKg: tracksFood && direction !== "maintain" ? goalWeightKg : undefined,
+      age,
       ageBand,
       activityLevel,
+      experienceLevel: hasWorkouts ? experienceLevel : undefined,
+      direction: tracksFood ? direction : undefined,
+      units: unitPref,
     };
     onComplete(plan, body);
   };
@@ -158,9 +211,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
           </button>
         </div>
       )}
-      {step === "disclaimer" && (
-        <DisclaimerCard onAccept={() => setStep("mode")} />
-      )}
+      {step === "disclaimer" && <DisclaimerCard onAccept={() => setStep("mode")} />}
 
       {step === "mode" && (
         <div className="mode-body wizard-step">
@@ -193,14 +244,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
           <WizardHead n={2} title="A quick safety check" />
           <p className="muted small">This keeps your plan appropriate. Nothing leaves your device.</p>
 
-          <label className="field">
-            <span className="field-label">Age</span>
-            <select className="select" value={ageBand} onChange={(e) => setAgeBand(e.target.value as AgeBand)}>
-              {AGE_BANDS.map((a) => (
-                <option key={a.id} value={a.id}>{a.label}</option>
-              ))}
-            </select>
-          </label>
+          <AgeField age={age} onChange={setAge} />
 
           <label className="check-row">
             <input type="checkbox" checked={pregnant} onChange={(e) => setPregnant(e.target.checked)} />
@@ -249,44 +293,26 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
             <textarea
               className="text-area"
               rows={2}
-              placeholder="e.g. lose a few pounds and feel less winded on the stairs"
+              placeholder="e.g. lose a few pounds and get better at the Murph"
               value={goalText}
               onChange={(e) => setGoalText(e.target.value)}
             />
           </label>
 
-          <div className="field">
-            <span className="field-label">How long?</span>
-            <div className="chip-row">
-              {DURATIONS.map((d) => (
-                <button
-                  key={d.weeks}
-                  className={`chip${durationWeeks === d.weeks ? " active" : ""}`}
-                  onClick={() => setDurationWeeks(d.weeks)}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <PlanDatesField startDate={startDate} endDate={endDate} onStart={setStartDate} onEnd={setEndDate} hideStart />
 
           {hasWorkouts && (
             <>
               <label className="field">
                 <span className="field-label">Workout days per week: {daysPerWeek}</span>
-                <input
-                  type="range"
-                  min={1}
-                  max={6}
-                  value={daysPerWeek}
-                  onChange={(e) => setDaysPerWeek(Number(e.target.value))}
-                />
+                <input type="range" min={1} max={6} value={daysPerWeek} onChange={(e) => setDaysPerWeek(Number(e.target.value))} />
               </label>
+              <ExperienceField value={experienceLevel} onChange={setExperienceLevel} />
               <label className="field">
                 <span className="field-label">Equipment (optional)</span>
                 <input
                   className="text-input"
-                  placeholder="none / dumbbells / resistance band…"
+                  placeholder="none / dumbbells / pull-up bar…"
                   value={equipment}
                   onChange={(e) => setEquipment(e.target.value)}
                 />
@@ -295,23 +321,22 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
           )}
 
           {tracksFood && (
-            <div className="row gap">
-              <label className="field">
-                <span className="field-label">Height ({heightUnit(units)})</span>
-                <input className="text-input" inputMode="numeric" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
-              </label>
-              <label className="field">
-                <span className="field-label">Weight ({weightUnit(units)})</span>
-                <input className="text-input" inputMode="numeric" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
-              </label>
-              <label className="field">
-                <span className="field-label">Sex</span>
-                <select className="select" value={sex} onChange={(e) => setSex(e.target.value as Sex)}>
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                </select>
-              </label>
-            </div>
+            <>
+              <BodyStatsFields
+                units={unitPref}
+                heightCm={heightCm}
+                weightKg={weightKg}
+                onUnits={setUnitPref}
+                onHeightCm={setHeightCm}
+                onWeightKg={setWeightKg}
+              />
+              <SexField sex={sex} onChange={setSex} />
+              <ActivityField value={activityLevel} onChange={setActivityLevel} />
+              <DirectionField value={direction} onChange={setDirection} />
+              {direction !== "maintain" && (
+                <GoalWeightField units={unitPref} goalWeightKg={goalWeightKg} onChange={setGoalWeightKg} />
+              )}
+            </>
           )}
 
           <div className="wizard-nav">
@@ -330,13 +355,16 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
           {previewLoading || !preview ? (
             <div className="center-fill">
               <div className="spinner" />
-              <p className="muted small">Putting your plan together…</p>
+              <p className="muted small">{stage ? STAGE_LABELS[stage] : "Putting your plan together…"}</p>
             </div>
           ) : (
             <>
               {preview.usedFallback && (
                 <div className="notice notice-soft">
-                  <span>We used a safe starter plan for now — you can refine it any time.</span>
+                  <span>We used a safe starter plan for now — tweak it or regenerate any time.</span>
+                  {preview.failureReason && (
+                    <div className="muted small">Why the AI didn't generate one: {preview.failureReason}</div>
+                  )}
                 </div>
               )}
               <p className="plan-summary">{preview.gen.summary}</p>
@@ -349,12 +377,31 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
                 ))}
               </ul>
 
+              {preview.plan.program && preview.plan.program.workouts.length > 0 && (
+                <div className="plan-workouts">
+                  <div className="section-label">Your workouts</div>
+                  {preview.plan.program.workouts.map((pw: ProgramWorkout) => (
+                    <div className="plan-workout" key={pw.id}>
+                      <div className="plan-workout-name">{pw.workout.name}</div>
+                      <ul className="plan-exercise-list">
+                        {pw.workout.exercises.map((e) => (
+                          <li key={e.id}>
+                            <span className="pe-name">{e.name}</span>
+                            <span className="pe-sets">{setSummary(e.sets)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {tweakOpen && (
                 <label className="field">
                   <span className="field-label">What should change?</span>
                   <input
                     className="text-input"
-                    placeholder="e.g. more walking, less time in the kitchen"
+                    placeholder="e.g. more running, add a rest day"
                     value={tweakText}
                     onChange={(e) => setTweakText(e.target.value)}
                   />
@@ -377,9 +424,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
               </div>
 
               <div className="wizard-nav">
-                {!tweakOpen && (
-                  <button className="btn" onClick={() => setTweakOpen(true)}>Tweak it</button>
-                )}
+                {!tweakOpen && <button className="btn" onClick={() => setTweakOpen(true)}>Tweak it</button>}
                 {preview.plan.program && (
                   <button className="btn" onClick={() => setEditOpen(true)}>Edit workouts</button>
                 )}
@@ -393,12 +438,10 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
                   program={preview.plan.program}
                   mode={preview.plan.mode}
                   injuries={intake.injuries}
-                  units={units}
+                  units={unitPref}
                   onCancel={() => setEditOpen(false)}
                   onSave={(updated) => {
-                    setPreview((prev) =>
-                      prev ? { ...prev, plan: { ...prev.plan, program: updated } } : prev,
-                    );
+                    setPreview((prev) => (prev ? { ...prev, plan: { ...prev.plan, program: updated } } : prev));
                     setEditOpen(false);
                   }}
                 />

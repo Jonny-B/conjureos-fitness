@@ -34,7 +34,9 @@ const DIRECTION_DELTA: Record<GoalDirection, number> = {
 
 export function bmrMifflin(p: Profile): number {
   const base = 10 * p.weightKg + 6.25 * p.heightCm - 5 * p.age;
-  return p.sex === "male" ? base + 5 : base - 161;
+  // Undisclosed sex uses the male constant (the higher, safer estimate),
+  // matching the kcal floor default.
+  return p.sex === "female" ? base - 161 : base + 5;
 }
 
 export function tdee(p: Profile): number {
@@ -59,7 +61,7 @@ export function macrosForCalories(calories: number, weightKg: number): Omit<Goal
  * at a safe minimum; macros via `macrosForCalories`.
  */
 export function recommendGoals(p: Profile): Goals {
-  const minCalories = p.sex === "male" ? 1500 : 1200;
+  const minCalories = p.sex === "female" ? 1200 : 1500;
   const calories = Math.max(minCalories, Math.round(tdee(p) + DIRECTION_DELTA[p.direction]));
   return { calories, ...macrosForCalories(calories, p.weightKg) };
 }

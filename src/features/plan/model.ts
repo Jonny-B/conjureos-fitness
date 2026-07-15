@@ -6,24 +6,44 @@
  * fallback can share these without importing each other.
  */
 
-import type { PlanGoal, PlanMode, SafetyIntake, Sex, WorkoutProgram } from "../../types";
+import type {
+  ExperienceLevel,
+  PlanGoal,
+  PlanMode,
+  SafetyIntake,
+  Sex,
+  WorkoutProgram,
+} from "../../types";
 
-/** Everything the 4-step wizard gathers before generating a plan. */
+/** Everything the wizard gathers before generating a plan. */
 export interface PlanInput {
   mode: PlanMode;
   /** Free-text goal, e.g. "lose a few pounds and feel less winded". */
   goalText: string;
-  /** 1–4. */
+  /** Plan length in weeks (derived from the start/end dates). */
   durationWeeks: number;
+  /** Inclusive plan dates (YYYY-MM-DD); start defaults to today. */
+  startDate?: string;
+  endDate?: string;
   /** Workout days per week (get_fit / both). */
   daysPerWeek?: number;
+  /** Training background — tunes workout difficulty. */
+  experienceLevel?: ExperienceLevel;
   /** Equipment on hand, free text or "none". */
   equipment?: string;
   /** Required when calorie tracking (eat_better / both). */
   heightCm?: number;
   weightKg?: number;
-  /** Used for the sex-specific kcal floor. */
+  /** Target weight in kg (lose/gain goals); referenced in the plan. */
+  goalWeightKg?: number;
+  /** Age in years (for the calorie estimate). */
+  age?: number;
+  /** Used for the sex-specific kcal floor + calorie estimate. */
   sex?: Sex;
+  /** Daily calorie target computed locally from the profile (Mifflin). When
+   *  set, it fills/overrides the AI's number so a missing AI target can't force
+   *  the fallback template — see createPlan. */
+  calorieTarget?: number | null;
   safety: SafetyIntake;
 }
 

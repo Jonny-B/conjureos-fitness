@@ -2219,6 +2219,35 @@ body {
   min-width: 0;
 }
 
+/* ── Shared plan fields (wizard + cog) ────────────────────────────────── */
+/* Height/weight row with the units toggle to their left. */
+.body-stats {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: 10px;
+  align-items: end;
+}
+.units-toggle { flex-wrap: nowrap; }
+.units-toggle .chip { padding: 7px 10px; font-size: 12px; }
+.plan-dates { align-items: end; gap: 14px; }
+.plan-dates .field { flex: 1 1 0; min-width: 0; }
+.plan-dates .text-input { width: 100%; }
+
+/* Review-step workout list — surfaces the actual AI-authored exercises. */
+.plan-workouts { display: flex; flex-direction: column; gap: 10px; }
+.plan-workout {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+}
+.plan-workout-name { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+.plan-exercise-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.plan-exercise-list li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.plan-exercise-list .pe-sets { color: var(--muted); flex: 0 0 auto; }
+
+.btn.danger-subtle { color: var(--cui-accent, #ef4444); }
+
 /* ── W2: exercise explainer dropdown ──────────────────────────────────── */
 .explainer { width: 100%; max-width: 340px; margin: 6px auto 0; }
 .explainer-toggle { display: block; margin: 0 auto; }
@@ -2416,3 +2445,152 @@ body {
   .snap-cta-card, .snap-spinner, .disclosure-chevron { transition: none; animation: none; }
   .scanner-line { animation: none; top: 50%; }
 }
+
+/* ── Coach (Phase 2): check-ins + trainer chat ─────────────────────── */
+
+.checkin-form { display: flex; flex-direction: column; gap: 18px; }
+.checkin-q { display: flex; flex-direction: column; gap: 8px; }
+.checkin-q-text { font-size: 15px; font-weight: 600; }
+.checkin-scale { display: flex; align-items: center; gap: 10px; }
+.checkin-scale-label { font-size: 11px; color: var(--muted); flex: 0 0 auto; max-width: 72px; }
+.checkin-scale .chip-row { flex: 1; justify-content: center; flex-wrap: nowrap; }
+.checkin-scale .chip,
+.coach-suggestions .chip {
+  padding: 8px 14px;
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: normal;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.checkin-scale .chip.active {
+  border-color: var(--accent);
+  background: var(--cui-accent-mute, rgba(124, 106, 247, 0.14));
+  color: var(--accent);
+}
+.checkin-text { resize: vertical; }
+.checkin-sheet .center-fill { min-height: 160px; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; }
+.checkin-banner .setup-banner-text::before { content: "💬 "; }
+
+.coach-reply-card {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  padding: 14px 16px;
+  margin: 8px 0 16px;
+}
+.coach-reply-card p { margin: 6px 0 0; line-height: 1.5; }
+.coach-reply-tag {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  font-weight: 700;
+}
+.coach-plan-note { margin-top: 10px; font-size: 13px; color: var(--good); }
+.coach-reflect .center-fill { display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; min-height: 200px; }
+
+/* Trainer chat */
+.coach-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.coach-thread {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 0 12px;
+}
+.coach-empty { text-align: center; padding: 32px 12px 8px; }
+.coach-empty h2 { margin: 0 0 8px; }
+.coach-empty p { margin: 0 auto 16px; max-width: 420px; line-height: 1.5; }
+.coach-suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.coach-msg {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  line-height: 1.45;
+  font-size: 15px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.coach-msg.user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 6px;
+}
+.coach-msg.assistant {
+  align-self: flex-start;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 6px;
+}
+.coach-msg.typing { color: var(--muted); letter-spacing: 2px; }
+.coach-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  position: sticky;
+  bottom: 0;
+}
+.coach-input { flex: 1; resize: none; min-height: 42px; max-height: 120px; }
+
+/* ── Pre-workout overview / splash (tap a workout → overview → Start) ───── */
+
+.workout-overview { display: flex; flex-direction: column; gap: 14px; padding-bottom: 96px; }
+.overview-head { display: flex; flex-direction: column; gap: 8px; }
+.overview-title {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.15;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.overview-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.overview-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.overview-description { margin: 0; line-height: 1.55; color: var(--text); }
+
+.overview-exercises { display: flex; flex-direction: column; gap: 8px; }
+.overview-ex-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.overview-ex {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  padding: 12px 14px;
+}
+.overview-ex-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.overview-ex-name { font-weight: 600; }
+.overview-ex-sets { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.overview-ex-notes { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+.overview-actions {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: calc(var(--tabbar-h) + var(--version-h));
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+.overview-actions .overview-start { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }

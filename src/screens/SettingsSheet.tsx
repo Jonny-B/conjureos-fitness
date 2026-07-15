@@ -1,13 +1,21 @@
 import { useState, type ReactNode } from "react";
-import type { ActivityLevel, GoalDirection, Goals, Plan, PlanGoal, PlanMode, Profile, Sex } from "../types";
+import type { ActivityLevel, ExperienceLevel, GoalDirection, Goals, Plan, PlanGoal, PlanMode, Profile, Sex } from "../types";
 import { DEFAULT_GOALS, DEFAULT_PROFILE } from "../types";
 import { getRepository } from "../data/repository";
 import { ACTIVITY_LABELS, recommendGoals } from "../features/goals";
 import { goalsToTargets, saveProgram, targetsToGoals, updatePlan } from "../features/plan/planService";
 import { ProgramEditor } from "../components/ProgramEditor";
+import { GoalWeightField, PlanDatesField, weeksBetween } from "../components/PlanFields";
 import { NumberField } from "../components/NumberField";
 import { heightToCm, heightToDisplay, heightUnit, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { CloseIcon } from "../components/icons";
+
+const EXPERIENCE_LABELS: Record<ExperienceLevel, string> = {
+  beginner: "Beginner",
+  intermediate: "Intermediate",
+  advanced: "Advanced",
+};
+const SEX_OPTS: Record<Sex, string> = { female: "Female", male: "Male", not_shared: "Not Shared" };
 
 /** Which surface the settings sheet opens on. "program" deep-links straight to
  *  the workout-program editor (e.g. from the Workouts tab's "Edit plan"). */
@@ -65,6 +73,7 @@ export function SettingsSheet({
   onClose,
   onSave,
   onPlanChange,
+  onStartNewPlan,
 }: {
   goals: Goals;
   profile: Profile | null;
@@ -73,12 +82,16 @@ export function SettingsSheet({
   onClose: () => void;
   onSave: (goals: Goals, profile: Profile) => void;
   onPlanChange: (plan: Plan) => void;
+  /** Open the wizard to rebuild the whole plan (history is preserved). */
+  onStartNewPlan: () => void;
 }) {
   const [p, setP] = useState<ProfileDraft>(profile ?? DEFAULT_PROFILE);
   // Nutrition targets shown reflect the plan when it drives them.
   const [g, setG] = useState<GoalsDraft>(targetsToGoals(plan, goals));
   const [mode, setMode] = useState<PlanMode>(plan?.mode ?? "both");
   const [planGoals, setPlanGoals] = useState<PlanGoal[]>(plan?.goals ?? []);
+  const [startDate, setStartDate] = useState(plan?.startDate ?? "");
+  const [endDate, setEndDate] = useState(plan?.endDate ?? "");
   const [view, setView] = useState<SettingsView>(
     initialView === "program" && plan?.program ? "program" : "main",
   );
@@ -99,7 +112,14 @@ export function SettingsSheet({
       if (plan) {
         const { plan: next, goals: ng } = await updatePlan(
           plan,
-          { mode, goals: planGoals, targets: goalsToTargets(fg) },
+          {
+            mode,
+            goals: planGoals,
+            targets: goalsToTargets(fg),
+            ...(startDate && endDate
+              ? { startDate, endDate, durationWeeks: weeksBetween(startDate, endDate) }
+              : {}),
+          },
           { currentGoals: fg },
         );
         onPlanChange(next);
@@ -147,8 +167,9 @@ export function SettingsSheet({
           <div className="form-grid">
             <Field label="Sex">
               <select className="select" value={p.sex} onChange={(e) => set("sex", e.target.value as Sex)}>
-                <option value="female">Female</option>
-                <option value="male">Male</option>
+                {(Object.keys(SEX_OPTS) as Sex[]).map((s) => (
+                  <option key={s} value={s}>{SEX_OPTS[s]}</option>
+                ))}
               </select>
             </Field>
             <Field label="Age">
@@ -206,6 +227,26 @@ export function SettingsSheet({
             </select>
           </Field>
 
+          {p.direction !== "maintain" && (
+            <GoalWeightField
+              units={p.units}
+              goalWeightKg={p.goalWeightKg}
+              onChange={(kg) => set("goalWeightKg", kg)}
+            />
+          )}
+
+          <Field label="Experience level">
+            <select
+              className="select"
+              value={p.experienceLevel ?? "beginner"}
+              onChange={(e) => set("experienceLevel", e.target.value as ExperienceLevel)}
+            >
+              {(Object.keys(EXPERIENCE_LABELS) as ExperienceLevel[]).map((k) => (
+                <option key={k} value={k}>{EXPERIENCE_LABELS[k]}</option>
+              ))}
+            </select>
+          </Field>
+
           <div className="section-label">
             Daily targets
             <button className="link-btn section-action" onClick={applyRecommended}>
@@ -241,6 +282,18 @@ export function SettingsSheet({
                 </select>
               </Field>
 
+              {startDate && endDate && (
+                <div className="field">
+                  <span>Plan dates</span>
+                  <PlanDatesField
+                    startDate={startDate}
+                    endDate={endDate}
+                    onStart={setStartDate}
+                    onEnd={setEndDate}
+                  />
+                </div>
+              )}
+
               {planGoals.length > 0 && (
                 <div className="field">
                   <span>Plan goals</span>
@@ -269,6 +322,14 @@ export function SettingsSheet({
                   Edit workout program
                 </button>
               )}
+
+              <button className="btn block danger-subtle" onClick={onStartNewPlan}>
+                Start a new plan
+              </button>
+              <div className="muted small">
+                Rebuilds your goals &amp; workouts from the wizard. Your logged food, weight, and
+                completed workouts are kept.
+              </div>
             </>
           )}
         </div>
