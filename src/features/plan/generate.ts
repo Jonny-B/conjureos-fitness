@@ -10,7 +10,7 @@
  * assembled, ready-to-save domain `Plan` plus whether the fallback was used.
  */
 
-import type { LiabilityAck, Plan, PlanGoal, PlanTargets } from "../../types";
+import type { LiabilityAck, Plan, PlanGoal, PlanTargets, WorkoutProgram } from "../../types";
 import { complete, isAiAvailable } from "../../bridge/ai";
 import { newId } from "../../data/id";
 import { shiftDate, todayISO } from "../diary";
@@ -19,32 +19,45 @@ import { movementsExcludedFor } from "../safety/injuryExclusions";
 import type { GeneratedGoal, GeneratedPlan, PlanInput } from "./model";
 import { modeHasWorkouts, modeTracksFood } from "./model";
 import { parseProgram } from "./program";
-import { validatePlan } from "./validate";
-import { fallbackPlan } from "./fallbackTemplates";
+import { validatePlan, validateProgram } from "./validate";
+import { fallbackPlan, fallbackProgram } from "./fallbackTemplates";
 
-const SYSTEM = `You are a wellness coach, not a doctor. You give friendly suggestions, not medical prescriptions.
-Design a specific, personalized wellness plan from the user's inputs — tailored to THEIR stated goal, experience level, equipment, and schedule. Avoid generic filler. Return ONLY a JSON object:
+/**
+ * Generation is split into TWO calls, not one, on purpose. A single call for
+ * "goals + a full multi-workout program" overflows the model's output budget
+ * and gets truncated mid-JSON — which threw away the WHOLE plan (goals and all)
+ * as "couldn't be understood," forcing the starter template every time. A valid
+ * plan only needs goals (the program is optional), so we generate the small,
+ * truncation-proof core first, then the bulky program as a separate best-effort
+ * step whose failure can't sink the plan.
+ */
+const SYSTEM_CORE = `You are a wellness coach, not a doctor. You give friendly suggestions, not medical prescriptions.
+Design a specific, personalized wellness plan from the user's inputs — tailored to THEIR stated goal, experience level, and schedule. Avoid generic filler. Return ONLY a small JSON object:
   { "summary": string,
     "dailyCalorieTarget": number | null,
-    "goals": [ { "label": string, "kind": "nutrition" | "workout" | "habit", "detail"?: string } ],
-    "program"?: {
-      "workouts": [ { "name": string, "kind"?: "strength" | "run" | "bike",
-                      "description"?: string,
-                      "exercises": [ { "name": string,
-                                       "sets": [ { "reps"?: number, "durationSec"?: number, "restSec"?: number, "weightKg"?: number } ],
-                                       "notes"?: string } ] } ],
-      "benchmark": { "exercise": string, "metric": "reps" | "weightKg" | "durationSec" | "distanceKm", "target": number, "unit": string, "lowerIsBetter"?: boolean }
-    } }
+    "goals": [ { "label": string, "kind": "nutrition" | "workout" | "habit", "detail"?: string } ] }
 Rules:
 - "summary" is one encouraging sentence naming what THIS plan will do for their specific goal.
 - "dailyCalorieTarget" is optional — if unsure, use null; the app supplies its own number.
 - 3 to 6 goals, each a short daily/weekly action tied to their goal. Use "nutrition" for food, "workout" for exercise, "habit" for everything else. For a "workout" goal, put the specific movements in "detail".
-- Include "program" whenever the mode prescribes workouts (get_fit / both). Make it SPECIFIC to their goal and experience:
-  - Give one workout per training day (match "days per week"), up to 6, each a distinct session (e.g. push / pull / legs / conditioning), 3-8 exercises each. Give each workout a 1-2 sentence "description" saying what it trains and how to approach it.
-  - If the user named a specific target (e.g. "the Murph", a 5k, a pull-up), build the workouts to train for it and set the benchmark to that exact effort.
-  - Scale difficulty to experience: beginner = form + lighter volume; intermediate/advanced = higher volume, progression, named lifts. Include a warmup note in the first exercise's "notes".
-  - Sets have reps OR durationSec, plus restSec (metric units: kg, km, seconds).
-  - EXACTLY ONE benchmark: a single measurable effort the plan improves; its exercise SHOULD appear in a workout. set lowerIsBetter=true for a timed effort.
+- Do NOT include a workout program here — only the fields above. Keep it short.
+- Respect any HARD SAFETY avoid-list exactly.
+- Output ONLY the JSON. No prose, no markdown fences.`;
+
+const SYSTEM_PROGRAM = `You are a wellness coach designing a workout program for a plan whose goals are already set.
+Return ONLY a JSON object with the program:
+  { "workouts": [ { "name": string, "kind"?: "strength" | "run" | "bike",
+                    "description"?: string,
+                    "exercises": [ { "name": string,
+                                     "sets": [ { "reps"?: number, "durationSec"?: number, "restSec"?: number, "weightKg"?: number } ],
+                                     "notes"?: string } ] } ],
+    "benchmark": { "exercise": string, "metric": "reps" | "weightKg" | "durationSec" | "distanceKm", "target": number, "unit": string, "lowerIsBetter"?: boolean } }
+Rules:
+- Give one workout per training day (match "days per week"), up to 6, each a distinct session (e.g. push / pull / legs / conditioning), 3-8 exercises each. Give each workout a 1-2 sentence "description" saying what it trains and how to approach it.
+- If the user named a specific target (e.g. "the Murph", a 5k, a pull-up), build the workouts to train for it and set the benchmark to that exact effort.
+- Scale difficulty to experience: beginner = form + lighter volume; intermediate/advanced = higher volume, progression, named lifts. Include a warmup note in the first exercise's "notes".
+- Sets have reps OR durationSec, plus restSec (metric units: kg, km, seconds).
+- EXACTLY ONE benchmark: a single measurable effort the plan improves; its exercise SHOULD appear in a workout. set lowerIsBetter=true for a timed effort.
 - Respect the user's equipment and any HARD SAFETY avoid-list exactly.
 - Output ONLY the JSON. No prose, no markdown fences.`;
 
@@ -149,17 +162,32 @@ function coerceGoal(g: unknown): GeneratedGoal | null {
   return detail ? { label, kind, detail } : { label, kind };
 }
 
-function parseGenerated(raw: string): GeneratedPlan | null {
+/** Why a core parse failed — drives a specific, non-generic failure reason. */
+type CoreFail = "truncated" | "invalid_json" | "no_goals";
+
+type CoreParse = { plan: GeneratedPlan } | { plan: null; kind: CoreFail };
+
+/**
+ * Parse the CORE response (summary + calories + goals; no program). A valid plan
+ * needs only goals, so this is the truncation-proof half. Returns a typed
+ * failure so the caller can tell "came back too long" from "no goals" instead of
+ * the old catch-all "couldn't be understood".
+ */
+function parseCore(raw: string): CoreParse {
+  const extracted = extractJson(raw);
   let json: unknown;
   try {
-    json = JSON.parse(extractJson(raw));
+    json = JSON.parse(extracted);
   } catch {
-    return null;
+    // A response cut off mid-object won't end in a closing brace — distinguish
+    // "too long / truncated" from genuinely malformed JSON.
+    const truncated = extracted.trim().length > 0 && !extracted.trimEnd().endsWith("}");
+    return { plan: null, kind: truncated ? "truncated" : "invalid_json" };
   }
-  if (!json || typeof json !== "object") return null;
+  if (!json || typeof json !== "object") return { plan: null, kind: "invalid_json" };
   const o = json as Record<string, unknown>;
   // Some models nest everything under a top-level "plan" wrapper.
-  const inner = (o.plan && typeof o.plan === "object" ? (o.plan as Record<string, unknown>) : o);
+  const inner = o.plan && typeof o.plan === "object" ? (o.plan as Record<string, unknown>) : o;
 
   // Goals may arrive as an array (of objects OR strings) or an object map.
   const rawGoals = Array.isArray(inner.goals)
@@ -172,30 +200,85 @@ function parseGenerated(raw: string): GeneratedPlan | null {
     const goal = coerceGoal(g);
     if (goal) goals.push(goal);
   }
-  if (goals.length === 0) return null;
-  const program = parseProgram(inner.program) ?? undefined;
+  if (goals.length === 0) return { plan: null, kind: "no_goals" };
   const summary =
     typeof inner.summary === "string" ? inner.summary.trim().slice(0, 200)
     : typeof inner.overview === "string" ? (inner.overview as string).trim().slice(0, 200)
     : "Your plan";
   return {
-    summary,
-    dailyCalorieTarget: clampKcal(inner.dailyCalorieTarget ?? inner.calorieTarget ?? inner.calories),
-    goals,
-    ...(program ? { program } : {}),
+    plan: {
+      summary,
+      dailyCalorieTarget: clampKcal(inner.dailyCalorieTarget ?? inner.calorieTarget ?? inner.calories),
+      goals,
+    },
   };
 }
 
-/** One AI generation attempt. Throws on transport error; returns null on unparseable output. */
-export async function generatePlan(input: PlanInput, priorReasons?: string[]): Promise<GeneratedPlan | null> {
+/** Program-generation prompt: the same context, plus the goals we just made. */
+function buildProgramPrompt(input: PlanInput, goals: GeneratedGoal[]): string {
+  const base = buildUserPrompt(input);
+  const goalList = goals.map((g) => `- ${g.label}${g.detail ? ` (${g.detail})` : ""}`).join("\n");
+  return `${base}\nThe plan's goals are:\n${goalList}\nDesign the workout program that delivers these goals.`;
+}
+
+/** Generate the core plan (goals). Throws on transport error; typed failure otherwise. */
+async function generateCore(input: PlanInput, priorReasons?: string[]): Promise<CoreParse> {
   const raw = await complete({
-    system: SYSTEM,
+    system: SYSTEM_CORE,
     messages: [{ role: "user", content: buildUserPrompt(input, priorReasons) }],
-    maxTokens: 2048,
+    maxTokens: 900,
     tier: "capable",
   });
-  return parseGenerated(raw);
+  const res = parseCore(raw);
+  if (!res.plan && import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.warn(`[plan-gen] core parse failed (${res.kind}):\n${raw}`);
+  }
+  return res;
 }
+
+/**
+ * Generate the workout program (best-effort). Returns null on any failure —
+ * truncation, transport error, or unparseable output — so the caller can fall
+ * back to a template program without sinking the (already valid) plan.
+ */
+async function generateProgram(input: PlanInput, goals: GeneratedGoal[]): Promise<WorkoutProgram | null> {
+  let raw: string;
+  try {
+    raw = await complete({
+      system: SYSTEM_PROGRAM,
+      messages: [{ role: "user", content: buildProgramPrompt(input, goals) }],
+      maxTokens: 2600,
+      tier: "capable",
+    });
+  } catch {
+    return null;
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(extractJson(raw));
+  } catch {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn(`[plan-gen] program parse failed:\n${raw}`);
+    }
+    return null;
+  }
+  const o = json && typeof json === "object" ? (json as Record<string, unknown>) : {};
+  // Accept either a bare program object or one wrapped in { program: {...} }.
+  const progObj = o.program && typeof o.program === "object" ? o.program : o;
+  return parseProgram(progObj);
+}
+
+const CORE_FAIL_MESSAGE: Record<CoreFail, string> = {
+  truncated: "the AI plan came back too long to finish",
+  invalid_json: "the AI response wasn't valid JSON",
+  no_goals: "the AI response didn't include any goals",
+};
+
+const CORE_RETRY_HINT = [
+  'return ONLY a short JSON object with a top-level "goals" array of 3-6 items, each { "label": string, "kind": "nutrition"|"workout"|"habit" } — no workout program',
+];
 
 /** Convert a generated plan + wizard inputs + ack into the persisted domain Plan. */
 export function buildPlan(gen: GeneratedPlan, input: PlanInput, liability: LiabilityAck): Plan {
@@ -278,27 +361,42 @@ export async function createPlan(
   if (!isAiAvailable()) {
     lastError = "the AI service isn't available in this environment";
   } else {
+    const injuries = input.safety.injuries ?? [];
     for (let attempt = 0; attempt < 2; attempt++) {
       onStage?.("workouts");
       try {
-        const raw = await generatePlan(input, attempt > 0 ? lastReasons : undefined);
-        if (!raw) {
-          lastError = "the AI response couldn't be understood";
-          // Give the retry concrete guidance instead of repeating the mistake.
-          lastReasons = [
-            'return ONLY a JSON object with a top-level "goals" array of 3-6 items, each { "label": string, "kind": "nutrition"|"workout"|"habit" }',
-          ];
+        // 1. Core goals — the small, truncation-proof half. A valid plan needs
+        //    only this.
+        const core = await generateCore(input, attempt > 0 ? lastReasons : undefined);
+        if (!core.plan) {
+          lastError = CORE_FAIL_MESSAGE[core.kind];
+          lastReasons = CORE_RETRY_HINT;
           continue;
         }
-        const candidate = withTarget(raw);
+        let candidate = withTarget(core.plan);
         onStage?.("checking");
-        await sleep(500);
+        await sleep(300);
         const v = validatePlan(candidate, ctx);
-        if (v.ok) {
-          return { plan: buildPlan(candidate, input, liability), gen: candidate, usedFallback: false };
+        if (!v.ok) {
+          lastReasons = v.reasons;
+          lastError = undefined;
+          continue;
         }
-        lastReasons = v.reasons;
-        lastError = undefined;
+
+        // 2. Program — bulky + optional. Best-effort AI program (kept only if it
+        //    passes the same safety rails), else the known-safe starter program
+        //    so the Workouts tab isn't empty. Never sinks the AI plan.
+        if (modeHasWorkouts(input.mode)) {
+          onStage?.("workouts");
+          const aiProg = await generateProgram(input, core.plan.goals).catch(() => null);
+          if (aiProg && validateProgram(aiProg, input.mode, injuries).length === 0) {
+            candidate = { ...candidate, program: aiProg };
+          } else {
+            const tmpl = fallbackProgram(input.mode, injuries);
+            if (tmpl) candidate = { ...candidate, program: tmpl };
+          }
+        }
+        return { plan: buildPlan(candidate, input, liability), gen: candidate, usedFallback: false };
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
       }

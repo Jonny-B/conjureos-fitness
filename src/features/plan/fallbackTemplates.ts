@@ -64,7 +64,7 @@ const TEMPLATES: Record<PlanMode, GeneratedPlan> = {
  * exercises survive) the program is omitted entirely — a plan is still valid
  * without one.
  */
-function fallbackProgram(mode: PlanMode, injuries: string[]): WorkoutProgram | undefined {
+export function fallbackProgram(mode: PlanMode, injuries: string[]): WorkoutProgram | undefined {
   if (!modeHasWorkouts(mode)) return undefined;
 
   const seed: { name: string; sets: Exercise["sets"]; notes?: string }[] = [
