@@ -12,6 +12,21 @@ import { todayISO } from "../features/diary";
 import { weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { Sparkline } from "./Sparkline";
 
+/**
+ * The weight to show, in kg: the newest weigh-in if there is one, else the
+ * weight entered in the plan wizard (Profile.weightKg). `fromProfile` marks the
+ * latter so the card can caption it. Null only when nothing is known yet.
+ */
+export function pickWeightKg(
+  weights: WeightEntry[],
+  profile: Profile | null,
+): { kg: number | null; fromProfile: boolean } {
+  const latest = weights[0];
+  if (latest) return { kg: latest.weightKg, fromProfile: false };
+  if (profile && profile.weightKg > 0) return { kg: profile.weightKg, fromProfile: true };
+  return { kg: null, fromProfile: false };
+}
+
 export function WeightCard({ profile }: { profile: Profile | null }) {
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [input, setInput] = useState("");
@@ -43,6 +58,11 @@ export function WeightCard({ profile }: { profile: Profile | null }) {
       ? Math.round(changeKg * 2.2046226218 * 10) / 10
       : Math.round(changeKg * 10) / 10;
 
+  // Always show the last known weight: the newest weigh-in, else the weight the
+  // user entered in the plan wizard (Profile.weightKg). Only genuinely-unknown
+  // (profile still loading, or never set) shows a prompt instead of a stat.
+  const { kg: latestKg, fromProfile } = pickWeightKg(weights, profile);
+
   return (
     <section className="home-card weight-card">
       <div className="home-card-head">
@@ -54,13 +74,18 @@ export function WeightCard({ profile }: { profile: Profile | null }) {
           </span>
         )}
       </div>
-      <div className="weight-card-body">
-        <div className="big-stat">
-          <span className="big-number">{latest ? weightToDisplay(latest.weightKg, units) : "—"}</span>
-          <span className="big-unit">{weightUnit(units)}</span>
+      {latestKg == null ? (
+        <div className="weight-empty muted">Log your first weigh-in to start tracking.</div>
+      ) : (
+        <div className="weight-card-body">
+          <div className="big-stat">
+            <span className="big-number">{weightToDisplay(latestKg, units)}</span>
+            <span className="big-unit">{weightUnit(units)}</span>
+            {fromProfile && <span className="big-note muted">from your plan</span>}
+          </div>
+          <Sparkline points={[...weights].reverse().map((w) => w.weightKg)} />
         </div>
-        <Sparkline points={[...weights].reverse().map((w) => w.weightKg)} />
-      </div>
+      )}
       <div className="row gap weigh-in">
         <input
           className="text-input"

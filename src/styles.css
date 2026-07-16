@@ -1966,6 +1966,15 @@ button.home-card:hover {
   min-width: 0;
   height: 48px;
 }
+.big-note {
+  display: block;
+  font-size: 11px;
+  margin-top: 2px;
+}
+.weight-empty {
+  font-size: 14px;
+  padding: 8px 0 14px;
+}
 .coach-card-plan {
   display: flex;
   align-items: baseline;
