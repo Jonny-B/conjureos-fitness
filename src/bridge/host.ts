@@ -51,6 +51,18 @@ declare global {
        */
       whoami?: () => Promise<HostWhoami>;
     };
+    /**
+     * First-party identity token (ConjureOS Phase 16c-hardening reuse). Mints a
+     * short-lived, origin-scoped ConjureOS token (signed by mint-app-token,
+     * `sub` = user id, `aud` = this project's origin) that an app forwards to a
+     * ConjureOS backend to prove who the user is — WITHOUT the raw Supabase
+     * session ever entering the WebView. This is the ONLY way to authenticate a
+     * community-DB write on mobile, where `auth.getAccessToken` returns null by
+     * design. Gated behind a one-time consent. Absent on hosts that predate it.
+     */
+    identity?: {
+      token?: () => Promise<{ token: string; expiresIn: number } | null>;
+    };
     /** Read-only mirror ConjureOS already injects today. */
     signedIn?: boolean;
   }
@@ -85,6 +97,24 @@ export async function getAccessToken(): Promise<string | null> {
   if (!fn) return null;
   try {
     return await fn();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A short-lived minted ConjureOS identity token to authenticate a first-party
+ * ConjureOS backend call (e.g. contributing to the community food DB) when the
+ * raw session isn't available in the WebView — the mobile case. Returns null
+ * when the host predates the bridge, the user declined consent, or minting
+ * failed; callers then fall back to `getAccessToken()` (desktop) or degrade.
+ */
+export async function getIdentityToken(): Promise<string | null> {
+  const fn = window.__conjureos?.identity?.token;
+  if (typeof fn !== "function") return null;
+  try {
+    const res = await fn();
+    return res?.token ?? null;
   } catch {
     return null;
   }

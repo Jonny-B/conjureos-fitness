@@ -91,7 +91,7 @@ export function EditableNutritionPreview({
     }
     setSave({
       phase: "failed",
-      message: "Logged to your diary. Sign in to share your edit with the community.",
+      message: "Logged to your diary. We couldn't share your edit with the community this time.",
     });
     setTimeout(() => onConfirm(food), 900);
   };

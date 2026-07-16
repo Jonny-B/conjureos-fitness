@@ -11,7 +11,7 @@
  */
 
 import type { FoodItem } from "../../types";
-import { getAccessToken } from "../../bridge/host";
+import { getAccessToken, getIdentityToken } from "../../bridge/host";
 
 const FN_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)
   ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/health-foods-db`
@@ -57,13 +57,25 @@ interface HealthFoodApi {
   attributionText: string | null;
 }
 
+/** Actions that WRITE to the community DB — these need a verified identity. On
+ *  mobile the raw session token isn't in the WebView, so we mint a first-party
+ *  ConjureOS token (which prompts a one-time consent) rather than falling back
+ *  to the anon key (which the server rejects). Reads stay anon. */
+const WRITE_ACTIONS = new Set(["submit", "flag"]);
+
 async function call<T>(
   action: string,
   payload: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T | null> {
   if (!FN_URL || !ANON) return null;
-  const token = await getAccessToken().catch(() => null);
+  // Prefer the raw session token when the app can read it (desktop). For writes,
+  // fall back to a minted identity token (mobile) so a signed-in user can still
+  // contribute even though the JWT never enters the WebView there.
+  let token = await getAccessToken().catch(() => null);
+  if (!token && WRITE_ACTIONS.has(action)) {
+    token = await getIdentityToken().catch(() => null);
+  }
   try {
     const resp = await fetch(FN_URL, {
       method: "POST",
