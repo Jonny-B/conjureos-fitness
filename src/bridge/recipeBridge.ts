@@ -1,16 +1,40 @@
 /**
- * Client for the Recipes anchor app's cross-app actions (Phase 13a), wrapped
- * in a typed surface with a dev-mode mock. Lets Conjure Fitness read the user's saved
- * recipes and log a cooked one as a meal.
+ * Client for a "recipe source" provider app (Phase 45 self-describing apps),
+ * wrapped in a typed surface with a dev-mode mock. Lets Conjure Health read
+ * the user's saved recipes and log a cooked one as a meal.
  *
- * The Recipes app registers `listRecipes`, `getRecipe`, `addRecipe`,
- * `markCooked`. We only need the read + markCooked paths here. Reads are
- * side-effect-free (`actions.read`, no grant prompt); `markCooked` is
- * `actions.write` and triggers ConjureOS's one-time per-caller grant dialog.
+ * Provider resolution, in order:
  *
- * The installed app path can differ from the default slug, so we discover it
- * via `actions.list()` rather than hard-coding `/apps/recipes`.
+ *   1. **Discovery (Phase 45).** The platform matches the `recipeSource` need
+ *      declared in our package.json against installed apps' `actions` and
+ *      `actions.discover("recipeSource")` returns `ProviderMatch[]`. No app
+ *      paths or action names are hardcoded; invokes pass
+ *      `{ normalize: "recipeSource" }` so results come back in the need's
+ *      canonical shape even from an ai-mapped provider. An EMPTY result is a
+ *      normal state — no provider installed, or the user disabled cross-app
+ *      connections — and degrades to "no recipes" ([] / null) quietly. It is
+ *      re-checked on the next call so installing a provider mid-session works.
+ *   2. **Legacy hosts** (no `discover`): the pre-45 `actions.list()` scan for
+ *      an app exposing `getRecipe`, invoking literal action names.
+ *   3. **No bridge at all** (plain `npm run dev` outside ConjureOS): bundled
+ *      mock recipes.
+ *
+ * Reads are side-effect-free (`actions.read`, no grant prompt); `markCooked`
+ * is `actions.write`, triggers ConjureOS's one-time per-caller grant, and is
+ * an optional nicety — in discovered mode it only fires when the matched
+ * provider actually exposes a `markCooked` action.
  */
+
+/** One provider matched to a declared need by the platform. */
+export interface ProviderMatch {
+  appPath: string;
+  displayName: string;
+  /** The provider action to invoke to get data in the need's shape. */
+  action: string;
+  /** "exact" = structural schema match; "ai-mapped" = platform-translated. */
+  binding: "exact" | "ai-mapped";
+  confidence?: number;
+}
 
 declare global {
   interface ConjureosBridge {
@@ -22,7 +46,7 @@ declare global {
         appPath: string,
         actionName: string,
         params?: unknown,
-        opts?: { timeoutMs?: number },
+        opts?: { timeoutMs?: number; normalize?: string },
       ) => Promise<unknown>;
       list?: () => Promise<
         Array<{
@@ -31,11 +55,13 @@ declare global {
           actions: Array<{ name: string; permission: string; description?: string }>;
         }>
       >;
+      /** Phase 45; undefined on older hosts — always feature-detect. */
+      discover?: (needId: string) => Promise<ProviderMatch[]>;
     };
   }
 }
 
-/** Nutrition strip as the Recipes app emits it (per serving, estimated). */
+/** Nutrition strip in the `recipeSource` need's canonical shape (per serving, estimated). */
 export interface RecipeNutrition {
   calories: number;
   protein: number;
@@ -53,20 +79,21 @@ export interface ListedRecipe {
   nutrition: RecipeNutrition | null;
 }
 
-const DEFAULT_PATH = "/apps/recipes";
-let cachedPath: string | null = null;
+/** The need id declared in package.json's `conjureos.needs`. */
+const NEED_ID = "recipeSource";
+const LEGACY_DEFAULT_PATH = "/apps/recipes";
 
 /**
  * Thrown by the read helpers when a cross-app call fails specifically because
- * the Recipes app isn't open (`TARGET_NOT_RUNNING`) — as opposed to a genuine
+ * the provider app isn't open (`TARGET_NOT_RUNNING`) — as opposed to a genuine
  * "no such recipe" miss (which still returns null). Lets `logRecipeMeal` raise
- * the orchestrator's `NEEDS_APP_OPEN:<path>` marker so the shell opens Recipes
- * and retries, instead of misreporting a missing recipe.
+ * the orchestrator's `NEEDS_APP_OPEN:<path>` marker so the shell opens the
+ * provider and retries, instead of misreporting a missing recipe.
  */
 export class RecipesAppClosedError extends Error {
   readonly appPath: string;
   constructor(appPath: string) {
-    super(`Recipes app not running: ${appPath}`);
+    super(`Recipe provider app not running: ${appPath}`);
     this.name = "RecipesAppClosedError";
     this.appPath = appPath;
   }
@@ -89,33 +116,122 @@ export function isRecipeBridgeAvailable(): boolean {
   return typeof actions()?.invoke === "function";
 }
 
-/** Resolve the installed Recipes app path by scanning for `getRecipe`. */
-async function resolveRecipeAppPath(): Promise<string | null> {
-  if (cachedPath) return cachedPath;
+// ── Provider resolution ──────────────────────────────────────────────────
+
+type ResolvedProvider =
+  /** Phase 45 discovery hit: invoke `match.action` with `{ normalize: NEED_ID }`. */
+  | { kind: "discovered"; match: ProviderMatch }
+  /** Older host without `discover`: literal pre-45 action names. */
+  | { kind: "legacy"; appPath: string }
+  /** Bridge present but no provider (none installed, or cross-app disabled). */
+  | { kind: "none" }
+  /** No actions bridge at all — non-ConjureOS dev; use mock recipes. */
+  | { kind: "mock" };
+
+let resolving: Promise<ResolvedProvider> | null = null;
+let lastMatches: ProviderMatch[] = [];
+
+/**
+ * Full match list from the most recent discovery (empty until discovery has
+ * run, or when nothing matched). Exposed so the UI could offer a provider
+ * picker later; `resolveProvider` itself uses the first exact match.
+ */
+export function getRecipeProviderMatches(): ProviderMatch[] {
+  return lastMatches;
+}
+
+/** Test seam: forget any cached provider resolution. */
+export function resetRecipeProviderCache(): void {
+  resolving = null;
+  lastMatches = [];
+  hasActionCache.clear();
+}
+
+async function resolveProvider(): Promise<ResolvedProvider> {
+  if (!resolving) resolving = doResolve();
+  const out = await resolving;
+  // "none" is retried on the next call: the user may install a provider or
+  // re-enable cross-app connections mid-session. Successful resolutions stick.
+  if (out.kind === "none") resolving = null;
+  return out;
+}
+
+async function doResolve(): Promise<ResolvedProvider> {
   const a = actions();
-  if (!a?.invoke) return null;
+  if (!a?.invoke) return { kind: "mock" };
+
+  if (typeof a.discover === "function") {
+    let matches: ProviderMatch[] = [];
+    try {
+      matches = (await a.discover(NEED_ID)) ?? [];
+    } catch {
+      matches = []; // discovery failure degrades like "no provider"
+    }
+    lastMatches = matches;
+    if (matches.length === 0) return { kind: "none" };
+    // Prefer the first exact structural match; otherwise take the platform's
+    // top-ranked ai-mapped provider. The full list stays available via
+    // getRecipeProviderMatches() for a future picker UI.
+    const match = matches.find((m) => m.binding === "exact") ?? matches[0]!;
+    return { kind: "discovered", match };
+  }
+
+  // Legacy host: resolve the installed Recipes app path by scanning for
+  // `getRecipe`, falling back to the historical default path.
   if (a.list) {
     try {
       const apps = await a.list();
       const match = apps.find((app) => app.actions.some((x) => x.name === "getRecipe"));
-      if (match) {
-        cachedPath = match.appPath;
-        return cachedPath;
-      }
+      if (match) return { kind: "legacy", appPath: match.appPath };
     } catch {
       /* fall through to default */
     }
   }
-  cachedPath = DEFAULT_PATH;
-  return cachedPath;
+  return { kind: "legacy", appPath: LEGACY_DEFAULT_PATH };
 }
 
-export async function listRecipes(filter?: string): Promise<ListedRecipe[]> {
+/** Cached "does app X expose action Y" lookups (discovered mode only). */
+const hasActionCache = new Map<string, boolean>();
+
+async function providerHasAction(appPath: string, name: string): Promise<boolean> {
+  const key = `${appPath}::${name}`;
+  const cached = hasActionCache.get(key);
+  if (cached !== undefined) return cached;
   const a = actions();
-  const path = await resolveRecipeAppPath();
-  if (!a?.invoke || !path) return mockRecipes(filter);
+  let has = false;
+  if (a?.list) {
+    try {
+      const apps = await a.list();
+      has = !!apps
+        .find((app) => app.appPath === appPath)
+        ?.actions.some((x) => x.name === name);
+    } catch {
+      has = false;
+    }
+  }
+  hasActionCache.set(key, has);
+  return has;
+}
+
+// ── Reads ────────────────────────────────────────────────────────────────
+
+export async function listRecipes(filter?: string): Promise<ListedRecipe[]> {
+  const provider = await resolveProvider();
+  if (provider.kind === "mock") return mockRecipes(filter);
+  if (provider.kind === "none") return [];
+  const a = actions();
+  if (!a?.invoke) return [];
   try {
-    const res = (await a.invoke(path, "listRecipes", { filter, limit: 100 })) as {
+    if (provider.kind === "discovered") {
+      const res = (await a.invoke(
+        provider.match.appPath,
+        provider.match.action,
+        { filter, limit: 100 },
+        { normalize: NEED_ID },
+      )) as { recipes?: ListedRecipe[] };
+      return res?.recipes ?? [];
+    }
+    const res = (await a.invoke(provider.appPath, "listRecipes", { filter, limit: 100 })) as {
       recipes?: ListedRecipe[];
     };
     return res?.recipes ?? [];
@@ -125,32 +241,69 @@ export async function listRecipes(filter?: string): Promise<ListedRecipe[]> {
 }
 
 export async function getRecipe(slug: string): Promise<ListedRecipe | null> {
+  const provider = await resolveProvider();
+  if (provider.kind === "mock") return mockRecipes().find((r) => r.slug === slug) ?? null;
+  if (provider.kind === "none") return null;
   const a = actions();
-  const path = await resolveRecipeAppPath();
-  if (!a?.invoke || !path) return mockRecipes().find((r) => r.slug === slug) ?? null;
+  if (!a?.invoke) return null;
+
+  if (provider.kind === "discovered") {
+    // The matched action returns the need's canonical { recipes } shape; pick
+    // the slug out client-side rather than assuming the provider has a
+    // one-recipe action.
+    try {
+      const res = (await a.invoke(
+        provider.match.appPath,
+        provider.match.action,
+        { limit: 500 },
+        { normalize: NEED_ID },
+      )) as { recipes?: ListedRecipe[] };
+      return res?.recipes?.find((r) => r.slug === slug) ?? null;
+    } catch (err) {
+      // The provider being closed is recoverable, not a real miss: surface it
+      // so the caller (and ultimately the orchestrator) can open the app and
+      // retry, rather than reporting "recipe not found". Anything else → null.
+      if (isTargetClosed(err)) throw new RecipesAppClosedError(provider.match.appPath);
+      return null;
+    }
+  }
+
   try {
-    const res = (await a.invoke(path, "getRecipe", { slug })) as { recipe?: ListedRecipe | null };
+    const res = (await a.invoke(provider.appPath, "getRecipe", { slug })) as {
+      recipe?: ListedRecipe | null;
+    };
     return res?.recipe ?? null;
   } catch (err) {
-    // Recipes being closed is recoverable, not a real miss: surface it so the
-    // caller (and ultimately the orchestrator) can open Recipes and retry,
-    // rather than reporting "recipe not found". Any other failure stays a null.
-    if (isTargetClosed(err)) throw new RecipesAppClosedError(path);
+    if (isTargetClosed(err)) throw new RecipesAppClosedError(provider.appPath);
     return null;
   }
 }
 
-/** Mark a recipe cooked. Best-effort: a denied grant shouldn't break logging. */
+// ── Writes ───────────────────────────────────────────────────────────────
+
+/**
+ * Mark a recipe cooked. Best-effort: a denied grant shouldn't break logging,
+ * and a discovered provider that doesn't expose `markCooked` silently no-ops
+ * (it's an optional nicety, not part of the `recipeSource` need).
+ */
 export async function markCooked(slug: string): Promise<void> {
+  const provider = await resolveProvider();
+  if (provider.kind === "mock" || provider.kind === "none") return;
   const a = actions();
-  const path = await resolveRecipeAppPath();
-  if (!a?.invoke || !path) return;
+  if (!a?.invoke) return;
+  const appPath = provider.kind === "discovered" ? provider.match.appPath : provider.appPath;
+  if (provider.kind === "discovered") {
+    const has = await providerHasAction(appPath, "markCooked");
+    if (!has) return;
+  }
   try {
-    await a.invoke(path, "markCooked", { slug });
+    await a.invoke(appPath, "markCooked", { slug });
   } catch {
     /* grant denied or app closed — non-fatal */
   }
 }
+
+// ── Dev-mode mock (non-ConjureOS `npm run dev`) ──────────────────────────
 
 function mockRecipes(filter?: string): ListedRecipe[] {
   const all: ListedRecipe[] = [
