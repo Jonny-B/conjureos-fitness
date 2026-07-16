@@ -1,20 +1,21 @@
+/**
+ * Compact weight card for the home screen: latest weight, overall change, a
+ * trend sparkline, and an inline quick-log. Reads/writes the same repository
+ * methods as the full Weight screen; storage stays metric, display honors the
+ * profile's units.
+ */
+
 import { useEffect, useState } from "react";
 import type { Profile, WeightEntry } from "../types";
 import { getRepository } from "../data/repository";
 import { todayISO } from "../features/diary";
-import { bmi } from "../features/goals";
-import { fmtWeight, weightToDisplay, weightToKg, weightUnit } from "../features/units";
-import { Sparkline } from "../components/Sparkline";
+import { weightToDisplay, weightToKg, weightUnit } from "../features/units";
+import { Sparkline } from "./Sparkline";
 
-/**
- * Weight tracking + trend. A functional slice (reads/writes through the
- * repository) with a lightweight SVG sparkline. Body-composition trends,
- * goal-weight projection, and exercise/calories-burned history are the
- * obvious next additions here.
- */
-export function TrendsScreen({ profile }: { profile: Profile | null }) {
+export function WeightCard({ profile }: { profile: Profile | null }) {
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [input, setInput] = useState("");
+  const units = profile?.units ?? "metric";
 
   const reload = async () => {
     const repo = await getRepository();
@@ -23,9 +24,6 @@ export function TrendsScreen({ profile }: { profile: Profile | null }) {
   useEffect(() => {
     reload();
   }, []);
-
-  // Display in the user's units; storage stays metric (WU).
-  const units = profile?.units ?? "metric";
 
   const add = async () => {
     const shown = Number(input);
@@ -42,30 +40,27 @@ export function TrendsScreen({ profile }: { profile: Profile | null }) {
   const changeKg = latest && oldest && weights.length > 1 ? latest.weightKg - oldest.weightKg : 0;
   const changeDisplay =
     units === "imperial"
-      ? Math.round((changeKg * 2.2046226218) * 10) / 10
+      ? Math.round(changeKg * 2.2046226218 * 10) / 10
       : Math.round(changeKg * 10) / 10;
 
   return (
-    <div className="trends">
-      <h1 className="screen-title">Weight</h1>
-
-      <section className="summary-card column">
+    <section className="home-card weight-card">
+      <div className="home-card-head">
+        <span className="home-card-title">Weight</span>
+        {weights.length > 1 && (
+          <span className={`home-card-chip ${changeKg <= 0 ? "good" : "bad"}`}>
+            {changeKg > 0 ? "+" : ""}
+            {changeDisplay} {weightUnit(units)}
+          </span>
+        )}
+      </div>
+      <div className="weight-card-body">
         <div className="big-stat">
           <span className="big-number">{latest ? weightToDisplay(latest.weightKg, units) : "—"}</span>
           <span className="big-unit">{weightUnit(units)}</span>
         </div>
-        <div className="stat-row">
-          {weights.length > 1 && (
-            <span className={changeKg <= 0 ? "good" : "bad"}>
-              {changeKg > 0 ? "+" : ""}
-              {changeDisplay} {weightUnit(units)} overall
-            </span>
-          )}
-          {profile && <span className="muted">BMI {bmi({ ...profile, weightKg: latest?.weightKg ?? profile.weightKg })}</span>}
-        </div>
         <Sparkline points={[...weights].reverse().map((w) => w.weightKg)} />
-      </section>
-
+      </div>
       <div className="row gap weigh-in">
         <input
           className="text-input"
@@ -79,16 +74,6 @@ export function TrendsScreen({ profile }: { profile: Profile | null }) {
           Log
         </button>
       </div>
-
-      <ul className="weight-list">
-        {weights.map((w) => (
-          <li key={w.date} className="weight-row">
-            <span>{w.date}</span>
-            <span>{fmtWeight(w.weightKg, units)}</span>
-          </li>
-        ))}
-        {weights.length === 0 && <li className="muted small">No weigh-ins yet.</li>}
-      </ul>
-    </div>
+    </section>
   );
 }

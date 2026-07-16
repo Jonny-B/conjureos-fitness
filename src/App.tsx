@@ -17,24 +17,23 @@ import { WizardScreen } from "./screens/WizardScreen";
 import { PlanBanner } from "./components/PlanBanner";
 import { DayCheckinBanner, DayCheckinSheet, isEvening } from "./components/DayCheckin";
 import { recordPlanStarted } from "./features/coach/memory";
-import { AddFoodScreen } from "./screens/AddFoodScreen";
+import { AddFoodScreen, type AddMode } from "./screens/AddFoodScreen";
 import { TrendsScreen } from "./screens/TrendsScreen";
 import { WorkoutsScreen } from "./screens/WorkoutsScreen";
 import { CoachScreen } from "./screens/CoachScreen";
 import { SettingsSheet, type SettingsView } from "./screens/SettingsSheet";
+import { AppHeader } from "./components/AppHeader";
 import {
   AddIcon,
   CoachIcon,
   DiaryIcon,
-  Logo,
-  SettingsIcon,
   TrendsIcon,
   WorkoutsIcon,
 } from "./components/icons";
+import { MEAL_LABELS } from "./types";
 import type { ComponentType } from "react";
 
 type Tab = "diary" | "meal" | "add" | "trends" | "workouts" | "coach";
-type AddMode = "search" | "scan";
 
 export function App() {
   const [tab, setTab] = useState<Tab>("diary");
@@ -205,27 +204,34 @@ export function App() {
       goals={effectiveGoals}
       banner={banners}
       nonce={nonce}
+      plan={plan}
+      profile={profile}
       onChangeDate={setDate}
-      onAddToMeal={openAdd}
       onOpenMeal={openMeal}
-      onMutated={() => setNonce((n) => n + 1)}
+      onOpenCoach={() => setTab("coach")}
     />
   );
 
+  // Context-aware header: title + optional back per current surface.
+  const header: { title: string; onBack?: () => void } =
+    tab === "meal"
+      ? { title: MEAL_LABELS[activeMeal], onBack: () => setTab("diary") }
+      : tab === "add"
+        ? {
+            title: addMode === "scan" ? "Scan Barcode" : addMode === "ai" ? "AI" : "Search",
+            onBack: () => setTab(addReturn),
+          }
+        : tab === "trends"
+          ? { title: "Weight" }
+          : tab === "workouts"
+            ? { title: "Workouts" }
+            : tab === "coach"
+              ? { title: "Coach" }
+              : { title: "Conjure Health" };
+
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden>
-            <Logo />
-          </span>
-          Conjure Health
-        </div>
-        <div className="topbar-spacer" />
-        <button className="icon-btn" aria-label="Settings" onClick={() => openSettings("main")}>
-          <SettingsIcon size={20} />
-        </button>
-      </header>
+      <AppHeader title={header.title} onBack={header.onBack} onSettings={() => openSettings("main")} />
 
       <main className="screen">
         {!ready ? (
@@ -240,9 +246,9 @@ export function App() {
             meal={activeMeal}
             goals={effectiveGoals}
             nonce={nonce}
-            onBack={() => setTab("diary")}
-            onAdd={() => openAdd(activeMeal, "search", "meal")}
             onScan={() => openAdd(activeMeal, "scan", "meal")}
+            onSearch={() => openAdd(activeMeal, "search", "meal")}
+            onAi={() => openAdd(activeMeal, "ai", "meal")}
             onMutated={() => setNonce((n) => n + 1)}
           />
         ) : tab === "add" ? (

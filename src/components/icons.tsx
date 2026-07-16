@@ -167,6 +167,13 @@ export const CoachIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** AI mark — a four-point sparkle/diamond, the ConjureOS "this is AI" motif. */
+export const DiamondIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 3c0 5 4 9 9 9-5 0-9 4-9 9 0-5-4-9-9-9 5 0 9-4 9-9z" />
+  </Svg>
+);
+
 export const CheckIcon = (p: IconProps) => (
   <Svg {...p}>
     <polyline points="20 6 9 17 4 12" />

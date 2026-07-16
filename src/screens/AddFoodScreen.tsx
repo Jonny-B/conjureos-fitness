@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from "react";
+import type { ChatImage } from "../bridge/ai";
 import type { FoodItem, MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { searchFoods, lookupBarcode } from "../features/foods/foodSearch";
 import { parseMeal } from "../features/naturalLanguage";
+import { recentFoodsForMeal, type RecentFood } from "../features/recentFoods";
 import { isValidBarcode } from "../features/barcode";
-import { listRecipes, markCooked, type ListedRecipe } from "../bridge/recipeBridge";
+import {
+  listRecipes,
+  markCooked,
+  getResolvedRecipeProviderName,
+  type ListedRecipe,
+} from "../bridge/recipeBridge";
 import { BarcodeScanner } from "../components/BarcodeScanner";
+import { CameraCapture } from "../components/CameraCapture";
 import { NutritionLabelCapture } from "../components/NutritionLabelCapture";
 import { FrontOfPackageCapture } from "../components/FrontOfPackageCapture";
 import { EditableNutritionPreview } from "../components/EditableNutritionPreview";
@@ -18,26 +26,40 @@ import {
   SearchIcon,
 } from "../components/icons";
 
-type Mode = "search" | "scan" | "describe" | "recipes";
+/** The three logging surfaces, each reached directly from a meal's buttons. */
+export type AddMode = "search" | "scan" | "ai";
+
+interface PickOpts {
+  recipeSlug?: string;
+  /** Preset the serving stepper (used when re-logging a recent saved item). */
+  initialQty?: number;
+}
 
 interface Props {
   date: string;
   defaultMeal: MealType;
-  /** Which input mode to open on. Defaults to "search". */
-  defaultMode?: Mode;
+  /** Which surface to open on. */
+  defaultMode?: AddMode;
   onLogged: () => void;
   onCancel: () => void;
 }
 
-export function AddFoodScreen({ date, defaultMeal, defaultMode = "search", onLogged, onCancel }: Props) {
-  const [mode, setMode] = useState<Mode>(defaultMode);
-  const [selected, setSelected] = useState<{ food: FoodItem; recipeSlug?: string } | null>(null);
+export function AddFoodScreen({ date, defaultMeal, defaultMode = "search", onLogged }: Props) {
+  const [selected, setSelected] = useState<{
+    food: FoodItem;
+    recipeSlug?: string;
+    initialQty?: number;
+  } | null>(null);
+
+  const pick = (food: FoodItem, opts?: PickOpts) =>
+    setSelected({ food, recipeSlug: opts?.recipeSlug, initialQty: opts?.initialQty });
 
   if (selected) {
     return (
       <LogPanel
         food={selected.food}
         recipeSlug={selected.recipeSlug}
+        initialQty={selected.initialQty ?? 1}
         date={date}
         defaultMeal={defaultMeal}
         onLogged={onLogged}
@@ -48,64 +70,48 @@ export function AddFoodScreen({ date, defaultMeal, defaultMode = "search", onLog
 
   return (
     <div className="add">
-      <div className="add-modes">
-        <div className="segmented" role="tablist">
-          {(["search", "scan", "describe", "recipes"] as Mode[]).map((m) => (
-            <button
-              key={m}
-              role="tab"
-              aria-selected={mode === m}
-              className={`segmented-btn${mode === m ? " active" : ""}`}
-              onClick={() => setMode(m)}
-            >
-              {MODE_LABELS[m]}
-            </button>
-          ))}
-        </div>
-        <button className="link-btn" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-
-      {mode === "search" && <SearchMode onPick={(food) => setSelected({ food })} />}
-      {mode === "scan" && <ScanMode onPick={(food) => setSelected({ food })} />}
-      {mode === "describe" && <DescribeMode date={date} defaultMeal={defaultMeal} onLogged={onLogged} />}
-      {mode === "recipes" && (
-        <RecipesMode onPick={(food, slug) => setSelected({ food, recipeSlug: slug })} />
-      )}
+      {defaultMode === "search" && <SearchMode meal={defaultMeal} onPick={pick} />}
+      {defaultMode === "scan" && <ScanMode onPick={(food) => pick(food)} />}
+      {defaultMode === "ai" && <AiMode date={date} defaultMeal={defaultMeal} onLogged={onLogged} />}
     </div>
   );
 }
-
-const MODE_LABELS: Record<Mode, string> = {
-  search: "Search",
-  scan: "Scan",
-  describe: "Describe to AI",
-  recipes: "Recipes",
-};
 
 // ── Search ─────────────────────────────────────────────────────────────
 
 const MIN_SEARCH_CHARS = 3;
 const SEARCH_DEBOUNCE_MS = 250;
 
-function SearchMode({ onPick }: { onPick: (food: FoodItem) => void }) {
+function SearchMode({ meal, onPick }: { meal: MealType; onPick: (food: FoodItem, opts?: PickOpts) => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<FoodItem[]>([]);
   const [searching, setSearching] = useState(false);
+  const [recents, setRecents] = useState<RecentFood[]>([]);
+  const [recipes, setRecipes] = useState<{ recipe: ListedRecipe; provider: string }[]>([]);
 
   const trimmed = query.trim();
   const ready = trimmed.length >= MIN_SEARCH_CHARS;
 
+  // Meal-scoped recent saved items, shown as the empty-state suggestion list.
   useEffect(() => {
-    // Below the threshold (including after a backspace) reset to a clean slate.
+    let alive = true;
+    recentFoodsForMeal(meal)
+      .then((r) => {
+        if (alive) setRecents(r);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [meal]);
+
+  useEffect(() => {
     if (!ready) {
       setResults([]);
+      setRecipes([]);
       setSearching(false);
       return;
     }
-    // Every keystroke shows activity immediately so typing feels responsive,
-    // then waits out the debounce before hitting the network.
     setSearching(true);
     const controller = new AbortController();
     const t = setTimeout(async () => {
@@ -123,11 +129,34 @@ function SearchMode({ onPick }: { onPick: (food: FoodItem) => void }) {
         if (!controller.signal.aborted) setSearching(false);
       }
     }, SEARCH_DEBOUNCE_MS);
-    // Cleanup runs on the next keystroke: cancel the in-flight fetch AND the
-    // not-yet-fired debounced search so only the latest query ever lands.
     return () => {
       controller.abort();
       clearTimeout(t);
+    };
+  }, [trimmed, ready]);
+
+  // "Search your other apps" — providers only expose list-all and may ignore
+  // the filter, so we client-filter by title. Feature-detects: no provider →
+  // empty, section hidden.
+  useEffect(() => {
+    if (!ready) return;
+    let alive = true;
+    listRecipes(trimmed)
+      .then((all) => {
+        if (!alive) return;
+        const q = trimmed.toLowerCase();
+        const provider = getResolvedRecipeProviderName() ?? "Recipes";
+        const hits = all
+          .filter((r) => r.title.toLowerCase().includes(q))
+          .slice(0, 20)
+          .map((recipe) => ({ recipe, provider }));
+        setRecipes(hits);
+      })
+      .catch(() => {
+        if (alive) setRecipes([]);
+      });
+    return () => {
+      alive = false;
     };
   }, [trimmed, ready]);
 
@@ -144,23 +173,94 @@ function SearchMode({ onPick }: { onPick: (food: FoodItem) => void }) {
         />
         {searching && <span className="search-field-spinner" aria-label="Searching" />}
       </div>
-      {searching && <div className="muted small">Searching Open Food Facts + USDA…</div>}
-      <FoodResultList
-        foods={results}
-        onPick={onPick}
-        emptyHint={
-          ready
-            ? searching
-              ? "Searching…"
-              : "No matches — try a simpler term."
-            : `Type at least ${MIN_SEARCH_CHARS} letters to search.`
-        }
-      />
+
+      {!ready ? (
+        recents.length > 0 ? (
+          <>
+            <div className="section-label">Recent in {MEAL_LABELS[meal]}</div>
+            <ul className="food-results">
+              {recents.map((r, i) => (
+                <li key={`recent-${i}`}>
+                  <button
+                    className="food-result"
+                    onClick={() => onPick(r.food, { initialQty: r.quantity })}
+                  >
+                    <div className="entry-main">
+                      <div className="entry-name">{r.food.name}</div>
+                      <div className="entry-sub">
+                        {r.quantity}× {r.food.servingSize}
+                        {r.food.brand ? ` · ${r.food.brand}` : ""}
+                      </div>
+                    </div>
+                    <div className="entry-cal">{Math.round(r.food.perServing.calories * r.quantity)}</div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <div className="muted small">Type at least {MIN_SEARCH_CHARS} letters to search.</div>
+        )
+      ) : (
+        <>
+          {searching && <div className="muted small">Searching Open Food Facts + USDA…</div>}
+          <FoodResultList
+            foods={results}
+            onPick={onPick}
+            emptyHint={searching ? "Searching…" : "No matches — try a simpler term."}
+          />
+          {recipes.length > 0 && (
+            <>
+              <div className="section-label">From your apps</div>
+              <ul className="food-results">
+                {recipes.map(({ recipe: r, provider }) => {
+                  const n = r.nutrition;
+                  return (
+                    <li key={`recipe-${r.slug}`}>
+                      <button
+                        className="food-result"
+                        disabled={!n}
+                        onClick={() =>
+                          n &&
+                          onPick(
+                            {
+                              id: r.slug,
+                              source: "recipe",
+                              name: r.title,
+                              perServing: {
+                                calories: n.calories,
+                                protein: n.protein,
+                                carbs: n.carbs,
+                                fat: n.fat,
+                              },
+                              servingSize: "1 serving",
+                            },
+                            { recipeSlug: r.slug },
+                          )
+                        }
+                      >
+                        <div className="entry-main">
+                          <div className="entry-name">{r.title}</div>
+                          <div className="entry-sub">
+                            {n ? `~${n.calories} cal · ${n.protein}g P` : "no nutrition data"}
+                            <span className="app-pill">{provider}</span>
+                          </div>
+                        </div>
+                        <div className="entry-cal">{n?.calories ?? "–"}</div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
-// ── Scan ───────────────────────────────────────────────────────────────
+// ── Scan (barcode) ───────────────────────────────────────────────────────
 
 type CaptureMode = "label" | "front" | null;
 
@@ -220,9 +320,7 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
     return (
       <NutritionLabelCapture
         barcode={missedBarcode ?? undefined}
-        onParsed={(food, confidence) =>
-          setPendingPreview({ food, source: "ai_label", confidence })
-        }
+        onParsed={(food, confidence) => setPendingPreview({ food, source: "ai_label", confidence })}
         onCancel={() => setCapture(missedBarcode ? "choose" : null)}
       />
     );
@@ -272,10 +370,7 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
           </div>
         )}
 
-        <PhotoChoiceCards
-          onLabel={() => setCapture("label")}
-          onFront={() => setCapture("front")}
-        />
+        <PhotoChoiceCards onLabel={() => setCapture("label")} onFront={() => setCapture("front")} />
 
         <button
           className="link-btn"
@@ -309,11 +404,7 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
             value={manual}
             onChange={(e) => setManual(e.target.value)}
           />
-          <button
-            className="btn"
-            disabled={!isValidBarcode(manual)}
-            onClick={() => resolve(manual.replace(/\D/g, ""))}
-          >
+          <button className="btn" disabled={!isValidBarcode(manual)} onClick={() => resolve(manual.replace(/\D/g, ""))}>
             Look up
           </button>
         </div>
@@ -359,9 +450,11 @@ function PhotoChoiceCards({ onLabel, onFront }: { onLabel: () => void; onFront: 
   );
 }
 
-// ── Describe (natural language / AI) ─────────────────────────────────────
+// ── AI (photograph a meal / describe it) ─────────────────────────────────
 
-function DescribeMode({
+type AiTab = "photo" | "text";
+
+function AiMode({
   date,
   defaultMeal,
   onLogged,
@@ -370,24 +463,36 @@ function DescribeMode({
   defaultMeal: MealType;
   onLogged: () => void;
 }) {
+  const [tab, setTab] = useState<AiTab>("photo");
   const [text, setText] = useState("");
   const [meal, setMeal] = useState<MealType>(defaultMeal);
   const [items, setItems] = useState<FoodItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [shotUrl, setShotUrl] = useState<string | null>(null);
 
-  const parse = async () => {
-    if (!text.trim()) return;
+  const run = async (input: { text?: string; image?: ChatImage }) => {
     setBusy(true);
     setError(null);
     setItems(null);
     try {
-      setItems(await parseMeal({ text }));
+      setItems(await parseMeal(input));
     } catch {
       setError("Couldn’t reach the estimator. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
+  };
+
+  const onCapture = (image: ChatImage, previewUrl: string) => {
+    setShotUrl(previewUrl);
+    run({ image });
+  };
+
+  const retake = () => {
+    setShotUrl(null);
+    setItems(null);
+    setError(null);
   };
 
   const logAll = async () => {
@@ -401,30 +506,74 @@ function DescribeMode({
 
   return (
     <div className="mode-body">
-      <textarea
-        className="text-area"
-        rows={3}
-        placeholder="Describe what you ate, e.g. 'chicken sandwich and a beer'"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
-      <div className="row gap">
-        <MealPicker meal={meal} onChange={setMeal} />
-        <button className="btn" disabled={busy || !text.trim()} onClick={parse}>
-          {busy ? "Estimating…" : "Estimate"}
-        </button>
+      <div className="segmented" role="tablist">
+        {(["photo", "text"] as AiTab[]).map((t) => (
+          <button
+            key={t}
+            role="tab"
+            aria-selected={tab === t}
+            className={`segmented-btn${tab === t ? " active" : ""}`}
+            onClick={() => {
+              setTab(t);
+              retake();
+            }}
+          >
+            {t === "photo" ? "Scan Food/Meal" : "Describe to AI"}
+          </button>
+        ))}
       </div>
 
+      {tab === "photo" ? (
+        shotUrl ? (
+          <div className="ai-shot">
+            <img className="ai-shot-img" src={shotUrl} alt="Your meal" />
+            <button className="link-btn" onClick={retake}>
+              Retake photo
+            </button>
+          </div>
+        ) : (
+          <CameraCapture
+            guide="Point at your plate or the item and tap the shutter."
+            onCapture={onCapture}
+          />
+        )
+      ) : (
+        <>
+          <textarea
+            className="text-area"
+            rows={3}
+            placeholder="Describe what you ate, e.g. 'chicken sandwich and a beer'"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <div className="row gap">
+            <MealPicker meal={meal} onChange={setMeal} />
+            <button className="btn" disabled={busy || !text.trim()} onClick={() => run({ text })}>
+              {busy ? "Estimating…" : "Estimate"}
+            </button>
+          </div>
+        </>
+      )}
+
+      {busy && tab === "photo" && <div className="muted small">Reading your photo…</div>}
       {error && <div className="notice notice-error">{error}</div>}
 
       {items && items.length === 0 && !error && (
         <div className="notice">
-          No foods recognized in that description. Try naming the dishes, e.g. “turkey sandwich and an apple.”
+          {tab === "photo"
+            ? "No foods recognized in that photo. Try a clearer shot, or describe it instead."
+            : "No foods recognized in that description. Try naming the dishes, e.g. “turkey sandwich and an apple.”"}
         </div>
       )}
 
       {items && items.length > 0 && (
         <>
+          {tab === "photo" && (
+            <label className="field">
+              <span>Meal</span>
+              <MealPicker meal={meal} onChange={setMeal} />
+            </label>
+          )}
           <div className="muted small">Estimates — adjust later by editing the diary entry.</div>
           <ul className="parsed-list">
             {items.map((f) => (
@@ -441,59 +590,6 @@ function DescribeMode({
           </button>
         </>
       )}
-    </div>
-  );
-}
-
-// ── Recipes (cross-app) ──────────────────────────────────────────────────
-
-function RecipesMode({ onPick }: { onPick: (food: FoodItem, slug: string) => void }) {
-  const [recipes, setRecipes] = useState<ListedRecipe[] | null>(null);
-
-  useEffect(() => {
-    listRecipes().then(setRecipes);
-  }, []);
-
-  if (!recipes) return <div className="muted small mode-body">Loading your recipes…</div>;
-  if (recipes.length === 0)
-    return <div className="muted small mode-body">No saved recipes found in the Recipes app.</div>;
-
-  return (
-    <div className="mode-body">
-      <ul className="food-results">
-        {recipes.map((r) => {
-          const n = r.nutrition;
-          return (
-            <li key={r.slug}>
-              <button
-                className="food-result"
-                disabled={!n}
-                onClick={() =>
-                  n &&
-                  onPick(
-                    {
-                      id: r.slug,
-                      source: "recipe",
-                      name: r.title,
-                      perServing: { calories: n.calories, protein: n.protein, carbs: n.carbs, fat: n.fat },
-                      servingSize: "1 serving",
-                    },
-                    r.slug,
-                  )
-                }
-              >
-                <div className="entry-main">
-                  <div className="entry-name">{r.title}</div>
-                  <div className="entry-sub">
-                    {n ? `~${n.calories} cal · ${n.protein}g P` : "no nutrition data"} · made {r.madeCount}×
-                  </div>
-                </div>
-                <div className="entry-cal">{n?.calories ?? "–"}</div>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
     </div>
   );
 }
@@ -533,6 +629,7 @@ function FoodResultList({
 function LogPanel({
   food,
   recipeSlug,
+  initialQty,
   date,
   defaultMeal,
   onLogged,
@@ -540,12 +637,13 @@ function LogPanel({
 }: {
   food: FoodItem;
   recipeSlug?: string;
+  initialQty: number;
   date: string;
   defaultMeal: MealType;
   onLogged: () => void;
   onBack: () => void;
 }) {
-  const [qty, setQty] = useState(1);
+  const [qty, setQty] = useState(initialQty);
   const [meal, setMeal] = useState<MealType>(defaultMeal);
   const [busy, setBusy] = useState(false);
 

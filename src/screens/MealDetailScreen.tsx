@@ -3,7 +3,7 @@ import type { DiaryEntry, Goals, MealType } from "../types";
 import { MEAL_LABELS } from "../types";
 import { getRepository } from "../data/repository";
 import { entryMacros, isAiEstimate } from "../features/diary";
-import { ChevronLeft, PackageIcon, SearchIcon, TrashIcon } from "../components/icons";
+import { BarcodeIcon, DiamondIcon, SearchIcon, TrashIcon } from "../components/icons";
 import { AiEstimateBadge } from "../components/AiEstimateBadge";
 
 interface Props {
@@ -11,16 +11,17 @@ interface Props {
   meal: MealType;
   goals: Goals;
   nonce: number;
-  onBack: () => void;
-  onAdd: () => void;
   onScan: () => void;
+  onSearch: () => void;
+  onAi: () => void;
   onMutated: () => void;
 }
 
 /**
- * A single meal's detail: the meal label, everything already logged to it
- * (each row editable via the quantity steppers and removable via the trash),
- * and the two ways to add more — Scan a barcode or open the full Add flow.
+ * A single meal's detail: everything already logged to it (each row editable
+ * via the quantity steppers and removable via the trash), and the three ways to
+ * add more — Scan Barcode, Search, or AI. The page title + back live in the
+ * global header; this screen shows only the running subtotal.
  *
  * This sits between the Diary and the Add screen so tapping "Lunch" shows what
  * you've eaten first, instead of dropping straight into a blank search.
@@ -29,9 +30,9 @@ export function MealDetailScreen({
   date,
   meal,
   nonce,
-  onBack,
-  onAdd,
   onScan,
+  onSearch,
+  onAi,
   onMutated,
 }: Props) {
   const [entries, setEntries] = useState<DiaryEntry[] | null>(null);
@@ -67,14 +68,8 @@ export function MealDetailScreen({
 
   return (
     <div className="meal-detail">
-      <div className="meal-detail-head">
-        <button className="icon-btn" aria-label="Back to diary" onClick={onBack}>
-          <ChevronLeft size={20} />
-        </button>
-        <div className="meal-detail-title">
-          <h1>{MEAL_LABELS[meal]}</h1>
-          <span className="meal-detail-cal">{total} cal</span>
-        </div>
+      <div className="meal-detail-subhead">
+        <span className="meal-detail-cal">{total} cal logged</span>
       </div>
 
       {entries === null ? (
@@ -124,14 +119,18 @@ export function MealDetailScreen({
         </ul>
       )}
 
-      <div className="meal-cta-row">
+      <div className="meal-cta-row three">
         <button className="meal-cta" onClick={onScan}>
-          <PackageIcon size={20} />
-          <span>Scan a barcode</span>
+          <BarcodeIcon size={22} />
+          <span>Scan Barcode</span>
         </button>
-        <button className="meal-cta primary" onClick={onAdd}>
+        <button className="meal-cta" onClick={onSearch}>
           <SearchIcon size={20} />
-          <span>Add food</span>
+          <span>Search</span>
+        </button>
+        <button className="meal-cta" onClick={onAi}>
+          <DiamondIcon size={20} />
+          <span>AI</span>
         </button>
       </div>
     </div>

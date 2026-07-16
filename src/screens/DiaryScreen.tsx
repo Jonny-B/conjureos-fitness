@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { DayView, DiaryEntry, Goals, MealType } from "../types";
-import { MEAL_LABELS, MEAL_TYPES } from "../types";
+import type { DayView, Goals, MealType, Plan, Profile } from "../types";
+import { MEAL_LABELS } from "../types";
 import { getRepository } from "../data/repository";
-import { buildDayView, entryMacros, isAiEstimate, shiftDate, todayISO } from "../features/diary";
+import { buildDayView, shiftDate, todayISO } from "../features/diary";
 import { CalorieRing, MacroBars } from "../components/rings";
-import { ChevronLeft, ChevronRight, TrashIcon } from "../components/icons";
-import { AiEstimateBadge } from "../components/AiEstimateBadge";
+import { ChevronLeft, ChevronRight } from "../components/icons";
+import { WeightCard } from "../components/WeightCard";
+import { CoachPlanCard } from "../components/CoachPlanCard";
 
 interface Props {
   date: string;
@@ -13,13 +14,24 @@ interface Props {
   /** Optional banner (e.g. "build your plan") shown above the Today tracker. */
   banner?: ReactNode;
   nonce: number;
+  plan: Plan | null;
+  profile: Profile | null;
   onChangeDate: (date: string) => void;
-  onAddToMeal: (meal: MealType) => void;
   onOpenMeal: (meal: MealType) => void;
-  onMutated: () => void;
+  onOpenCoach: () => void;
 }
 
-export function DiaryScreen({ date, goals, banner, nonce, onChangeDate, onAddToMeal, onOpenMeal, onMutated }: Props) {
+export function DiaryScreen({
+  date,
+  goals,
+  banner,
+  nonce,
+  plan,
+  profile,
+  onChangeDate,
+  onOpenMeal,
+  onOpenCoach,
+}: Props) {
   const [view, setView] = useState<DayView | null>(null);
 
   useEffect(() => {
@@ -33,20 +45,6 @@ export function DiaryScreen({ date, goals, banner, nonce, onChangeDate, onAddToM
       alive = false;
     };
   }, [date, nonce]);
-
-  const updateQty = async (entry: DiaryEntry, delta: number) => {
-    const next = Math.round((entry.quantity + delta) * 4) / 4; // 0.25 steps
-    if (next < 0.25) return;
-    const repo = await getRepository();
-    await repo.updateDiaryEntry(entry.id, { quantity: next });
-    onMutated();
-  };
-
-  const remove = async (entry: DiaryEntry) => {
-    const repo = await getRepository();
-    await repo.removeDiaryEntry(entry.id);
-    onMutated();
-  };
 
   const isToday = date === todayISO();
   const total = view?.total ?? { calories: 0, protein: 0, carbs: 0, fat: 0 };
@@ -103,64 +101,15 @@ export function DiaryScreen({ date, goals, banner, nonce, onChangeDate, onAddToM
         <MacroBars total={total} goals={goals} />
       </section>
 
-      {MEAL_TYPES.map((meal) => {
-        const entries = view?.meals[meal] ?? [];
-        const m = view?.perMeal[meal];
-        return (
-          <section className="meal" key={meal}>
-            <button className="meal-head" onClick={() => onOpenMeal(meal)} aria-label={`Open ${MEAL_LABELS[meal]}`}>
-              <h2>{MEAL_LABELS[meal]}</h2>
-              <span className="meal-cal">{m?.calories ?? 0} cal</span>
-            </button>
-            <ul className="entry-list">
-              {entries.map((e) => {
-                const em = entryMacros(e);
-                return (
-                  <li className="entry" key={e.id}>
-                    <div className="entry-main">
-                      <div className="entry-title">
-                        <span className="entry-name">{e.food.name}</span>
-                        {isAiEstimate(e) && <AiEstimateBadge />}
-                      </div>
-                      <div className="entry-sub">
-                        {e.quantity}× {e.food.servingSize}
-                        {e.food.brand ? ` · ${e.food.brand}` : ""}
-                      </div>
-                    </div>
-                    <div className="entry-cal">{em.calories}</div>
-                    <div className="entry-actions">
-                      <button
-                        className="step"
-                        aria-label="Less"
-                        disabled={e.quantity <= 0.25}
-                        onClick={() => updateQty(e, -0.25)}
-                      >
-                        −
-                      </button>
-                      <button className="step" aria-label="More" onClick={() => updateQty(e, 0.25)}>
-                        +
-                      </button>
-                      <button className="step del" aria-label="Remove" onClick={() => remove(e)}>
-                        <TrashIcon size={16} />
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-            <button className="add-to-meal" onClick={() => onAddToMeal(meal)}>
-              + Add food
-            </button>
-          </section>
-        );
-      })}
+      <WeightCard profile={profile} />
+      <CoachPlanCard plan={plan} goals={goals} onOpen={onOpenCoach} />
     </div>
   );
 }
 
 function MealStat({ label, cal, onClick }: { label: string; cal: number; onClick: () => void }) {
   return (
-    <button className="meal-stat" onClick={onClick} aria-label={`Add to ${label}`}>
+    <button className="meal-stat" onClick={onClick} aria-label={`Open ${label}`}>
       <span className="meal-stat-label">{label}</span>
       <span className="meal-stat-cal">{cal}</span>
     </button>

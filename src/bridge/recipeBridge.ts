@@ -140,6 +140,17 @@ export function getRecipeProviderMatches(): ProviderMatch[] {
   return lastMatches;
 }
 
+/**
+ * Display name of the provider `listRecipes`/`getRecipe` currently resolve to —
+ * the exact match if any, else the top-ranked one — for a "source app" pill.
+ * Null until a discovery has run (call after `listRecipes`) or in mock mode.
+ */
+export function getResolvedRecipeProviderName(): string | null {
+  if (lastMatches.length === 0) return null;
+  const match = lastMatches.find((m) => m.binding === "exact") ?? lastMatches[0]!;
+  return match.displayName || null;
+}
+
 /** Test seam: forget any cached provider resolution. */
 export function resetRecipeProviderCache(): void {
   resolving = null;

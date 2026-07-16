@@ -71,13 +71,30 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
-  display: flex;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(12px);
+}
+.topbar-slot {
+  display: flex;
+  align-items: center;
+}
+.topbar-right {
+  justify-content: flex-end;
+}
+.topbar-title {
+  text-align: center;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .brand {
   font-weight: 700;
@@ -1879,6 +1896,128 @@ body {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+/* Three-up entry buttons (Scan Barcode / Search / AI): stack icon over label. */
+.meal-cta-row.three .meal-cta {
+  flex-direction: column;
+  gap: 7px;
+  padding: 15px 8px;
+  font-size: 13px;
+}
+.meal-detail-subhead {
+  margin-bottom: 12px;
+}
+
+/* ── Home cards (Weight, Coach/Plan) ──────────────────────────────────── */
+.home-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+button.home-card {
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+button.home-card:hover {
+  border-color: var(--accent);
+}
+.home-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.home-card-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+.home-card-chip {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.home-card-chip.good {
+  color: var(--good, #3fb37f);
+}
+.home-card-chip.bad {
+  color: var(--bad, #e06666);
+}
+.weight-card-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.weight-card-body .sparkline {
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+}
+.coach-card-plan {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.coach-card-mode {
+  font-size: 15px;
+  font-weight: 600;
+}
+.coach-card-goals {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.coach-card-goals li {
+  margin: 1px 0;
+}
+.coach-card-summary {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+/* Source-app pill on cross-app recipe search results. */
+.app-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cui-accent-soft, var(--accent));
+  background: var(--cui-accent-mute, color-mix(in srgb, var(--accent) 14%, transparent));
+  border: 1px solid var(--cui-accent-tint, transparent);
+  vertical-align: middle;
+}
+
+/* AI meal photo, after capture. */
+.ai-shot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.ai-shot-img {
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
 }
 
 /* ── v2 first-run wizard ──────────────────────────────────────────────── */
