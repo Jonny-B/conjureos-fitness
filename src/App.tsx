@@ -35,6 +35,16 @@ import type { ComponentType } from "react";
 
 type Tab = "diary" | "meal" | "add" | "trends" | "workouts" | "coach";
 
+/** Sensible default meal when opening Add from the tab bar (no meal context) —
+ *  by time of day. The user can still switch it in the Add screen. */
+function mealForNow(): MealType {
+  const h = new Date().getHours();
+  if (h < 11) return "breakfast";
+  if (h < 15) return "lunch";
+  if (h < 21) return "dinner";
+  return "snacks";
+}
+
 export function App() {
   const [tab, setTab] = useState<Tab>("diary");
   const [date, setDate] = useState<string>(todayISO());
@@ -258,6 +268,7 @@ export function App() {
             defaultMode={addMode}
             onLogged={onLogged}
             onCancel={() => setTab(addReturn)}
+            onModeChange={setAddMode}
           />
         ) : tab === "trends" ? (
           <TrendsScreen profile={profile} />
@@ -272,7 +283,7 @@ export function App() {
 
       <nav className="tabbar">
         <TabButton label="Diary" Icon={DiaryIcon} active={tab === "diary" || tab === "meal"} onClick={() => setTab("diary")} />
-        <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(addMeal)} />
+        <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(mealForNow())} />
         <TabButton label="Trends" Icon={TrendsIcon} active={tab === "trends"} onClick={() => setTab("trends")} />
         {!loggingOnly && (
           <TabButton label="Workouts" Icon={WorkoutsIcon} active={tab === "workouts"} onClick={() => setTab("workouts")} />

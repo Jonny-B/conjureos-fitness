@@ -2001,17 +2001,95 @@ button.home-card:hover {
 }
 
 /* Source-app pill on cross-app recipe search results. */
+/* Cross-app source badge on "From your apps" result cards — shows which app
+   the data was fetched from (the diamond signals the ConjureOS cross-app link). */
+.entry-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.entry-name-row .entry-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .app-pill {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 2px 8px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
+  white-space: nowrap;
   color: var(--cui-accent-soft, var(--accent));
   background: var(--cui-accent-mute, color-mix(in srgb, var(--accent) 14%, transparent));
   border: 1px solid var(--cui-accent-tint, transparent);
   vertical-align: middle;
+}
+.app-pill-icon {
+  flex: 0 0 auto;
+  opacity: 0.9;
+}
+
+/* Add screen: switch input method (Scan / Search / AI) and target meal in place,
+   so the flow works from the tab bar (no meal context) and stays changeable. */
+.add-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.mode-switch {
+  display: inline-flex;
+  flex: 1 1 200px;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--cui-radius-sm);
+}
+.mode-tab {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 6px;
+  border: 0;
+  border-radius: calc(var(--cui-radius-sm) - 2px);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--cui-duration) var(--cui-ease),
+              color var(--cui-duration) var(--cui-ease);
+}
+.mode-tab.active {
+  background: var(--cui-accent-mute, color-mix(in srgb, var(--accent) 16%, transparent));
+  color: var(--cui-accent-soft, var(--accent));
+}
+.mode-tab:not(.active):hover {
+  color: var(--text);
+}
+.add-meal-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.add-meal-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.add-meal-select .select {
+  width: auto;
+  padding: 8px 30px 8px 10px;
+  font-size: 13px;
 }
 
 /* AI meal photo, after capture. */

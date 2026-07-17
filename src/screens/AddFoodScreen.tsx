@@ -19,8 +19,10 @@ import { NutritionLabelCapture } from "../components/NutritionLabelCapture";
 import { FrontOfPackageCapture } from "../components/FrontOfPackageCapture";
 import { EditableNutritionPreview } from "../components/EditableNutritionPreview";
 import {
+  BarcodeIcon,
   ChevronLeft,
   ChevronRight,
+  DiamondIcon,
   NutritionPanelIcon,
   PackageIcon,
   SearchIcon,
@@ -42,14 +44,39 @@ interface Props {
   defaultMode?: AddMode;
   onLogged: () => void;
   onCancel: () => void;
+  /** Fired when the user switches input mode inside the screen, so the shell
+   *  header can track it (Scan Barcode / Search / AI). */
+  onModeChange?: (mode: AddMode) => void;
 }
 
-export function AddFoodScreen({ date, defaultMeal, defaultMode = "search", onLogged }: Props) {
+const MODE_TABS: { mode: AddMode; label: string; Icon: typeof SearchIcon }[] = [
+  { mode: "scan", label: "Scan", Icon: BarcodeIcon },
+  { mode: "search", label: "Search", Icon: SearchIcon },
+  { mode: "ai", label: "AI", Icon: DiamondIcon },
+];
+
+export function AddFoodScreen({
+  date,
+  defaultMeal,
+  defaultMode = "search",
+  onLogged,
+  onModeChange,
+}: Props) {
   const [selected, setSelected] = useState<{
     food: FoodItem;
     recipeSlug?: string;
     initialQty?: number;
   } | null>(null);
+  // Mode + meal are switchable in-place, so the Add flow works meal-agnostically
+  // (e.g. opened from the tab bar, not just a meal's button) and lets the user
+  // change either without backing out.
+  const [mode, setMode] = useState<AddMode>(defaultMode);
+  const [meal, setMeal] = useState<MealType>(defaultMeal);
+
+  const changeMode = (m: AddMode) => {
+    setMode(m);
+    onModeChange?.(m);
+  };
 
   const pick = (food: FoodItem, opts?: PickOpts) =>
     setSelected({ food, recipeSlug: opts?.recipeSlug, initialQty: opts?.initialQty });
@@ -61,7 +88,7 @@ export function AddFoodScreen({ date, defaultMeal, defaultMode = "search", onLog
         recipeSlug={selected.recipeSlug}
         initialQty={selected.initialQty ?? 1}
         date={date}
-        defaultMeal={defaultMeal}
+        defaultMeal={meal}
         onLogged={onLogged}
         onBack={() => setSelected(null)}
       />
@@ -70,9 +97,30 @@ export function AddFoodScreen({ date, defaultMeal, defaultMode = "search", onLog
 
   return (
     <div className="add">
-      {defaultMode === "search" && <SearchMode meal={defaultMeal} onPick={pick} />}
-      {defaultMode === "scan" && <ScanMode onPick={(food) => pick(food)} />}
-      {defaultMode === "ai" && <AiMode date={date} defaultMeal={defaultMeal} onLogged={onLogged} />}
+      <div className="add-toolbar">
+        <div className="mode-switch" role="tablist" aria-label="Add method">
+          {MODE_TABS.map(({ mode: m, label, Icon }) => (
+            <button
+              key={m}
+              role="tab"
+              aria-selected={mode === m}
+              className={`mode-tab${mode === m ? " active" : ""}`}
+              onClick={() => changeMode(m)}
+            >
+              <Icon size={17} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+        <label className="add-meal-select">
+          <span className="add-meal-label">Meal</span>
+          <MealPicker meal={meal} onChange={setMeal} />
+        </label>
+      </div>
+
+      {mode === "search" && <SearchMode meal={meal} onPick={pick} />}
+      {mode === "scan" && <ScanMode onPick={(food) => pick(food)} />}
+      {mode === "ai" && <AiMode date={date} defaultMeal={meal} onLogged={onLogged} />}
     </div>
   );
 }
@@ -240,10 +288,15 @@ function SearchMode({ meal, onPick }: { meal: MealType; onPick: (food: FoodItem,
                         }
                       >
                         <div className="entry-main">
-                          <div className="entry-name">{r.title}</div>
+                          <div className="entry-name-row">
+                            <span className="entry-name">{r.title}</span>
+                            <span className="app-pill" title={`From ${provider}`}>
+                              <DiamondIcon size={11} className="app-pill-icon" />
+                              {provider}
+                            </span>
+                          </div>
                           <div className="entry-sub">
                             {n ? `~${n.calories} cal · ${n.protein}g P` : "no nutrition data"}
-                            <span className="app-pill">{provider}</span>
                           </div>
                         </div>
                         <div className="entry-cal">{n?.calories ?? "–"}</div>
