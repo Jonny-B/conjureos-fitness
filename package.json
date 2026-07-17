@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Conjure Health: plans, daily check-off, calorie + nutrition logging, weight, and an AI-guided workout coach for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -250,51 +250,12 @@
                     "description": "How many times the user has cooked it."
                   },
                   "nutrition": {
-                    "type": [
-                      "object",
-                      "null"
-                    ],
-                    "description": "Per-serving estimate, or null when unknown.",
-                    "properties": {
-                      "calories": {
-                        "type": "number"
-                      },
-                      "protein": {
-                        "type": "number",
-                        "description": "Grams."
-                      },
-                      "fat": {
-                        "type": "number",
-                        "description": "Grams."
-                      },
-                      "carbs": {
-                        "type": "number",
-                        "description": "Grams."
-                      }
-                    },
-                    "required": [
-                      "calories",
-                      "protein",
-                      "fat",
-                      "carbs"
-                    ]
+                    "description": "Per-serving estimate (calories + protein/fat/carbs in grams), or null when unknown. Left unconstrained: schemaSatisfies rejects nullable union types, and providers legitimately omit/`null` nutrition, so the consumer reads it defensively rather than gating the whole match on it."
                   }
-                },
-                "required": [
-                  "slug",
-                  "title",
-                  "servings",
-                  "ingredients",
-                  "savedAt",
-                  "madeCount",
-                  "nutrition"
-                ]
+                }
               }
             }
-          },
-          "required": [
-            "recipes"
-          ]
+          }
         }
       }
     ],
