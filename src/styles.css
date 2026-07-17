@@ -1209,8 +1209,54 @@ body {
   vector-effect: non-scaling-stroke;
 }
 .sparkline-empty {
-  text-align: center;
+  /* Match the populated graph's footprint (64px + the 12px top margin) so the
+     card doesn't shrink/jump when there's no data yet. */
+  height: 64px;
   margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Plan tab — Trends graph + Coach session launcher. */
+.plan-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.plan-section {
+  display: flex;
+  flex-direction: column;
+}
+.plan-section .section-label {
+  margin-bottom: 8px;
+}
+/* Fixed footprint so the Trends card is the same height empty, one weigh-in,
+   or a full trend — no layout jump. */
+.trends-card {
+  min-height: 148px;
+  justify-content: center;
+}
+.trends-empty {
+  padding: 8px 0;
+  text-align: center;
+}
+.coach-launch-hint {
+  margin: 0 0 12px;
+}
+.coach-launch-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.coach-launch-compose {
+  align-items: flex-end;
+}
+.coach-launch-compose .text-input {
+  flex: 1;
+  resize: none;
 }
 .weigh-in {
   margin: 14px 0;

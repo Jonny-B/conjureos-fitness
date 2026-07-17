@@ -1,9 +1,9 @@
 /**
  * Compact plan + coach summary for the home screen. Shows the active plan's
  * headline (mode, top goals, daily calorie target) and the coach's running
- * one-liner; taps through to the Coach tab. With no plan yet it becomes a
- * gentle "meet your coach" entry point (the "build a plan" CTA still lives in
- * the banner slot above).
+ * one-liner; taps through to the Plan tab (trends + coach session). With no
+ * plan yet it becomes a gentle "meet your coach" entry point (the "build a
+ * plan" CTA still lives in the banner slot above).
  */
 
 import { useEffect, useState } from "react";

@@ -18,7 +18,7 @@ interface Props {
   profile: Profile | null;
   onChangeDate: (date: string) => void;
   onOpenMeal: (meal: MealType) => void;
-  onOpenCoach: () => void;
+  onOpenPlan: () => void;
 }
 
 export function DiaryScreen({
@@ -30,7 +30,7 @@ export function DiaryScreen({
   profile,
   onChangeDate,
   onOpenMeal,
-  onOpenCoach,
+  onOpenPlan,
 }: Props) {
   const [view, setView] = useState<DayView | null>(null);
 
@@ -102,7 +102,7 @@ export function DiaryScreen({
       </section>
 
       <WeightCard profile={profile} />
-      <CoachPlanCard plan={plan} goals={goals} onOpen={onOpenCoach} />
+      <CoachPlanCard plan={plan} goals={goals} onOpen={onOpenPlan} />
     </div>
   );
 }

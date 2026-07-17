@@ -18,14 +18,13 @@ import { PlanBanner } from "./components/PlanBanner";
 import { DayCheckinBanner, DayCheckinSheet, isEvening } from "./components/DayCheckin";
 import { recordPlanStarted } from "./features/coach/memory";
 import { AddFoodScreen, type AddMode } from "./screens/AddFoodScreen";
-import { TrendsScreen } from "./screens/TrendsScreen";
+import { PlanScreen } from "./screens/PlanScreen";
 import { WorkoutsScreen } from "./screens/WorkoutsScreen";
 import { CoachScreen } from "./screens/CoachScreen";
 import { SettingsSheet, type SettingsView } from "./screens/SettingsSheet";
 import { AppHeader } from "./components/AppHeader";
 import {
   AddIcon,
-  CoachIcon,
   DiaryIcon,
   TrendsIcon,
   WorkoutsIcon,
@@ -33,7 +32,7 @@ import {
 import { MEAL_LABELS } from "./types";
 import type { ComponentType } from "react";
 
-type Tab = "diary" | "meal" | "add" | "trends" | "workouts" | "coach";
+type Tab = "diary" | "meal" | "add" | "plan" | "workouts" | "coach";
 
 /** Sensible default meal when opening Add from the tab bar (no meal context) —
  *  by time of day. The user can still switch it in the Add screen. */
@@ -70,6 +69,9 @@ export function App() {
   const [addReturn, setAddReturn] = useState<Tab>("diary");
   // The meal shown by the meal-detail screen.
   const [activeMeal, setActiveMeal] = useState<MealType>("breakfast");
+  // A question submitted from the Plan tab's coach launcher — handed to the
+  // Coach chat so it opens already-answering. Cleared when consumed.
+  const [coachInitialPrompt, setCoachInitialPrompt] = useState<string | null>(null);
   // Bumped after any write so the Diary reloads from the repository.
   const [nonce, setNonce] = useState(0);
   // End-of-day coach check-in (banner only): whether today is already checked
@@ -127,6 +129,13 @@ export function App() {
   const openMeal = useCallback((meal: MealType) => {
     setActiveMeal(meal);
     setTab("meal");
+  }, []);
+
+  // Open the Coach chat from the Plan launcher, optionally auto-submitting a
+  // starter question. Back from the chat returns to Plan.
+  const openCoach = useCallback((question?: string) => {
+    setCoachInitialPrompt(question ?? null);
+    setTab("coach");
   }, []);
 
   const openSettings = useCallback((view: SettingsView = "main") => {
@@ -218,7 +227,7 @@ export function App() {
       profile={profile}
       onChangeDate={setDate}
       onOpenMeal={openMeal}
-      onOpenCoach={() => setTab("coach")}
+      onOpenPlan={() => setTab("plan")}
     />
   );
 
@@ -231,12 +240,12 @@ export function App() {
             title: addMode === "scan" ? "Scan Barcode" : addMode === "ai" ? "AI" : "Search",
             onBack: () => setTab(addReturn),
           }
-        : tab === "trends"
-          ? { title: "Weight" }
+        : tab === "plan"
+          ? { title: "Plan" }
           : tab === "workouts"
             ? { title: "Workouts" }
             : tab === "coach"
-              ? { title: "Coach" }
+              ? { title: "Coach", onBack: () => setTab("plan") }
               : { title: "Conjure Health" };
 
   return (
@@ -270,12 +279,12 @@ export function App() {
             onCancel={() => setTab(addReturn)}
             onModeChange={setAddMode}
           />
-        ) : tab === "trends" ? (
-          <TrendsScreen profile={profile} />
+        ) : tab === "plan" ? (
+          <PlanScreen profile={profile} onAskCoach={openCoach} />
         ) : tab === "workouts" && !loggingOnly ? (
           <WorkoutsScreen units={profile?.units ?? "metric"} onEditPlan={() => openSettings("program")} />
         ) : tab === "coach" ? (
-          <CoachScreen onPlanChange={setPlan} />
+          <CoachScreen onPlanChange={setPlan} initialPrompt={coachInitialPrompt} />
         ) : (
           diaryScreen
         )}
@@ -284,11 +293,10 @@ export function App() {
       <nav className="tabbar">
         <TabButton label="Diary" Icon={DiaryIcon} active={tab === "diary" || tab === "meal"} onClick={() => setTab("diary")} />
         <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(mealForNow())} />
-        <TabButton label="Trends" Icon={TrendsIcon} active={tab === "trends"} onClick={() => setTab("trends")} />
+        <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan" || tab === "coach"} onClick={() => setTab("plan")} />
         {!loggingOnly && (
           <TabButton label="Workouts" Icon={WorkoutsIcon} active={tab === "workouts"} onClick={() => setTab("workouts")} />
         )}
-        <TabButton label="Coach" Icon={CoachIcon} active={tab === "coach"} onClick={() => setTab("coach")} />
       </nav>
 
       <div className="app-version">v{__APP_VERSION__}</div>

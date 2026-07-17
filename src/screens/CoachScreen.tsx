@@ -15,11 +15,21 @@ const MAX_STORED = 40;
  * apply small validated plan updates mid-conversation. History persists to
  * the VFS so the relationship feels continuous across sessions.
  */
-export function CoachScreen({ onPlanChange }: { onPlanChange: (plan: Plan) => void }) {
+export function CoachScreen({
+  onPlanChange,
+  initialPrompt,
+}: {
+  onPlanChange: (plan: Plan) => void;
+  /** A question submitted from the Plan tab's coach launcher — sent once on
+   *  mount so the user lands in an already-started conversation. */
+  initialPrompt?: string | null;
+}) {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const ctxRef = useRef<CoachContext | null>(null);
+  const busyRef = useRef(false);
+  const sentInitialRef = useRef(false);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -31,23 +41,34 @@ export function CoachScreen({ onPlanChange }: { onPlanChange: (plan: Plan) => vo
       ]);
       if (!alive) return;
       ctxRef.current = ctx;
-      setMessages(Array.isArray(history) ? history : []);
+      const base = Array.isArray(history) ? history : [];
+      setMessages(base);
+      // Auto-submit the launcher question (once) so the chat opens mid-answer.
+      const q = initialPrompt?.trim();
+      if (q && !sentInitialRef.current) {
+        sentInitialRef.current = true;
+        void sendText(q, base);
+      }
     })();
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages, busy]);
 
-  const send = async () => {
-    const text = draft.trim();
-    if (!text || busy || messages == null) return;
-    setDraft("");
-    const withUser: ChatMessage[] = [...messages, { role: "user", content: text }];
+  // Send `text` appended to `base`, resolving the coach reply. Shared by the
+  // input row (base = current thread) and the mount-time auto-submit (base =
+  // the just-loaded history), so a stale `messages` closure can't drop it.
+  const sendText = async (text: string, base: ChatMessage[]) => {
+    const t = text.trim();
+    if (!t || busyRef.current) return;
+    const withUser: ChatMessage[] = [...base, { role: "user", content: t }];
     setMessages(withUser);
+    busyRef.current = true;
     setBusy(true);
     try {
       // Context is rebuilt lazily per send so the coach sees today's data,
@@ -67,8 +88,16 @@ export function CoachScreen({ onPlanChange }: { onPlanChange: (plan: Plan) => vo
         { role: "assistant", content: "Sorry — I couldn't reach the AI service just now. Try again in a moment." },
       ]);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
+  };
+
+  const send = () => {
+    const text = draft.trim();
+    if (!text || busy || messages == null) return;
+    setDraft("");
+    void sendText(text, messages);
   };
 
   if (messages == null) {
