@@ -139,9 +139,20 @@ export function WorkoutsScreen({ units, onEditPlan }: { units: Profile["units"];
               Edit plan
             </button>
           </div>
-          {program.benchmarks.map((b) => (
-            <BenchmarkCard key={b.id} benchmark={b} units={units} />
-          ))}
+          {program.benchmarks.map((b) => {
+            // The benchmark card is measured by one of the plan's workouts;
+            // make the card open that workout so every card in the list is
+            // tappable (a benchmark with no measuring workout stays a display).
+            const pw = program.workouts.find((w) => w.benchmarkId === b.id);
+            return (
+              <BenchmarkCard
+                key={b.id}
+                benchmark={b}
+                units={units}
+                onStart={pw ? () => openOverview(pw.workout, pw.benchmarkId, pw.isBenchmark, true) : undefined}
+              />
+            );
+          })}
           <ul className="workout-list">
             {program.workouts.map((pw) => (
               <li key={pw.id}>
@@ -188,13 +199,27 @@ export function WorkoutsScreen({ units, onEditPlan }: { units: Profile["units"];
   );
 }
 
-/** Benchmark baseline → target progress card, shown atop a plan's program. */
-function BenchmarkCard({ benchmark: b, units }: { benchmark: Benchmark; units: Profile["units"] }) {
+/**
+ * Benchmark baseline → target progress card, shown atop a plan's program.
+ * When `onStart` is given (a plan workout measures this benchmark), the whole
+ * card is a button that opens that workout — so in the Workouts list every card
+ * is tappable, not just the workout rows.
+ */
+function BenchmarkCard({
+  benchmark: b,
+  units,
+  onStart,
+}: {
+  benchmark: Benchmark;
+  units: Profile["units"];
+  onStart?: () => void;
+}) {
   const pct = benchmarkProgress(b);
   const latest = b.history.length ? b.history[b.history.length - 1]!.value : null;
   const fmt = (v: number) => formatBenchmarkValue(v, b, units);
-  return (
-    <div className="benchmark-card">
+
+  const body = (
+    <div className="benchmark-card-main">
       <div className="benchmark-head">
         <span className="benchmark-name">{b.name}</span>
         <span className="benchmark-target">
@@ -203,7 +228,9 @@ function BenchmarkCard({ benchmark: b, units }: { benchmark: Benchmark; units: P
         </span>
       </div>
       {b.baseline == null ? (
-        <div className="muted small">Complete the benchmark workout to set your baseline.</div>
+        <div className="muted small">
+          {onStart ? "Tap to do the benchmark and set your baseline." : "Complete the benchmark workout to set your baseline."}
+        </div>
       ) : (
         <>
           <div className="benchmark-track">
@@ -216,6 +243,16 @@ function BenchmarkCard({ benchmark: b, units }: { benchmark: Benchmark; units: P
         </>
       )}
     </div>
+  );
+
+  if (!onStart) return <div className="benchmark-card">{body}</div>;
+  return (
+    <button className="benchmark-card tappable" onClick={onStart}>
+      {body}
+      <span className="workout-play" aria-hidden>
+        <PlayIcon size={18} />
+      </span>
+    </button>
   );
 }
 

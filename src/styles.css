@@ -1367,6 +1367,35 @@ body {
   padding: 14px 16px;
   margin-bottom: 12px;
 }
+/* Tappable variant: opens the workout that measures this benchmark, matching
+   the workout cards so every card in the list is clickable. */
+.benchmark-card.tappable {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--cui-duration) var(--cui-ease),
+              background var(--cui-duration) var(--cui-ease),
+              transform var(--cui-duration) var(--cui-ease),
+              box-shadow var(--cui-duration) var(--cui-ease);
+}
+.benchmark-card.tappable .benchmark-card-main {
+  flex: 1;
+  min-width: 0;
+}
+.benchmark-card.tappable:hover {
+  border-color: var(--cui-accent-tint);
+  background: var(--bg-3);
+  transform: translateY(-1px);
+  box-shadow: var(--cui-shadow-accent);
+}
+.benchmark-card.tappable:hover .workout-play {
+  transform: scale(1.08);
+}
 .benchmark-head {
   display: flex;
   align-items: baseline;
