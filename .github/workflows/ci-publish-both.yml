@@ -45,8 +45,7 @@ jobs:
           bot-password: ${{ secrets.PUBLISH_BOT_DEV_PASSWORD }}
           html-path: dist/index.html
           slug: fitness
-          changelog: "1.8.1 — in Workouts, the benchmark card (e.g. \"Sit-to-Stand\") is now tappable and opens its workout, so every card in the list starts a workout."Plan\" tab: your weight trend graph plus a coach session (tap a starter question or type your own to open a full chat with your coach). Also fixes recipe search — recipes saved in your Recipes app now show up under \"From your apps\" when you search a food."
-
+          changelog: "1.8.1 — in Workouts, the benchmark card (e.g. \"Sit-to-Stand\") is now tappable and opens its workout, so every card in the list starts a workout."
   publish-prod:
     runs-on: ubuntu-latest
     steps:
@@ -77,4 +76,4 @@ jobs:
           bot-password: ${{ secrets.PUBLISH_BOT_PROD_PASSWORD }}
           html-path: dist/index.html
           slug: fitness
-          changelog: "1.8.1 — in Workouts, the benchmark card (e.g. \"Sit-to-Stand\") is now tappable and opens its workout, so every card in the list starts a workout."Plan\" tab: your weight trend graph plus a coach session (tap a starter question or type your own to open a full chat with your coach). Also fixes recipe search — recipes saved in your Recipes app now show up under \"From your apps\" when you search a food."
+          changelog: "1.8.1 — in Workouts, the benchmark card (e.g. \"Sit-to-Stand\") is now tappable and opens its workout, so every card in the list starts a workout."
