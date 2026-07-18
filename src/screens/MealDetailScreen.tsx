@@ -5,6 +5,7 @@ import { getRepository } from "../data/repository";
 import { entryMacros, isAiEstimate } from "../features/diary";
 import { BarcodeIcon, DiamondIcon, EditIcon, SearchIcon, TrashIcon } from "../components/icons";
 import { AiEstimateBadge } from "../components/AiEstimateBadge";
+import { useScrollLock } from "../hooks/useScrollLock";
 
 interface Props {
   date: string;
@@ -167,6 +168,7 @@ function EntryEditModal({
   const [carbs, setCarbs] = useState(entry.food.perServing.carbs);
   const [fat, setFat] = useState(entry.food.perServing.fat);
   const [busy, setBusy] = useState(false);
+  useScrollLock();
 
   const save = async () => {
     const trimmed = name.trim();

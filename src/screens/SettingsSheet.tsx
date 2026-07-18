@@ -9,6 +9,7 @@ import { GoalWeightField, PlanDatesField, weeksBetween } from "../components/Pla
 import { NumberField } from "../components/NumberField";
 import { heightToCm, heightToDisplay, heightUnit, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { CloseIcon } from "../components/icons";
+import { useScrollLock } from "../hooks/useScrollLock";
 
 const EXPERIENCE_LABELS: Record<ExperienceLevel, string> = {
   beginner: "Beginner",
@@ -96,6 +97,7 @@ export function SettingsSheet({
     initialView === "program" && plan?.program ? "program" : "main",
   );
   const [busy, setBusy] = useState(false);
+  useScrollLock();
 
   const set = <K extends keyof ProfileDraft>(key: K, value: ProfileDraft[K]) =>
     setP((prev) => ({ ...prev, [key]: value }));

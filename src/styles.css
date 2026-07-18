@@ -1672,6 +1672,19 @@ body {
   justify-content: center;
   z-index: 50;
   animation: fade-in var(--cui-duration) var(--cui-ease);
+  /* Dragging on the dimmed area does nothing — never scrolls the page behind. */
+  touch-action: none;
+}
+/* Freeze the background while a sheet is open so touch-drags can't rubber-band
+   the page/scroll container under an iOS `position: fixed` overlay. */
+html.modal-open,
+html.modal-open body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+html.modal-open .screen {
+  overflow: hidden;
 }
 @keyframes fade-in {
   from {
@@ -1723,6 +1736,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;

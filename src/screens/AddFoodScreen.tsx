@@ -7,6 +7,7 @@ import { searchFoods, lookupBarcode } from "../features/foods/foodSearch";
 import { parseMeal } from "../features/naturalLanguage";
 import { recentFoodsForMeal, type RecentFood } from "../features/recentFoods";
 import { isValidBarcode } from "../features/barcode";
+import { useScrollLock } from "../hooks/useScrollLock";
 import {
   listRecipes,
   markCooked,
@@ -701,6 +702,7 @@ function MealItemEditor({
   const [protein, setProtein] = useState(item.perServing.protein);
   const [carbs, setCarbs] = useState(item.perServing.carbs);
   const [fat, setFat] = useState(item.perServing.fat);
+  useScrollLock();
 
   const save = () => {
     const trimmed = name.trim();
