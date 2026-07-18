@@ -84,15 +84,37 @@ export function CameraCapture({
     if (!video || !video.videoWidth) return;
     setBusy(true);
     try {
+      const vW = video.videoWidth;
+      const vH = video.videoHeight;
+      // The viewfinder shows a `object-fit: cover` crop of the stage box, so the
+      // sensor frame is WIDER/TALLER than what the user framed. Capture only the
+      // visible region — otherwise the model sees the background outside the
+      // frame and invents items from it (the reported "sees more than the UI
+      // shows" bug). Fall back to the full frame if the box hasn't laid out.
+      const dispW = video.clientWidth || vW;
+      const dispH = video.clientHeight || vH;
+      const dispAspect = dispW / dispH;
+      const vAspect = vW / vH;
+      let cropW = vW;
+      let cropH = vH;
+      let cropX = 0;
+      let cropY = 0;
+      if (vAspect > dispAspect) {
+        cropW = Math.round(vH * dispAspect);
+        cropX = Math.round((vW - cropW) / 2);
+      } else if (vAspect < dispAspect) {
+        cropH = Math.round(vW / dispAspect);
+        cropY = Math.round((vH - cropH) / 2);
+      }
       const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = cropW;
+      canvas.height = cropH;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
         setStatus("fallback");
         return;
       }
-      ctx.drawImage(video, 0, 0);
+      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
       const blob = await new Promise<Blob | null>((res) =>
         canvas.toBlob(res, "image/jpeg", 0.9),
       );

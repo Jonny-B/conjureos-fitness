@@ -26,6 +26,7 @@ import {
   NutritionPanelIcon,
   PackageIcon,
   SearchIcon,
+  TrashIcon,
 } from "../components/icons";
 
 /** The three logging surfaces, each reached directly from a meal's buttons. */
@@ -523,6 +524,13 @@ function AiMode({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [shotUrl, setShotUrl] = useState<string | null>(null);
+  // Index of the parsed item being edited inline, or null for the list view.
+  const [editing, setEditing] = useState<number | null>(null);
+
+  const removeItem = (i: number) =>
+    setItems((prev) => (prev ? prev.filter((_, idx) => idx !== i) : prev));
+  const replaceItem = (i: number, food: FoodItem) =>
+    setItems((prev) => (prev ? prev.map((f, idx) => (idx === i ? food : f)) : prev));
 
   const run = async (input: { text?: string; image?: ChatImage }) => {
     setBusy(true);
@@ -546,6 +554,7 @@ function AiMode({
     setShotUrl(null);
     setItems(null);
     setError(null);
+    setEditing(null);
   };
 
   const logAll = async () => {
@@ -619,7 +628,18 @@ function AiMode({
         </div>
       )}
 
-      {items && items.length > 0 && (
+      {items && items.length > 0 && editing != null && items[editing] && (
+        <MealItemEditor
+          item={items[editing]!}
+          onSave={(food) => {
+            replaceItem(editing, food);
+            setEditing(null);
+          }}
+          onCancel={() => setEditing(null)}
+        />
+      )}
+
+      {items && items.length > 0 && editing == null && (
         <>
           {tab === "photo" && (
             <label className="field">
@@ -627,14 +647,23 @@ function AiMode({
               <MealPicker meal={meal} onChange={setMeal} />
             </label>
           )}
-          <div className="muted small">Estimates — adjust later by editing the diary entry.</div>
+          <div className="muted small">Estimates — tap an item to edit, or remove what isn’t yours.</div>
           <ul className="parsed-list">
-            {items.map((f) => (
-              <li className="parsed" key={f.id}>
-                <span className="entry-name">{f.name}</span>
-                <span className="entry-sub">
-                  ~{f.perServing.calories} cal · {f.servingSize}
-                </span>
+            {items.map((f, i) => (
+              <li className="parsed editable" key={f.id}>
+                <button className="parsed-main" onClick={() => setEditing(i)}>
+                  <span className="entry-name">{f.name}</span>
+                  <span className="entry-sub">
+                    ~{f.perServing.calories} cal · {f.servingSize}
+                  </span>
+                </button>
+                <button
+                  className="parsed-del icon-btn"
+                  aria-label={`Remove ${f.name}`}
+                  onClick={() => removeItem(i)}
+                >
+                  <TrashIcon size={18} />
+                </button>
               </li>
             ))}
           </ul>
@@ -644,6 +673,98 @@ function AiMode({
         </>
       )}
     </div>
+  );
+}
+
+/** Compact inline editor for one AI-estimated meal item (name, serving, macros)
+ *  on the review screen — so a wrong guess can be fixed instead of only logged
+ *  or deleted. Per-serving values; quantity stays 1 at log time. */
+function MealItemEditor({
+  item,
+  onSave,
+  onCancel,
+}: {
+  item: FoodItem;
+  onSave: (food: FoodItem) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(item.name);
+  const [serving, setServing] = useState(item.servingSize);
+  const [cal, setCal] = useState(item.perServing.calories);
+  const [protein, setProtein] = useState(item.perServing.protein);
+  const [carbs, setCarbs] = useState(item.perServing.carbs);
+  const [fat, setFat] = useState(item.perServing.fat);
+
+  const save = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onSave({
+      ...item,
+      name: trimmed.slice(0, 80),
+      servingSize: serving.trim() || item.servingSize,
+      perServing: {
+        calories: Math.max(0, Math.round(cal)),
+        protein: Math.max(0, Math.round(protein)),
+        carbs: Math.max(0, Math.round(carbs)),
+        fat: Math.max(0, Math.round(fat)),
+      },
+    });
+  };
+
+  return (
+    <div className="meal-item-editor">
+      <button className="link-btn back-link" onClick={onCancel}>
+        <ChevronLeft size={16} /> Back to items
+      </button>
+      <label className="field">
+        <span>Name</span>
+        <input className="text-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Food name" />
+      </label>
+      <label className="field">
+        <span>Serving</span>
+        <input
+          className="text-input"
+          value={serving}
+          onChange={(e) => setServing(e.target.value)}
+          placeholder="e.g. 1 cup (240 g)"
+        />
+      </label>
+      <div className="macros-edit-row">
+        <NumBox label="Calories" value={cal} onChange={setCal} />
+        <NumBox label="Protein (g)" value={protein} onChange={setProtein} />
+        <NumBox label="Carbs (g)" value={carbs} onChange={setCarbs} />
+        <NumBox label="Fat (g)" value={fat} onChange={setFat} />
+      </div>
+      <div className="muted small">All values are per one serving.</div>
+      <button className="btn primary block" disabled={name.trim().length < 1} onClick={save}>
+        Save item
+      </button>
+    </div>
+  );
+}
+
+function NumBox({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <label className="macro-edit plain">
+      <span className="macro-edit-label">{label}</span>
+      <input
+        className="macro-edit-input"
+        aria-label={label}
+        inputMode="decimal"
+        type="text"
+        value={value === 0 ? "" : String(value)}
+        placeholder="0"
+        onChange={(e) => onChange(Number(e.target.value.replace(/[^0-9.]/g, "")) || 0)}
+      />
+    </label>
   );
 }
 

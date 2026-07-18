@@ -881,6 +881,41 @@ body {
 .parsed {
   justify-content: space-between;
 }
+.parsed.editable {
+  gap: 8px;
+}
+.parsed-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  background: none;
+  border: 0;
+  padding: 6px 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.parsed-main .entry-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.parsed-del {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.parsed-del:active {
+  color: var(--bad, #e06c75);
+}
+.meal-item-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
 .manual-barcode {
   display: flex;
