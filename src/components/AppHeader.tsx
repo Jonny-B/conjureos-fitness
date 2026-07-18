@@ -5,7 +5,7 @@
  * their own back/title headers — this owns both.
  */
 
-import { ChevronLeft, Logo, SettingsIcon } from "./icons";
+import { AppleIcon, ChevronLeft, SettingsIcon } from "./icons";
 
 export function AppHeader({
   title,
@@ -26,7 +26,7 @@ export function AppHeader({
           </button>
         ) : (
           <span className="brand-mark" aria-hidden>
-            <Logo />
+            <AppleIcon />
           </span>
         )}
       </div>
