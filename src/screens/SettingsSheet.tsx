@@ -108,9 +108,15 @@ export function SettingsSheet({
   const setUnits = async (u: Profile["units"]) => {
     if (u === p.units) return;
     set("units", u);
+    // Instant-persist the preference ONLY onto a profile that already exists.
+    // NEVER fabricate a DEFAULT profile here — writing DEFAULT_PROFILE would
+    // overwrite the user's real stats whenever the profile hasn't loaded / isn't
+    // set yet (the "all my stats reverted to default" bug). With no stored
+    // profile, the local draft carries the choice into the explicit Save.
+    if (!profile) return;
     try {
       const repo = await getRepository();
-      const next: Profile = { ...(profile ?? toProfile(p)), units: u };
+      const next: Profile = { ...profile, units: u };
       await repo.saveProfile(next);
       onSave(goals, next);
     } catch {

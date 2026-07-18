@@ -123,8 +123,14 @@ export async function commitNewPlan(
       direction: b.direction ?? base.direction,
       units: b.units ?? base.units,
     };
-    await repo.saveProfile(profile).catch(() => {});
   }
+  // ALWAYS persist a profile once a plan exists — never leave store.json.profile
+  // null. A null profile makes the cog fall back to DEFAULT_PROFILE (and older
+  // code could then cement those defaults), which reads as "my stats reverted to
+  // default" after a reload. Fall back to the current profile, else DEFAULT.
+  const finalProfile: Profile = profile ?? { ...DEFAULT_PROFILE };
+  await repo.saveProfile(finalProfile).catch(() => {});
+  profile = finalProfile;
 
   const goals = targetsToGoals(plan, ctx.currentGoals);
   if (plan.targets?.dailyCalories != null) {
