@@ -45,7 +45,8 @@ export function WeightCard({ profile }: { profile: Profile | null }) {
     if (!Number.isFinite(shown) || shown <= 0) return;
     const kg = weightToKg(shown, units);
     const repo = await getRepository();
-    await repo.upsertWeight({ date: todayISO(), weightKg: Math.round(kg * 10) / 10 });
+    // Store kg to 2 decimals so a 1-decimal lb entry (0.1 lb ≈ 0.045 kg) round-trips.
+    await repo.upsertWeight({ date: todayISO(), weightKg: Math.round(kg * 100) / 100 });
     setInput("");
     await reload();
   };

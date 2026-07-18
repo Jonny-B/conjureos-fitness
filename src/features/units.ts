@@ -24,9 +24,9 @@ export const heightUnit = (u: Units) => (u === "imperial" ? "in" : "cm");
 export const distanceUnit = (u: Units) => (u === "imperial" ? "mi" : "km");
 export const paceUnit = (u: Units) => (u === "imperial" ? "/mi" : "/km");
 
-/** kg → the display number in the user's units (rounded for a field). */
+/** kg → the display number in the user's units (one decimal, matching entry). */
 export const weightToDisplay = (kg: number, u: Units) =>
-  u === "imperial" ? Math.round(kgToLb(kg)) : Math.round(kg * 10) / 10;
+  u === "imperial" ? Math.round(kgToLb(kg) * 10) / 10 : Math.round(kg * 10) / 10;
 /** A display weight (in the user's units) → kg for storage. */
 export const weightToKg = (v: number, u: Units) => (u === "imperial" ? lbToKg(v) : v);
 
@@ -35,7 +35,7 @@ export const heightToDisplay = (cm: number, u: Units) =>
 export const heightToCm = (v: number, u: Units) => (u === "imperial" ? inToCm(v) : v);
 
 export function fmtWeight(kg: number, u: Units): string {
-  return u === "imperial" ? `${Math.round(kgToLb(kg))} lb` : `${Math.round(kg * 10) / 10} kg`;
+  return u === "imperial" ? `${Math.round(kgToLb(kg) * 10) / 10} lb` : `${Math.round(kg * 10) / 10} kg`;
 }
 
 export function fmtHeight(cm: number, u: Units): string {
