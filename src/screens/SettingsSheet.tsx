@@ -100,6 +100,24 @@ export function SettingsSheet({
   const set = <K extends keyof ProfileDraft>(key: K, value: ProfileDraft[K]) =>
     setP((prev) => ({ ...prev, [key]: value }));
 
+  // Units is a display preference, not a numeric edit — apply + persist it the
+  // instant it's tapped (rather than only on Save, which is easy to miss), so
+  // the choice can never be lost by closing the sheet. Merges onto the
+  // last-saved profile so it doesn't disturb any in-progress numeric drafts, and
+  // pushes to app state so every screen switches units immediately.
+  const setUnits = async (u: Profile["units"]) => {
+    if (u === p.units) return;
+    set("units", u);
+    try {
+      const repo = await getRepository();
+      const next: Profile = { ...(profile ?? toProfile(p)), units: u };
+      await repo.saveProfile(next);
+      onSave(goals, next);
+    } catch {
+      /* best-effort — the Save button still persists everything */
+    }
+  };
+
   const applyRecommended = () => setG(recommendGoals(toProfile(p)));
 
   const save = async () => {
@@ -198,7 +216,7 @@ export function SettingsSheet({
           <Field label="Units">
             <div className="chip-row">
               {(["metric", "imperial"] as const).map((u) => (
-                <button key={u} className={`chip${p.units === u ? " active" : ""}`} onClick={() => set("units", u)}>
+                <button key={u} type="button" className={`chip${p.units === u ? " active" : ""}`} onClick={() => void setUnits(u)}>
                   {u === "metric" ? "Metric (kg, cm)" : "Imperial (lb, in)"}
                 </button>
               ))}
