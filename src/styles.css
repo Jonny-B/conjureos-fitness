@@ -1349,6 +1349,13 @@ body {
 .program-section {
   margin-bottom: 20px;
 }
+.program-assess-hint {
+  margin: -2px 0 10px;
+}
+.provisional-tag {
+  color: var(--cui-accent);
+  font-weight: 600;
+}
 .benchmark-badge {
   display: inline-block;
   margin-left: 8px;

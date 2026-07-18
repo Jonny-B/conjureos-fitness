@@ -44,20 +44,21 @@ Rules:
 - Respect any HARD SAFETY avoid-list exactly.
 - Output ONLY the JSON. No prose, no markdown fences.`;
 
-const SYSTEM_PROGRAM = `You are a wellness coach designing a workout program for a plan whose goals are already set.
+const SYSTEM_PROGRAM = `You are a strength coach designing a workout program for a plan whose goals are already set.
 Return ONLY a JSON object with the program:
   { "workouts": [ { "name": string, "kind"?: "strength" | "run" | "bike",
                     "description"?: string,
                     "exercises": [ { "name": string,
                                      "sets": [ { "reps"?: number, "durationSec"?: number, "restSec"?: number, "weightKg"?: number } ],
                                      "notes"?: string } ] } ],
-    "benchmark": { "exercise": string, "metric": "reps" | "weightKg" | "durationSec" | "distanceKm", "target": number, "unit": string, "lowerIsBetter"?: boolean } }
+    "benchmarks": [ { "exercise": string, "metric": "reps" | "weightKg" | "durationSec" | "distanceKm", "target": number, "unit": string, "lowerIsBetter"?: boolean } ] }
 Rules:
-- Give one workout per training day (match "days per week"), up to 6, each a distinct session (e.g. push / pull / legs / conditioning), 3-8 exercises each. Give each workout a 1-2 sentence "description" saying what it trains and how to approach it.
-- If the user named a specific target (e.g. "the Murph", a 5k, a pull-up), build the workouts to train for it and set the benchmark to that exact effort.
-- Scale difficulty to experience: beginner = form + lighter volume; intermediate/advanced = higher volume, progression, named lifts. Include a warmup note in the first exercise's "notes".
-- Sets have reps OR durationSec, plus restSec (metric units: kg, km, seconds).
-- EXACTLY ONE benchmark: a single measurable effort the plan improves; its exercise SHOULD appear in a workout. set lowerIsBetter=true for a timed effort.
+- BENCHMARKS COME FIRST. Pick 1-4 benchmarks that ARE the measurable test of THIS person's goal — the movements they're training, tested at capacity (max reps, a rep-max weight, or a timed effort). For a compound goal (e.g. the Murph: pull-ups, push-ups, a timed run), give ONE benchmark PER component. Never a generic filler like "sit-to-stand" for someone training hard.
+- The FIRST workout MUST be the assessment: name it "Assessment" (or "<goal> Test"), containing exactly the benchmark movements at max effort ("as many reps as possible", a timed run), so the user tests once and sets every baseline. Each benchmark's "exercise" MUST appear by name in a workout (the assessment counts).
+- Then give the training workouts — one per training day (match "days per week"), up to 5 more, each a distinct session (push / pull / legs / conditioning), 3-8 exercises, built to move those benchmarks. 1-2 sentence "description" each.
+- Scale HARD to experience: beginner = form + lighter volume; intermediate/advanced = real named lifts, higher volume, progression, weighted movements. An advanced person must never get a beginner bodyweight routine.
+- Sets have reps OR durationSec, plus restSec (metric units: kg, km, seconds). Include a warmup note in the assessment's first exercise "notes".
+- set lowerIsBetter=true for a timed effort (faster wins).
 - Respect the user's equipment and any HARD SAFETY avoid-list exactly.
 - Output ONLY the JSON. No prose, no markdown fences.`;
 
@@ -248,7 +249,9 @@ async function generateProgram(input: PlanInput, goals: GeneratedGoal[]): Promis
     raw = await complete({
       system: SYSTEM_PROGRAM,
       messages: [{ role: "user", content: buildProgramPrompt(input, goals) }],
-      maxTokens: 2600,
+      // A full multi-day advanced program with an assessment overflows a smaller
+      // budget and truncates → parse fail → the beginner fallback. Give it room.
+      maxTokens: 4096,
       tier: "capable",
     });
   } catch {
@@ -392,7 +395,7 @@ export async function createPlan(
           if (aiProg && validateProgram(aiProg, input.mode, injuries).length === 0) {
             candidate = { ...candidate, program: aiProg };
           } else {
-            const tmpl = fallbackProgram(input.mode, injuries);
+            const tmpl = fallbackProgram(input.mode, injuries, input.experienceLevel);
             if (tmpl) candidate = { ...candidate, program: tmpl };
           }
         }

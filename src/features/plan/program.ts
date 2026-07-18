@@ -97,6 +97,31 @@ function parseWorkout(raw: unknown): Workout | null {
   };
 }
 
+const MAX_BENCHMARKS = 4;
+
+/**
+ * Parse the benchmark(s) the plan improves. Accepts a `benchmarks` array (a
+ * multi-part assessment like Murph: pull-ups + push-ups + run) or a legacy
+ * single `benchmark` object. Deduped by exercise key, capped, at least one.
+ */
+function parseBenchmarks(o: Record<string, unknown>): Benchmark[] {
+  const rawList = Array.isArray(o.benchmarks)
+    ? o.benchmarks
+    : o.benchmark != null
+      ? [o.benchmark]
+      : [];
+  const seen = new Set<string>();
+  const out: Benchmark[] = [];
+  for (const raw of rawList) {
+    const b = parseBenchmark(raw);
+    if (!b || seen.has(b.exerciseKey)) continue;
+    seen.add(b.exerciseKey);
+    out.push(b);
+    if (out.length >= MAX_BENCHMARKS) break;
+  }
+  return out;
+}
+
 /** Parse the AI's `benchmark` object into a Benchmark (baseline null, no history). */
 function parseBenchmark(raw: unknown): Benchmark | null {
   if (!raw || typeof raw !== "object") return null;
@@ -154,23 +179,30 @@ export function parseProgram(raw: unknown): WorkoutProgram | null {
     .filter((w): w is Workout => w !== null);
   if (workouts.length === 0) return null;
 
-  const benchmark = parseBenchmark(o.benchmark);
-  if (!benchmark) return null;
+  const benchmarks = parseBenchmarks(o);
+  if (benchmarks.length === 0) return null;
 
-  // Flag the workout that contains the benchmark effort (by normalized key),
-  // falling back to the first workout so a benchmark is always reachable.
-  const matchIdx = workouts.findIndex((w) =>
-    w.exercises.some((e) => normalizeExerciseKey(e.name) === benchmark.exerciseKey),
-  );
-  const benchIdx = matchIdx >= 0 ? matchIdx : 0;
+  // Link each benchmark to the workout that contains its movement (by key). A
+  // benchmark whose movement appears nowhere is attached to the first workout so
+  // it stays reachable; a workout can measure several (a Murph assessment). Any
+  // workout that measures ≥1 benchmark is flagged so its card reads "assessment".
+  const byWorkout: string[][] = workouts.map(() => []);
+  for (const b of benchmarks) {
+    let idx = workouts.findIndex((w) => w.exercises.some((e) => normalizeExerciseKey(e.name) === b.exerciseKey));
+    if (idx < 0) idx = 0;
+    byWorkout[idx]!.push(b.id);
+  }
 
-  const programWorkouts: ProgramWorkout[] = workouts.map((workout, i) => ({
-    id: newId(),
-    workout,
-    ...(i === benchIdx ? { isBenchmark: true, benchmarkId: benchmark.id } : {}),
-  }));
+  const programWorkouts: ProgramWorkout[] = workouts.map((workout, i) => {
+    const ids = byWorkout[i]!;
+    return {
+      id: newId(),
+      workout,
+      ...(ids.length ? { isBenchmark: true, benchmarkId: ids[0], benchmarkIds: ids } : {}),
+    };
+  });
 
-  return { workouts: programWorkouts, benchmarks: [benchmark], analysisCursor: 0 };
+  return { workouts: programWorkouts, benchmarks, analysisCursor: 0 };
 }
 
 const maxOf = (nums: (number | undefined)[]): number | null => {
@@ -215,11 +247,16 @@ export function recordBenchmarkResult(
   program: WorkoutProgram,
   session: WorkoutSession,
 ): WorkoutProgram {
+  // The set of benchmarks this session is allowed to measure. An assessment
+  // tags every benchmark it covers (benchmarkIds); a legacy single run tags one
+  // (benchmarkId). When neither is tagged, any benchmark may match by key.
+  const tagged = new Set<string>([
+    ...(session.benchmarkIds ?? []),
+    ...(session.benchmarkId != null ? [session.benchmarkId] : []),
+  ]);
   let changed = false;
   const benchmarks = program.benchmarks.map((b) => {
-    // Prefer the explicit benchmarkId tag; fall back to an exercise-key match.
-    const tagged = session.benchmarkId != null && session.benchmarkId === b.id;
-    if (!tagged && session.benchmarkId != null) return b;
+    if (tagged.size > 0 && !tagged.has(b.id)) return b;
     const value = measureSession(b, session);
     if (value == null) return b;
     changed = true;

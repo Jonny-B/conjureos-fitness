@@ -27,7 +27,7 @@ import type {
 import { DEFAULT_PROFILE } from "../../types";
 import { getRepository } from "../../data/repository";
 import { recordBenchmarkResult } from "./program";
-import { maybeAdapt } from "./analyze";
+import { calibrateToBenchmark, maybeAdapt } from "./analyze";
 
 /** Body stats the wizard collects, reconciled into the Profile on commit. */
 export interface WizardBody {
@@ -204,16 +204,34 @@ export async function recordSessionAndAdapt(
   await repo.saveWorkoutSession(session).catch(() => {});
   if (!plan?.program) return plan;
 
+  const measuresBenchmark = Boolean(session.benchmarkId || session.benchmarkIds?.length);
+
   let next: Plan = plan;
-  if (session.benchmarkId) {
-    const program = recordBenchmarkResult(plan.program, session);
-    if (program !== plan.program) next = { ...plan, program };
+  let baselineJustSet = false;
+  if (measuresBenchmark) {
+    const before = plan.program;
+    const program = recordBenchmarkResult(before, session);
+    if (program !== before) {
+      next = { ...plan, program };
+      // A benchmark whose baseline flipped null → value this fold-in means the
+      // user just did their first assessment — time to calibrate the program.
+      // (recordBenchmarkResult preserves benchmark order, so indexes align.)
+      baselineJustSet = before.benchmarks.some(
+        (b, i) => b.baseline == null && program.benchmarks[i]?.baseline != null,
+      );
+    }
   }
 
   try {
     const sessions = await repo.listWorkoutSessions(200);
-    const adapted = await maybeAdapt(next, sessions);
-    if (adapted) next = adapted;
+    if (baselineJustSet) {
+      // Benchmark-first: the assessment just set the baselines, so tune the
+      // provisional workouts to the measured capacity before the periodic loop.
+      next = await calibrateToBenchmark(next, sessions);
+    } else {
+      const adapted = await maybeAdapt(next, sessions);
+      if (adapted) next = adapted;
+    }
   } catch {
     /* AI/adaptation is best-effort; keep the measurement result */
   }

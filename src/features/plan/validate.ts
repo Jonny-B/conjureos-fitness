@@ -16,6 +16,7 @@ import { isExerciseExcluded } from "../safety/injuryExclusions";
 
 const MAX_WORKOUT_GOALS = 6;
 const MAX_PROGRAM_WORKOUTS = 6;
+const MAX_BENCHMARKS = 4;
 
 /**
  * Program-only safety rails (W4/W5). Returns a list of reasons the program is
@@ -42,12 +43,15 @@ export function validateProgram(
       }
     }
   }
-  if (program.benchmarks.length !== 1) {
-    reasons.push(`program must have exactly one benchmark (found ${program.benchmarks.length})`);
-  } else {
-    const b = program.benchmarks[0]!;
+  // 1–4 benchmarks: a single keystone effort, or a small multi-part assessment
+  // (e.g. Murph = pull-ups + push-ups + run). More than 4 is noise, zero leaves
+  // the adaptive loop with nothing to track.
+  if (program.benchmarks.length < 1 || program.benchmarks.length > MAX_BENCHMARKS) {
+    reasons.push(`program must have 1-${MAX_BENCHMARKS} benchmarks (found ${program.benchmarks.length})`);
+  }
+  for (const b of program.benchmarks) {
     if (!Number.isFinite(b.target) || b.target <= 0) {
-      reasons.push("benchmark has no valid target");
+      reasons.push(`benchmark "${b.name}" has no valid target`);
     }
     if (isExerciseExcluded(b.name, injuries)) {
       reasons.push(`benchmark "${b.name}" conflicts with a declared injury`);

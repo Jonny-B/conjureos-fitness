@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Benchmark, Plan, Profile, WeightEntry, Workout } from "../types";
+import type { Benchmark, Plan, ProgramWorkout, Profile, WeightEntry } from "../types";
 import { getRepository } from "../data/repository";
 import { todayISO } from "../features/diary";
 import { bmi } from "../features/goals";
@@ -36,15 +36,14 @@ export function PlanScreen({
   onEditPlan: () => void;
 }) {
   // A plan workout mid-run: overview → player → summary → reflect via the runner.
-  const [running, setRunning] = useState<{ workout: Workout; benchmarkId?: string; isBenchmark?: boolean } | null>(
-    null,
-  );
+  const [running, setRunning] = useState<ProgramWorkout | null>(null);
 
   if (running) {
     return (
       <WorkoutRunner
         workout={running.workout}
         benchmarkId={running.benchmarkId}
+        benchmarkIds={running.benchmarkIds}
         isBenchmark={running.isBenchmark}
         fromPlan
         plan={plan}
@@ -58,12 +57,7 @@ export function PlanScreen({
 
   return (
     <div className="plan-screen">
-      <ProgramSection
-        plan={plan}
-        units={units}
-        onEditPlan={onEditPlan}
-        onStart={(workout, benchmarkId, isBenchmark) => setRunning({ workout, benchmarkId, isBenchmark })}
-      />
+      <ProgramSection plan={plan} units={units} onEditPlan={onEditPlan} onStart={setRunning} />
       <TrendsPanel profile={profile} />
       <CoachLauncher onAsk={onAskCoach} />
     </div>
@@ -81,10 +75,17 @@ function ProgramSection({
   plan: Plan | null;
   units: Profile["units"];
   onEditPlan: () => void;
-  onStart: (workout: Workout, benchmarkId?: string, isBenchmark?: boolean) => void;
+  onStart: (pw: ProgramWorkout) => void;
 }) {
   const program = plan?.program;
   if (!program || program.workouts.length === 0) return null;
+
+  // Benchmark-first: until every benchmark has a baseline, the training workouts
+  // are provisional — the assessment is what calibrates them. Surface that.
+  const needsAssessment = program.benchmarks.some((b) => b.baseline == null);
+  // Find the assessment workout(s) so the benchmark card can open one.
+  const workoutForBenchmark = (id: string) =>
+    program.workouts.find((w) => w.benchmarkId === id || w.benchmarkIds?.includes(id));
 
   return (
     <section className="plan-section program-section">
@@ -94,38 +95,45 @@ function ProgramSection({
           Edit plan
         </button>
       </div>
+
+      {needsAssessment && (
+        <p className="muted small program-assess-hint">
+          Do your benchmark first — your workouts calibrate to your results.
+        </p>
+      )}
+
       {program.benchmarks.map((b) => {
-        // The benchmark card is measured by one of the plan's workouts; make the
-        // card open that workout so every card in the list is tappable (a
-        // benchmark with no measuring workout stays a display).
-        const pw = program.workouts.find((w) => w.benchmarkId === b.id);
+        const pw = workoutForBenchmark(b.id);
         return (
-          <BenchmarkCard
-            key={b.id}
-            benchmark={b}
-            units={units}
-            onStart={pw ? () => onStart(pw.workout, pw.benchmarkId, pw.isBenchmark) : undefined}
-          />
+          <BenchmarkCard key={b.id} benchmark={b} units={units} onStart={pw ? () => onStart(pw) : undefined} />
         );
       })}
+
       <ul className="workout-list">
-        {program.workouts.map((pw) => (
-          <li key={pw.id}>
-            <button className="workout-card" onClick={() => onStart(pw.workout, pw.benchmarkId, pw.isBenchmark)}>
-              <div className="workout-card-text">
-                <div className="workout-name">
-                  {pw.workout.name}
-                  {pw.isBenchmark && <span className="benchmark-badge">Benchmark</span>}
+        {program.workouts.map((pw) => {
+          // A non-assessment workout is "provisional" until the baselines exist.
+          const provisional = needsAssessment && !pw.isBenchmark;
+          return (
+            <li key={pw.id}>
+              <button className="workout-card" onClick={() => onStart(pw)}>
+                <div className="workout-card-text">
+                  <div className="workout-name">
+                    {pw.workout.name}
+                    {pw.isBenchmark && <span className="benchmark-badge">Assessment</span>}
+                  </div>
+                  {pw.workout.summary && <div className="workout-summary">{pw.workout.summary}</div>}
+                  <div className="workout-meta">
+                    {metaLine(pw.workout)}
+                    {provisional && <span className="provisional-tag"> · provisional</span>}
+                  </div>
                 </div>
-                {pw.workout.summary && <div className="workout-summary">{pw.workout.summary}</div>}
-                <div className="workout-meta">{metaLine(pw.workout)}</div>
-              </div>
-              <span className="workout-play" aria-hidden>
-                <PlayIcon size={18} />
-              </span>
-            </button>
-          </li>
-        ))}
+                <span className="workout-play" aria-hidden>
+                  <PlayIcon size={18} />
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

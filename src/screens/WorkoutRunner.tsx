@@ -40,6 +40,7 @@ type RunnerView =
 export function WorkoutRunner({
   workout,
   benchmarkId,
+  benchmarkIds,
   isBenchmark,
   fromPlan,
   plan,
@@ -50,6 +51,8 @@ export function WorkoutRunner({
 }: {
   workout: Workout;
   benchmarkId?: string;
+  /** All benchmarks this run measures (a multi-part assessment). */
+  benchmarkIds?: string[];
   isBenchmark?: boolean;
   fromPlan?: boolean;
   plan: Plan | null;
@@ -78,7 +81,7 @@ export function WorkoutRunner({
         workout={workout}
         units={units}
         onFinish={async (cardio) => {
-          const session = newCardioSession(workout, cardio, benchmarkId);
+          const session = newCardioSession(workout, cardio, benchmarkId, benchmarkIds);
           await saveSession(session);
           setView({ screen: "reflect", session });
         }}
@@ -103,7 +106,7 @@ export function WorkoutRunner({
         workout={workout}
         byExercise={view.byExercise}
         onSave={async () => {
-          const session = newSessionFrom(workout, view.byExercise, benchmarkId);
+          const session = newSessionFrom(workout, view.byExercise, benchmarkId, benchmarkIds);
           await saveSession(session);
           setView({ screen: "reflect", session });
         }}

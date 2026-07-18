@@ -60,6 +60,18 @@ Rules:
 - weightKg is in kilograms. Keep everything beginner-safe.
 - Output ONLY the JSON. No prose, no markdown fences.`;
 
+const CALIBRATION_SYSTEM = `You are a strength coach CALIBRATING a provisional workout program to a user's JUST-MEASURED benchmark results. You are NOT a doctor.
+They completed their benchmark assessment, so you now know their real capacity; the prescribed working sets were placeholders. Return ONLY a JSON object describing the adjustment:
+  { "summary": string,
+    "deload"?: boolean,
+    "benchmarkTargetDelta"?: number,
+    "changes": [ { "op": "setReps"|"setWeight"|"setRest"|"swap", "exerciseKey": string, "reps"?: number, "weightKg"?: number, "restSec"?: number, "toName"?: string } ] }
+Rules:
+- Scale the working sets to their measured level: training reps/weights that fit the capacity the benchmark just revealed (e.g. work sets well below a max-rep effort so they can complete the prescription).
+- Up to 4 changes — spend them on the exercises that most need calibrating. Use ONLY the exerciseKeys listed in the data; never invent one.
+- Only change the benchmark target (benchmarkTargetDelta) if the measured baseline makes the current target clearly wrong.
+- Keep everything safe and realistic. Output ONLY the JSON. No prose, no markdown fences.`;
+
 function extractJson(raw: string): string {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenced?.[1]) return fenced[1].trim();
@@ -248,6 +260,44 @@ export async function analyzeAndAdapt(plan: Plan, sessions: WorkoutSession[]): P
   }
 
   return adjusted ? { ...plan, program: adjusted } : withCursor;
+}
+
+/**
+ * Calibrate a provisional program to the user's just-measured benchmark. Runs
+ * once, right after the assessment sets the baselines — the "THEN prescribe the
+ * real workouts" half of the benchmark-first flow. Same bounded op set + same
+ * validation rails as the adaptation engine; a bad/empty response is a no-op, so
+ * the provisional program is never degraded. Does NOT advance the analysis
+ * cursor (that's the periodic loop's concern).
+ */
+export async function calibrateToBenchmark(plan: Plan, sessions: WorkoutSession[]): Promise<Plan> {
+  const program = plan.program;
+  if (!program) return plan;
+
+  let adjusted: WorkoutProgram | null = null;
+  try {
+    const raw = await complete({
+      system: CALIBRATION_SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: `${buildAnalysisPrompt(program, sessions)}\n\nThe newest session above is the benchmark assessment they just completed. Calibrate the prescribed working sets to these measured numbers.`,
+        },
+      ],
+      maxTokens: 1024,
+      tier: "capable",
+    });
+    const adj = parseAdjustment(raw);
+    if (adj && (adj.changes.length > 0 || adj.deload || adj.benchmarkTargetDelta != null)) {
+      const candidate = applyAdjustment(program, adj);
+      const reasons = validateProgram(candidate, plan.mode, plan.safety.injuries ?? []);
+      if (reasons.length === 0) adjusted = candidate;
+    }
+  } catch {
+    /* transport error — leave the provisional program as-is */
+  }
+
+  return adjusted ? { ...plan, program: adjusted } : plan;
 }
 
 /**

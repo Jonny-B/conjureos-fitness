@@ -402,10 +402,15 @@ export interface Benchmark {
 export interface ProgramWorkout {
   id: string;
   workout: Workout;
-  /** True when finishing this workout measures a benchmark. */
+  /** True when finishing this workout measures one or more benchmarks. */
   isBenchmark?: boolean;
-  /** Which Benchmark this workout measures (Benchmark.id). */
+  /** Which Benchmark this workout measures (Benchmark.id). Kept for back-compat;
+   *  new plans use `benchmarkIds` (a single assessment can measure several). */
   benchmarkId?: string;
+  /** All Benchmarks this workout measures — an assessment can set several
+   *  baselines at once (e.g. Murph: pull-ups + push-ups + run). Additive;
+   *  when absent, `benchmarkId` (if any) is the single measured benchmark. */
+  benchmarkIds?: string[];
 }
 
 /**
@@ -560,6 +565,9 @@ export interface WorkoutSession {
   cardio?: CardioActual;
   /** Set when this session was a benchmark run (links to Plan benchmark). */
   benchmarkId?: string;
+  /** Benchmarks this session measured, when it was an assessment covering
+   *  several (e.g. a Murph test). Union'd with `benchmarkId` at fold-in. */
+  benchmarkIds?: string[];
   /** ISO timestamp the session finished. */
   completedAt: string;
 }
