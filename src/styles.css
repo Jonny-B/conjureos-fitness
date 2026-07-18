@@ -1715,7 +1715,15 @@ body {
 }
 .sheet-body {
   padding: 4px 16px 8px;
+  /* flex:1 + min-height:0 lets THIS pane scroll inside the flex-column sheet
+     (a flex item won't shrink below its content without min-height:0, so without
+     it the body never scrolls, the footer is pushed off-screen, and touch-scroll
+     falls through to the page behind the modal). */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
   gap: 14px;
