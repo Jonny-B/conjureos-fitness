@@ -904,12 +904,12 @@ body {
   text-overflow: ellipsis;
   max-width: 100%;
 }
-.parsed-del {
+.parsed-edit {
   flex: 0 0 auto;
   color: var(--muted);
 }
-.parsed-del:active {
-  color: var(--bad, #e06c75);
+.parsed-edit:active {
+  color: var(--cui-accent);
 }
 .meal-item-editor {
   display: flex;

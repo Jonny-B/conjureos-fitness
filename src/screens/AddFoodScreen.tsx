@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   DiamondIcon,
+  EditIcon,
   NutritionPanelIcon,
   PackageIcon,
   SearchIcon,
@@ -628,18 +629,7 @@ function AiMode({
         </div>
       )}
 
-      {items && items.length > 0 && editing != null && items[editing] && (
-        <MealItemEditor
-          item={items[editing]!}
-          onSave={(food) => {
-            replaceItem(editing, food);
-            setEditing(null);
-          }}
-          onCancel={() => setEditing(null)}
-        />
-      )}
-
-      {items && items.length > 0 && editing == null && (
+      {items && items.length > 0 && (
         <>
           {tab === "photo" && (
             <label className="field">
@@ -647,7 +637,7 @@ function AiMode({
               <MealPicker meal={meal} onChange={setMeal} />
             </label>
           )}
-          <div className="muted small">Estimates — tap an item to edit, or remove what isn’t yours.</div>
+          <div className="muted small">Estimates — tap an item to edit or delete what isn’t yours.</div>
           <ul className="parsed-list">
             {items.map((f, i) => (
               <li className="parsed editable" key={f.id}>
@@ -658,11 +648,11 @@ function AiMode({
                   </span>
                 </button>
                 <button
-                  className="parsed-del icon-btn"
-                  aria-label={`Remove ${f.name}`}
-                  onClick={() => removeItem(i)}
+                  className="parsed-edit icon-btn"
+                  aria-label={`Edit ${f.name}`}
+                  onClick={() => setEditing(i)}
                 >
-                  <TrashIcon size={18} />
+                  <EditIcon size={18} />
                 </button>
               </li>
             ))}
@@ -672,20 +662,37 @@ function AiMode({
           </button>
         </>
       )}
+
+      {items && editing != null && items[editing] && (
+        <MealItemEditor
+          item={items[editing]!}
+          onSave={(food) => {
+            replaceItem(editing, food);
+            setEditing(null);
+          }}
+          onDelete={() => {
+            removeItem(editing);
+            setEditing(null);
+          }}
+          onCancel={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }
 
-/** Compact inline editor for one AI-estimated meal item (name, serving, macros)
- *  on the review screen — so a wrong guess can be fixed instead of only logged
- *  or deleted. Per-serving values; quantity stays 1 at log time. */
+/** Modal editor for one AI-estimated meal item (name, serving, per-serving
+ *  macros) on the review screen — matches the diary entry editor. Save updates
+ *  the item; Delete removes it; both close the modal. */
 function MealItemEditor({
   item,
   onSave,
+  onDelete,
   onCancel,
 }: {
   item: FoodItem;
   onSave: (food: FoodItem) => void;
+  onDelete: () => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(item.name);
@@ -712,33 +719,45 @@ function MealItemEditor({
   };
 
   return (
-    <div className="meal-item-editor">
-      <button className="link-btn back-link" onClick={onCancel}>
-        <ChevronLeft size={16} /> Back to items
-      </button>
-      <label className="field">
-        <span>Name</span>
-        <input className="text-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Food name" />
-      </label>
-      <label className="field">
-        <span>Serving</span>
-        <input
-          className="text-input"
-          value={serving}
-          onChange={(e) => setServing(e.target.value)}
-          placeholder="e.g. 1 cup (240 g)"
-        />
-      </label>
-      <div className="macros-edit-row">
-        <NumBox label="Calories" value={cal} onChange={setCal} />
-        <NumBox label="Protein (g)" value={protein} onChange={setProtein} />
-        <NumBox label="Carbs (g)" value={carbs} onChange={setCarbs} />
-        <NumBox label="Fat (g)" value={fat} onChange={setFat} />
+    <div className="sheet-backdrop" onClick={onCancel}>
+      <div className="sheet entry-edit" onClick={(e) => e.stopPropagation()}>
+        <header className="sheet-head">
+          <h2>Edit item</h2>
+          <button className="link-btn" onClick={onCancel}>
+            Cancel
+          </button>
+        </header>
+        <div className="sheet-body">
+          <label className="field">
+            <span>Name</span>
+            <input className="text-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Food name" />
+          </label>
+          <label className="field">
+            <span>Serving</span>
+            <input
+              className="text-input"
+              value={serving}
+              onChange={(e) => setServing(e.target.value)}
+              placeholder="e.g. 1 cup (240 g)"
+            />
+          </label>
+          <div className="macros-edit-row">
+            <NumBox label="Calories" value={cal} onChange={setCal} />
+            <NumBox label="Protein (g)" value={protein} onChange={setProtein} />
+            <NumBox label="Carbs (g)" value={carbs} onChange={setCarbs} />
+            <NumBox label="Fat (g)" value={fat} onChange={setFat} />
+          </div>
+          <div className="muted small">Macros are per one serving.</div>
+        </div>
+        <footer className="sheet-foot entry-edit-foot">
+          <button className="btn danger" onClick={onDelete}>
+            <TrashIcon size={16} /> Delete
+          </button>
+          <button className="btn primary" disabled={name.trim().length < 1} onClick={save}>
+            Save
+          </button>
+        </footer>
       </div>
-      <div className="muted small">All values are per one serving.</div>
-      <button className="btn primary block" disabled={name.trim().length < 1} onClick={save}>
-        Save item
-      </button>
     </div>
   );
 }
