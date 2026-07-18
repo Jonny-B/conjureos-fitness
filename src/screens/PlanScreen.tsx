@@ -1,33 +1,203 @@
 import { useEffect, useState } from "react";
-import type { Profile, WeightEntry } from "../types";
+import type { Benchmark, Plan, Profile, WeightEntry, Workout } from "../types";
 import { getRepository } from "../data/repository";
 import { todayISO } from "../features/diary";
 import { bmi } from "../features/goals";
+import { benchmarkProgress } from "../features/plan/program";
 import { fmtWeight, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { Sparkline } from "../components/Sparkline";
 import { pickWeightKg } from "../components/WeightCard";
+import { PlayIcon } from "../components/icons";
+import { WorkoutRunner, metaLine } from "./WorkoutRunner";
 
 /**
- * Plan hub — the home for tracking + coaching, condensing what used to be the
- * separate Trends and Coach tabs. Two sections:
- *   1. Trends: the weight graph + weigh-in + history, with a graceful empty
+ * Plan hub — the home for the user's plan, tracking + coaching, condensing what
+ * used to be the separate Trends and Coach tabs and now also owning the plan's
+ * workouts (moved off the Workouts tab, which is a pure library). Sections:
+ *   1. Your plan: benchmarks + plan workouts, each tappable into the runner.
+ *   2. Trends: the weight graph + weigh-in + history, with a graceful empty
  *      state that keeps the graph's footprint fixed (no layout jump).
- *   2. Coach session: prefilled starter questions + a free-text box that open
+ *   3. Coach session: prefilled starter questions + a free-text box that open
  *      the full Coach chat with the question already submitted.
  */
 export function PlanScreen({
   profile,
+  plan,
+  units,
+  onPlanChange,
   onAskCoach,
+  onEditPlan,
 }: {
   profile: Profile | null;
+  plan: Plan | null;
+  units: Profile["units"];
+  onPlanChange: (plan: Plan | null) => void;
   onAskCoach: (question: string) => void;
+  onEditPlan: () => void;
 }) {
+  // A plan workout mid-run: overview → player → summary → reflect via the runner.
+  const [running, setRunning] = useState<{ workout: Workout; benchmarkId?: string; isBenchmark?: boolean } | null>(
+    null,
+  );
+
+  if (running) {
+    return (
+      <WorkoutRunner
+        workout={running.workout}
+        benchmarkId={running.benchmarkId}
+        isBenchmark={running.isBenchmark}
+        fromPlan
+        plan={plan}
+        units={units}
+        onPlanChange={onPlanChange}
+        onExit={() => setRunning(null)}
+        onEditPlan={onEditPlan}
+      />
+    );
+  }
+
   return (
     <div className="plan-screen">
+      <ProgramSection
+        plan={plan}
+        units={units}
+        onEditPlan={onEditPlan}
+        onStart={(workout, benchmarkId, isBenchmark) => setRunning({ workout, benchmarkId, isBenchmark })}
+      />
       <TrendsPanel profile={profile} />
       <CoachLauncher onAsk={onAskCoach} />
     </div>
   );
+}
+
+// ── Your plan: benchmarks + plan workouts ──────────────────────────────
+
+function ProgramSection({
+  plan,
+  units,
+  onEditPlan,
+  onStart,
+}: {
+  plan: Plan | null;
+  units: Profile["units"];
+  onEditPlan: () => void;
+  onStart: (workout: Workout, benchmarkId?: string, isBenchmark?: boolean) => void;
+}) {
+  const program = plan?.program;
+  if (!program || program.workouts.length === 0) return null;
+
+  return (
+    <section className="plan-section program-section">
+      <div className="section-label">
+        Your workouts
+        <button className="link-btn section-action" onClick={onEditPlan}>
+          Edit plan
+        </button>
+      </div>
+      {program.benchmarks.map((b) => {
+        // The benchmark card is measured by one of the plan's workouts; make the
+        // card open that workout so every card in the list is tappable (a
+        // benchmark with no measuring workout stays a display).
+        const pw = program.workouts.find((w) => w.benchmarkId === b.id);
+        return (
+          <BenchmarkCard
+            key={b.id}
+            benchmark={b}
+            units={units}
+            onStart={pw ? () => onStart(pw.workout, pw.benchmarkId, pw.isBenchmark) : undefined}
+          />
+        );
+      })}
+      <ul className="workout-list">
+        {program.workouts.map((pw) => (
+          <li key={pw.id}>
+            <button className="workout-card" onClick={() => onStart(pw.workout, pw.benchmarkId, pw.isBenchmark)}>
+              <div className="workout-card-text">
+                <div className="workout-name">
+                  {pw.workout.name}
+                  {pw.isBenchmark && <span className="benchmark-badge">Benchmark</span>}
+                </div>
+                {pw.workout.summary && <div className="workout-summary">{pw.workout.summary}</div>}
+                <div className="workout-meta">{metaLine(pw.workout)}</div>
+              </div>
+              <span className="workout-play" aria-hidden>
+                <PlayIcon size={18} />
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Benchmark baseline → target progress card, shown atop a plan's program.
+ * When `onStart` is given (a plan workout measures this benchmark), the whole
+ * card is a button that opens that workout — so in the plan list every card is
+ * tappable, not just the workout rows.
+ */
+function BenchmarkCard({
+  benchmark: b,
+  units,
+  onStart,
+}: {
+  benchmark: Benchmark;
+  units: Profile["units"];
+  onStart?: () => void;
+}) {
+  const pct = benchmarkProgress(b);
+  const latest = b.history.length ? b.history[b.history.length - 1]!.value : null;
+  const fmt = (v: number) => formatBenchmarkValue(v, b, units);
+
+  const body = (
+    <div className="benchmark-card-main">
+      <div className="benchmark-head">
+        <span className="benchmark-name">{b.name}</span>
+        <span className="benchmark-target">
+          {b.lowerIsBetter ? "target ≤ " : "target "}
+          {fmt(b.target)}
+        </span>
+      </div>
+      {b.baseline == null ? (
+        <div className="muted small">
+          {onStart ? "Tap to do the benchmark and set your baseline." : "Complete the benchmark workout to set your baseline."}
+        </div>
+      ) : (
+        <>
+          <div className="benchmark-track">
+            <div className="benchmark-fill" style={{ width: `${Math.round((pct ?? 0) * 100)}%` }} />
+          </div>
+          <div className="benchmark-row">
+            <span className="muted small">start {fmt(b.baseline)}</span>
+            {latest != null && <span className="benchmark-now">now {fmt(latest)}</span>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  if (!onStart) return <div className="benchmark-card">{body}</div>;
+  return (
+    <button className="benchmark-card tappable" onClick={onStart}>
+      {body}
+      <span className="workout-play" aria-hidden>
+        <PlayIcon size={18} />
+      </span>
+    </button>
+  );
+}
+
+/** Format a benchmark value with its unit; weight/distance respect display units. */
+function formatBenchmarkValue(v: number, b: Benchmark, units: Profile["units"]): string {
+  if (b.metric === "durationSec") {
+    const m = Math.floor(v / 60);
+    const s = Math.round(v % 60);
+    return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `${s}s`;
+  }
+  if (b.metric === "weightKg" && units === "imperial") return `${Math.round(v * 2.2046226218)} lb`;
+  if (b.metric === "distanceKm" && units === "imperial") return `${(v * 0.621371).toFixed(2)} mi`;
+  return `${Math.round(v * 10) / 10} ${b.unit}`;
 }
 
 // ── Trends ─────────────────────────────────────────────────────────────

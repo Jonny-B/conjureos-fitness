@@ -280,9 +280,16 @@ export function App() {
             onModeChange={setAddMode}
           />
         ) : tab === "plan" ? (
-          <PlanScreen profile={profile} onAskCoach={openCoach} />
+          <PlanScreen
+            profile={profile}
+            plan={plan}
+            units={profile?.units ?? "metric"}
+            onPlanChange={setPlan}
+            onAskCoach={openCoach}
+            onEditPlan={() => openSettings("program")}
+          />
         ) : tab === "workouts" && !loggingOnly ? (
-          <WorkoutsScreen units={profile?.units ?? "metric"} onEditPlan={() => openSettings("program")} />
+          <WorkoutsScreen units={profile?.units ?? "metric"} plan={plan} onPlanChange={setPlan} />
         ) : tab === "coach" ? (
           <CoachScreen onPlanChange={setPlan} initialPrompt={coachInitialPrompt} />
         ) : (
