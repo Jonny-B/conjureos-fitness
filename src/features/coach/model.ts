@@ -96,9 +96,46 @@ export interface CoachContext {
   rendered: string;
 }
 
+// ── Plan-change proposals (coach asks before it changes anything) ──────
+
+/** One choice on a coach proposal — a short chip label. */
+export interface CoachProposalOption {
+  label: string;
+}
+
+/**
+ * When the coach wants to change the plan it ASKS first, in chat, instead of
+ * silently applying. This is that question, rendered as interactive chips (plus
+ * a free-text box + a "leave it as is" decline the UI always adds). The user's
+ * answer goes back to the coach, which then applies the change (or asks one
+ * follow-up). Mirrors the app's own multi/single-choice + free-text prompts.
+ */
+export interface CoachProposal {
+  /** Why the coach is suggesting a change (1–2 sentences). */
+  rationale?: string;
+  /** The question shown above the choices. */
+  question: string;
+  /** single = pick one; multi = pick any. Free text is always available too. */
+  type: "single" | "multi";
+  options: CoachProposalOption[];
+}
+
+/** One persisted chat item — a plain message, optionally an assistant proposal. */
+export interface CoachChatItem {
+  role: "user" | "assistant";
+  content: string;
+  /** Present on an assistant item that asks the user to choose a change. */
+  proposal?: CoachProposal;
+  /** True once the user has answered this proposal (locks the card). */
+  answered?: boolean;
+}
+
 /** Result of an evaluation or chat turn that may have touched the plan. */
 export interface CoachOutcome {
   reply: string;
   /** Set when a validated plan adjustment was applied and persisted. */
   planUpdate?: { plan: Plan; summary: string };
+  /** Set when the coach wants a change but is ASKING first — the UI renders it
+   *  as choice chips + free text; the answer comes back as the next turn. */
+  proposal?: CoachProposal;
 }

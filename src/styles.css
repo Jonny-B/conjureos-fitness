@@ -2842,6 +2842,36 @@ button.home-card:hover {
   border-bottom-left-radius: 6px;
 }
 .coach-msg.typing { color: var(--muted); letter-spacing: 2px; }
+/* Plan-change proposal card — the coach asks before it changes anything. */
+.coach-proposal {
+  align-self: stretch;
+  background: var(--bg-2);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.coach-proposal.done {
+  border-color: var(--line);
+  padding: 6px 12px;
+}
+.coach-proposal-why { margin: 0; }
+.coach-proposal-q { margin: 0; font-weight: 600; }
+.coach-proposal-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.coach-proposal-opts .chip.selected {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.coach-proposal-other { min-height: 38px; }
+.coach-proposal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .coach-input-row {
   display: flex;
   gap: 8px;
