@@ -134,12 +134,13 @@ export class MockRepository implements Repository {
 
   async updateDiaryEntry(
     id: string,
-    patch: Partial<Pick<DiaryEntry, "quantity" | "meal">>,
+    patch: Partial<Pick<DiaryEntry, "quantity" | "meal" | "food">>,
   ): Promise<void> {
     const e = this.store.diary.find((x) => x.id === id);
     if (!e) return;
     if (patch.quantity !== undefined) e.quantity = patch.quantity;
     if (patch.meal !== undefined) e.meal = patch.meal;
+    if (patch.food !== undefined) e.food = patch.food;
     await this.flush();
   }
 

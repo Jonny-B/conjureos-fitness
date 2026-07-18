@@ -137,11 +137,12 @@ export class SupabaseRepository implements Repository {
 
   async updateDiaryEntry(
     id: string,
-    patch: Partial<Pick<DiaryEntry, "quantity" | "meal">>,
+    patch: Partial<Pick<DiaryEntry, "quantity" | "meal" | "food">>,
   ): Promise<void> {
     const body: Record<string, unknown> = {};
     if (patch.quantity !== undefined) body.quantity = patch.quantity;
     if (patch.meal !== undefined) body.meal = patch.meal;
+    if (patch.food !== undefined) body.food = patch.food;
     if (Object.keys(body).length === 0) return;
     await this.client.patch("diary_entries", `id=eq.${encodeURIComponent(id)}`, body);
   }

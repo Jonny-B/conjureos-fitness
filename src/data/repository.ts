@@ -58,7 +58,7 @@ export interface Repository {
   addDiaryEntry(entry: NewDiaryEntry): Promise<DiaryEntry>;
   updateDiaryEntry(
     id: string,
-    patch: Partial<Pick<DiaryEntry, "quantity" | "meal">>,
+    patch: Partial<Pick<DiaryEntry, "quantity" | "meal" | "food">>,
   ): Promise<void>;
   removeDiaryEntry(id: string): Promise<void>;
 

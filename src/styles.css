@@ -2590,6 +2590,18 @@ button.home-card:hover {
 .plan-exercise-list .pe-sets { color: var(--muted); flex: 0 0 auto; }
 
 .btn.danger-subtle { color: var(--cui-accent, #ef4444); }
+.btn.danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+}
+.btn.danger:active {
+  background: rgba(239, 68, 68, 0.16);
+}
 
 /* ── W2: exercise explainer dropdown ──────────────────────────────────── */
 .explainer { width: 100%; max-width: 340px; margin: 6px auto 0; }
