@@ -116,28 +116,69 @@ async function shouldUseSupabase(): Promise<boolean> {
 
 /**
  * Lazily construct + init the right repository. Idempotent — repeated calls
- * return the same initialized instance. The unused backend is dynamically
- * imported so it never enters the parse path of the path we didn't pick.
+ * (including concurrent first-calls) return the same initialized instance. The
+ * unused backend is dynamically imported so it never enters the parse path of
+ * the path we didn't pick.
  */
 export async function getRepository(): Promise<Repository> {
   if (instance) {
     if (initPromise) await initPromise;
     return instance;
   }
+  // Guard concurrent first-calls (App load fans out getGoals/getProfile/loadPlan):
+  // the first sets initPromise, the rest await the same build.
+  if (!initPromise) {
+    initPromise = buildRepository().then((repo) => {
+      instance = repo;
+    });
+  }
+  await initPromise;
+  return instance!;
+}
+
+/**
+ * Choose + initialize the backend, with a HARD guarantee that a broken or
+ * unreachable Supabase backend can never become the active repository.
+ *
+ * The Supabase path is selected only when config + host SSO + a live token all
+ * line up. But "has a token" doesn't mean "the fitness backend is actually
+ * usable" — the schema may be unexposed, RLS may reject, or the network may be
+ * down. If any of those held and we returned the Supabase repo anyway, the
+ * first `getProfile()` in App.tsx's load would throw and hang the app on a
+ * spinner, or writes would silently 4xx and revert. So we PROBE reachability
+ * with a real read and, on any failure, fall back to the durable local store —
+ * which is always usable. A signed-in user with a healthy backend is unaffected
+ * (one small extra read that also warms the session).
+ */
+async function buildRepository(): Promise<Repository> {
   if (await shouldUseSupabase()) {
-    const { SupabaseRepository } = await import("./supabaseRepository");
-    instance = new SupabaseRepository();
-  } else {
-    const { MockRepository } = await import("./mockRepository");
-    instance = new MockRepository();
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
-      console.info("[conjure-fitness] using mock data layer (no shared-project session)");
+    try {
+      const { SupabaseRepository } = await import("./supabaseRepository");
+      const repo = new SupabaseRepository();
+      await repo.init();
+      // Reachability probe: getProfile resolves (Profile | null) on a healthy
+      // backend and throws on an unexposed schema / RLS / network error.
+      await repo.getProfile();
+      return repo;
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[conjure-fitness] Supabase backend unreachable; falling back to local store",
+          err,
+        );
+      }
+      // fall through to the mock (local) layer
     }
   }
-  initPromise = instance.init();
-  await initPromise;
-  return instance;
+  const { MockRepository } = await import("./mockRepository");
+  const mock = new MockRepository();
+  await mock.init();
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.info("[conjure-fitness] using mock data layer (no reachable shared-project backend)");
+  }
+  return mock;
 }
 
 /** Test/escape hatch — reset the singleton (used by no production path). */
