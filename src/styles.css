@@ -519,6 +519,20 @@ body {
   flex-direction: column;
   align-items: stretch;
 }
+.plan-cta-card {
+  gap: 10px;
+  text-align: center;
+}
+.plan-cta-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+.plan-cta-blurb {
+  margin: 0;
+}
+.plan-cta-card .btn.block {
+  margin-top: 4px;
+}
 .summary-eaten {
   display: inline-block;
   font-size: 13px;

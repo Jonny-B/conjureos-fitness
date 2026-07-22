@@ -189,6 +189,7 @@ export function App() {
             onComplete={onWizardComplete}
             onClose={() => setPlanWizardOpen(false)}
             units={profile?.units ?? "metric"}
+            profile={profile}
           />
         </main>
       </div>
@@ -287,6 +288,7 @@ export function App() {
             onPlanChange={setPlan}
             onAskCoach={openCoach}
             onEditPlan={() => openSettings("program")}
+            onStartPlan={startNewPlan}
           />
         ) : tab === "workouts" && !loggingOnly ? (
           <WorkoutsScreen units={profile?.units ?? "metric"} plan={plan} onPlanChange={setPlan} />

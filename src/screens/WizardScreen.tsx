@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ActivityLevel,
   AgeBand,
@@ -29,6 +29,7 @@ import {
 } from "../components/PlanFields";
 import { AlertTriangle, CheckIcon, CloseIcon } from "../components/icons";
 import { createPlan, type CreatePlanResult, type PlanStage } from "../features/plan/generate";
+import { getRepository } from "../data/repository";
 import type { PlanInput } from "../features/plan/model";
 import { modeHasWorkouts, modeTracksFood } from "../features/plan/model";
 import type { WizardBody } from "../features/plan/planService";
@@ -42,6 +43,14 @@ interface Props {
   onComplete: (plan: Plan, body: WizardBody) => void;
   onClose?: () => void;
   units?: Profile["units"];
+  /**
+   * The user's existing profile, if they've already entered body stats via the
+   * cog (or a prior plan). The wizard PREFILLS from it so those metrics aren't
+   * re-typed — and, critically, aren't overwritten on commit: without prefill
+   * the wizard's hardcoded defaults (female/30/…) would clobber real cog data
+   * when `commitNewPlan` merges `body.sex ?? base.sex`.
+   */
+  profile?: Profile | null;
 }
 
 const MODE_CARDS: { mode: PlanMode; title: string; blurb: string; recommended?: boolean }[] = [
@@ -71,13 +80,16 @@ function setSummary(sets: ExerciseSet[]): string {
   return per ? `${sets.length} × ${per}` : `${sets.length} sets`;
 }
 
-export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
+export function WizardScreen({ onComplete, onClose, units = "metric", profile }: Props) {
   const [step, setStep] = useState<Step>("disclaimer");
 
   // Step 1
   const [mode, setMode] = useState<PlanMode>("both");
   // Step 2 (safety intake) — age is a number now; the band is derived.
-  const [age, setAge] = useState<number | undefined>(30);
+  // Prefill every body-stat field from the existing profile so nothing entered
+  // in the cog is lost or re-typed; fall back to the same defaults as before
+  // when there's no profile yet.
+  const [age, setAge] = useState<number | undefined>(profile?.age ?? 30);
   const [pregnant, setPregnant] = useState(false);
   const [cardiacFlag, setCardiacFlag] = useState(false);
   const [injuries, setInjuries] = useState<Set<string>>(new Set());
@@ -86,15 +98,30 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState(shiftDate(todayISO(), 13)); // ~2 weeks
   const [daysPerWeek, setDaysPerWeek] = useState(3);
-  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>("beginner");
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(profile?.experienceLevel ?? "beginner");
   const [equipment, setEquipment] = useState("");
-  const [unitPref, setUnitPref] = useState<Profile["units"]>(units);
-  const [heightCm, setHeightCm] = useState<number | undefined>(undefined);
-  const [weightKg, setWeightKg] = useState<number | undefined>(undefined);
-  const [goalWeightKg, setGoalWeightKg] = useState<number | undefined>(undefined);
-  const [sex, setSex] = useState<Sex>("female");
-  const [activityLevel, setActivityLevel] = useState<ActivityLevel>("moderate");
-  const [direction, setDirection] = useState<GoalDirection>("maintain");
+  const [unitPref, setUnitPref] = useState<Profile["units"]>(profile?.units ?? units);
+  const [heightCm, setHeightCm] = useState<number | undefined>(profile?.heightCm);
+  const [weightKg, setWeightKg] = useState<number | undefined>(profile?.weightKg);
+  const [goalWeightKg, setGoalWeightKg] = useState<number | undefined>(profile?.goalWeightKg);
+  const [sex, setSex] = useState<Sex>(profile?.sex ?? "female");
+  const [activityLevel, setActivityLevel] = useState<ActivityLevel>(profile?.activityLevel ?? "moderate");
+  const [direction, setDirection] = useState<GoalDirection>(profile?.direction ?? "maintain");
+  // The user's current weight is best represented by their latest weigh-in (a
+  // real measurement) over the profile's stored number, so seed from it when
+  // present — but never stomp a value the user has already typed in the wizard.
+  const weightTouched = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const repo = await getRepository();
+      const ws = await repo.listWeights();
+      if (alive && ws.length && !weightTouched.current) setWeightKg(ws[0]!.weightKg);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
   // Step 4 (review)
   const [preview, setPreview] = useState<CreatePlanResult | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -328,7 +355,10 @@ export function WizardScreen({ onComplete, onClose, units = "metric" }: Props) {
                 weightKg={weightKg}
                 onUnits={setUnitPref}
                 onHeightCm={setHeightCm}
-                onWeightKg={setWeightKg}
+                onWeightKg={(kg) => {
+                  weightTouched.current = true;
+                  setWeightKg(kg);
+                }}
               />
               <SexField sex={sex} onChange={setSex} />
               <ActivityField value={activityLevel} onChange={setActivityLevel} />

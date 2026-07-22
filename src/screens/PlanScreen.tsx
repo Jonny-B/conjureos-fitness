@@ -27,6 +27,7 @@ export function PlanScreen({
   onPlanChange,
   onAskCoach,
   onEditPlan,
+  onStartPlan,
 }: {
   profile: Profile | null;
   plan: Plan | null;
@@ -34,6 +35,8 @@ export function PlanScreen({
   onPlanChange: (plan: Plan | null) => void;
   onAskCoach: (question: string) => void;
   onEditPlan: () => void;
+  /** Open the plan wizard — the Plan tab's own entry point when no plan exists. */
+  onStartPlan: () => void;
 }) {
   // A plan workout mid-run: overview → player → summary → reflect via the runner.
   const [running, setRunning] = useState<ProgramWorkout | null>(null);
@@ -57,10 +60,39 @@ export function PlanScreen({
 
   return (
     <div className="plan-screen">
-      <ProgramSection plan={plan} units={units} onEditPlan={onEditPlan} onStart={setRunning} />
+      {plan ? (
+        <ProgramSection plan={plan} units={units} onEditPlan={onEditPlan} onStart={setRunning} />
+      ) : (
+        <PlanCtaCard onStartPlan={onStartPlan} />
+      )}
       <TrendsPanel profile={profile} />
       <CoachLauncher onAsk={onAskCoach} />
     </div>
+  );
+}
+
+/**
+ * Empty-state entry point shown on the Plan tab when the user has no plan yet —
+ * so the tab is a second, obvious way to start one (not a blank screen). Any
+ * body stats / weigh-ins already entered are carried into the wizard, so
+ * starting here never loses that data.
+ */
+function PlanCtaCard({ onStartPlan }: { onStartPlan: () => void }) {
+  return (
+    <section className="plan-section">
+      <div className="section-label">Your plan</div>
+      <div className="summary-card column plan-cta-card">
+        <div className="plan-cta-title">Build your plan</div>
+        <p className="muted small plan-cta-blurb">
+          A personalized plan sets your daily targets and, if you want, your workouts and
+          benchmarks. It takes a minute, and anything you've already entered — your stats and
+          weigh-ins — is carried straight in.
+        </p>
+        <button className="btn primary block" onClick={onStartPlan}>
+          Build your plan
+        </button>
+      </div>
+    </section>
   );
 }
 
