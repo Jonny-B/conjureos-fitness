@@ -12,13 +12,28 @@
  * side-effect-free; writes trigger ConjureOS's one-time per-caller grant.
  */
 
-import type { Macros, MealType } from "../types";
+import type { Macros, MealType, WorkoutSession } from "../types";
 import { MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { parseMeal } from "../features/naturalLanguage";
 import { buildDayView, todayISO } from "../features/diary";
 import { getRecipe, markCooked, RecipesAppClosedError, type ListedRecipe } from "./recipeBridge";
+import { readBurnedForDate } from "./health";
 import { newId } from "../data/id";
+
+/** Exercise calories for a date: wearable/health broker first, else the sum of
+ *  in-app logged sessions. Shared by todayTotals + (indirectly) the diary. */
+async function exerciseCaloriesFor(date: string): Promise<number> {
+  const repo = await getRepository();
+  const [broker, sessions] = await Promise.all([
+    readBurnedForDate(date),
+    repo.listWorkoutSessions().catch(() => []),
+  ]);
+  if (broker > 0) return broker;
+  return sessions
+    .filter((s) => s.date === date)
+    .reduce((n, s) => n + (s.caloriesBurned ?? 0), 0);
+}
 
 function asObject(v: unknown): Record<string, unknown> {
   if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("params must be an object");
@@ -117,13 +132,56 @@ async function todayTotals(): Promise<{
   date: string;
   total: { calories: number; protein: number; carbs: number; fat: number };
   goals: { calories: number; protein: number; carbs: number; fat: number };
+  exerciseCalories: number;
   caloriesRemaining: number;
 }> {
   const repo = await getRepository();
   const date = todayISO();
-  const [entries, goals] = await Promise.all([repo.listDiary(date), repo.getGoals()]);
+  const [entries, goals, exerciseCalories] = await Promise.all([
+    repo.listDiary(date),
+    repo.getGoals(),
+    exerciseCaloriesFor(date),
+  ]);
   const { total } = buildDayView(date, entries);
-  return { date, total, goals, caloriesRemaining: goals.calories - total.calories };
+  // Exercise calories add back to the day's allowance.
+  return {
+    date,
+    total,
+    goals,
+    exerciseCalories,
+    caloriesRemaining: goals.calories - total.calories + exerciseCalories,
+  };
+}
+
+/**
+ * Log a completed workout (from an assistant, the home orchestrator, or a
+ * cross-app handoff). `calories` feeds the diary's exercise add-back. `type`
+ * and `durationMin` are accepted + validated for forward-compat, but only the
+ * burned calories + date are persisted structurally for now. Untrusted input,
+ * so every field is checked + clamped.
+ */
+async function logWorkout(raw?: unknown): Promise<{ id: string; caloriesBurned: number }> {
+  const p = asObject(raw);
+  const calories = asNonNegInt(p.calories, "calories", 10000);
+  // Validated (range-clamped) so a bad caller is rejected, even though the
+  // structured session doesn't store them yet.
+  if (p.type !== undefined) asString(p.type, "type", 40);
+  asNonNegInt(p.durationMin, "durationMin", 1440);
+  const date = asDate(p.date);
+
+  const repo = await getRepository();
+  const session: WorkoutSession = {
+    id: newId(),
+    date,
+    planned: [],
+    actual: [],
+    reprompts: [],
+    completedAt: new Date().toISOString(),
+    caloriesBurned: calories,
+    source: "logWorkout",
+  };
+  await repo.saveWorkoutSession(session);
+  return { id: session.id, caloriesBurned: calories };
 }
 
 async function logRecipeMeal(raw?: unknown): Promise<{ id: string; logged: boolean }> {
@@ -173,5 +231,5 @@ async function logRecipeMeal(raw?: unknown): Promise<{ id: string; logged: boole
 export async function registerActions(): Promise<void> {
   const bridge = window.__conjureos?.actions;
   if (!bridge?.register) return; // not inside ConjureOS, or host too old
-  await bridge.register({ logFood, todayTotals, logRecipeMeal });
+  await bridge.register({ logFood, todayTotals, logRecipeMeal, logWorkout });
 }

@@ -592,6 +592,11 @@ export interface WorkoutSession {
   benchmarkIds?: string[];
   /** ISO timestamp the session finished. */
   completedAt: string;
+  /** Active energy burned, kcal — from the wearable/health broker or a manual
+   *  log. Feeds the diary's exercise-calories add-back. Additive/optional. */
+  caloriesBurned?: number;
+  /** Where the session came from. Absent = in-app player (default). */
+  source?: "manual" | "healthkit" | "health_connect" | "logWorkout";
 }
 
 // ── Derived view models ──────────────────────────────────────────────

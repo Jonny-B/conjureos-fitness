@@ -4,9 +4,10 @@ import { MEAL_LABELS } from "../types";
 import { getRepository } from "../data/repository";
 import { buildDayView, shiftDate, todayISO } from "../features/diary";
 import { CalorieRing, MacroBars } from "../components/rings";
-import { ChevronLeft, ChevronRight } from "../components/icons";
+import { ChevronLeft, ChevronRight, WorkoutsIcon } from "../components/icons";
 import { WeightCard } from "../components/WeightCard";
 import { CoachPlanCard } from "../components/CoachPlanCard";
+import { readBurnedForDate } from "../bridge/health";
 
 interface Props {
   date: string;
@@ -19,6 +20,7 @@ interface Props {
   onChangeDate: (date: string) => void;
   onOpenMeal: (meal: MealType) => void;
   onOpenPlan: () => void;
+  onOpenWorkouts: () => void;
 }
 
 export function DiaryScreen({
@@ -31,8 +33,11 @@ export function DiaryScreen({
   onChangeDate,
   onOpenMeal,
   onOpenPlan,
+  onOpenWorkouts,
 }: Props) {
   const [view, setView] = useState<DayView | null>(null);
+  // Exercise calories for the day — added back to the budget.
+  const [exercise, setExercise] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -40,6 +45,16 @@ export function DiaryScreen({
       const repo = await getRepository();
       const entries = await repo.listDiary(date);
       if (alive) setView(buildDayView(date, entries));
+      // Prefer the wearable/health broker (Apple Watch, etc.); fall back to
+      // in-app logged sessions when no wearable source is wired.
+      const [broker, sessions] = await Promise.all([
+        readBurnedForDate(date),
+        repo.listWorkoutSessions().catch(() => []),
+      ]);
+      const logged = sessions
+        .filter((s) => s.date === date)
+        .reduce((n, s) => n + (s.caloriesBurned ?? 0), 0);
+      if (alive) setExercise(broker > 0 ? broker : logged);
     })();
     return () => {
       alive = false;
@@ -85,16 +100,34 @@ export function DiaryScreen({
             <MealStat label={MEAL_LABELS.breakfast} cal={mealCal("breakfast")} onClick={() => onOpenMeal("breakfast")} />
             <MealStat label={MEAL_LABELS.lunch} cal={mealCal("lunch")} onClick={() => onOpenMeal("lunch")} />
           </div>
-          <CalorieRing consumed={total.calories} goal={goals.calories} />
+          <CalorieRing consumed={total.calories} goal={goals.calories} exercise={exercise} />
           <div className="budget-col">
             <MealStat label={MEAL_LABELS.dinner} cal={mealCal("dinner")} onClick={() => onOpenMeal("dinner")} />
             <MealStat label={MEAL_LABELS.snacks} cal={mealCal("snacks")} onClick={() => onOpenMeal("snacks")} />
           </div>
         </div>
 
+        {/* Workout item — opens the Workouts view. Calories burned add back to
+            the day's budget (reflected in the ring + the summary below). */}
+        <button className="workout-stat" onClick={onOpenWorkouts} aria-label="Open workouts">
+          <span className="workout-stat-icon" aria-hidden>
+            <WorkoutsIcon size={18} />
+          </span>
+          <span className="workout-stat-body">
+            <span className="workout-stat-label">Exercise</span>
+            <span className="workout-stat-sub">
+              {exercise > 0 ? `+${exercise} cal back in your budget` : "Log or sync a workout"}
+            </span>
+          </span>
+          <span className="workout-stat-cal">{exercise > 0 ? `+${exercise}` : ""}</span>
+          <ChevronRight size={18} />
+        </button>
+
         <div className="budget-foot">
           <span className="summary-eaten">
-            <strong>{total.calories}</strong> eaten · goal {goals.calories.toLocaleString()}
+            <strong>{total.calories}</strong> eaten
+            {exercise > 0 ? <> · <strong>{exercise}</strong> burned</> : null} · goal{" "}
+            {goals.calories.toLocaleString()}
           </span>
         </div>
 

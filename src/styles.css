@@ -500,6 +500,57 @@ body {
 .budget-grid .ring-number {
   font-size: 32px;
 }
+/* Workout item under the calorie ring — opens Workouts; exercise calories
+   add back into the day's budget. Full-width row, tap-friendly. */
+.workout-stat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--cui-border, var(--border, transparent));
+  border-radius: var(--cui-radius);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--cui-duration) var(--cui-ease),
+              transform var(--cui-duration-fast) var(--cui-ease);
+}
+.workout-stat:hover {
+  background: var(--cui-accent-mute);
+  transform: translateY(-1px);
+}
+.workout-stat:active {
+  transform: translateY(0);
+}
+.workout-stat-icon {
+  display: inline-flex;
+  color: var(--cui-accent);
+}
+.workout-stat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.workout-stat-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.workout-stat-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+.workout-stat-cal {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+}
+
 .budget-foot {
   text-align: center;
   margin: 12px 0 4px;

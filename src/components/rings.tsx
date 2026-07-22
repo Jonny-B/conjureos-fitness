@@ -7,10 +7,22 @@
 import type { Goals, Macros } from "../types";
 import { pctOf } from "../features/diary";
 
-export function CalorieRing({ consumed, goal }: { consumed: number; goal: number }) {
-  const remaining = goal - consumed;
-  const pct = Math.min(100, pctOf(consumed, goal));
-  const over = consumed > goal;
+export function CalorieRing({
+  consumed,
+  goal,
+  exercise = 0,
+}: {
+  consumed: number;
+  goal: number;
+  /** Calories burned from exercise/wearable — added back to the budget. */
+  exercise?: number;
+}) {
+  // Exercise calories raise the day's budget: remaining = goal − eaten + burned,
+  // and the ring fills against the adjusted (goal + burned) budget.
+  const adjustedGoal = goal + exercise;
+  const remaining = adjustedGoal - consumed;
+  const pct = Math.min(100, pctOf(consumed, adjustedGoal));
+  const over = consumed > adjustedGoal;
   const R = 52;
   const C = 2 * Math.PI * R;
   const dash = (pct / 100) * C;

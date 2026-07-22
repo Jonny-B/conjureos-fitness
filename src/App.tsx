@@ -229,6 +229,7 @@ export function App() {
       onChangeDate={setDate}
       onOpenMeal={openMeal}
       onOpenPlan={() => setTab("plan")}
+      onOpenWorkouts={() => setTab("workouts")}
     />
   );
 

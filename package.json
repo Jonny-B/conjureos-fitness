@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "1.13.3",
+  "version": "1.14.0",
   "description": "Conjure Health: plans, daily check-off, calorie + nutrition logging, weight, and an AI-guided workout coach for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -18,7 +18,8 @@
       "vfs.write",
       "actions.read",
       "actions.write",
-      "native.location"
+      "native.location",
+      "native.health"
     ],
     "actions": {
       "logFood": {
@@ -146,14 +147,20 @@
                 "fat"
               ]
             },
+            "exerciseCalories": {
+              "type": "number",
+              "description": "Calories burned from exercise/wearable today, added back into the remaining budget."
+            },
             "caloriesRemaining": {
-              "type": "number"
+              "type": "number",
+              "description": "goal - eaten + exerciseCalories."
             }
           },
           "required": [
             "date",
             "total",
             "goals",
+            "exerciseCalories",
             "caloriesRemaining"
           ]
         }
@@ -208,6 +215,55 @@
           "required": [
             "id",
             "logged"
+          ]
+        }
+      },
+      "logWorkout": {
+        "permission": "actions.write",
+        "description": "Log a completed workout so its burned calories add back into the day's calorie budget. Pass calories (kcal burned); optionally type (e.g. \"running\") and durationMin. date is YYYY-MM-DD, defaults to today. Use when the user says they did a workout or a wearable reports one.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "calories": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000,
+              "description": "Active energy burned, in kcal."
+            },
+            "type": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "Workout type, e.g. running, cycling, strength."
+            },
+            "durationMin": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1440,
+              "description": "Duration in minutes."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD; defaults to today."
+            }
+          },
+          "required": [
+            "calories"
+          ]
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "The new workout session's id."
+            },
+            "caloriesBurned": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "caloriesBurned"
           ]
         }
       }
