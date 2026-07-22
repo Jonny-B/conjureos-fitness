@@ -4,10 +4,23 @@ import { getRepository } from "../data/repository";
 import { todayISO } from "../features/diary";
 import { bmi } from "../features/goals";
 import { benchmarkProgress } from "../features/plan/program";
+import {
+  currentGroup,
+  isEvaluationGroup,
+  isGroupComplete,
+  workoutsInGroup,
+} from "../features/plan/groups";
+import {
+  recordManualBenchmarkEntry,
+  startNextGroup,
+  toggleWorkoutDone,
+  type ManualBenchmarkEntry,
+} from "../features/plan/planService";
 import { fmtWeight, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { Sparkline } from "../components/Sparkline";
 import { pickWeightKg } from "../components/WeightCard";
-import { PlayIcon } from "../components/icons";
+import { CheckIcon, PlayIcon } from "../components/icons";
+import { useScrollLock } from "../hooks/useScrollLock";
 import { WorkoutRunner, metaLine } from "./WorkoutRunner";
 
 /**
@@ -45,6 +58,7 @@ export function PlanScreen({
     return (
       <WorkoutRunner
         workout={running.workout}
+        programWorkoutId={running.id}
         benchmarkId={running.benchmarkId}
         benchmarkIds={running.benchmarkIds}
         isBenchmark={running.isBenchmark}
@@ -61,7 +75,13 @@ export function PlanScreen({
   return (
     <div className="plan-screen">
       {plan ? (
-        <ProgramSection plan={plan} units={units} onEditPlan={onEditPlan} onStart={setRunning} />
+        <ProgramSection
+          plan={plan}
+          units={units}
+          onEditPlan={onEditPlan}
+          onStart={setRunning}
+          onPlanChange={onPlanChange}
+        />
       ) : (
         <PlanCtaCard onStartPlan={onStartPlan} />
       )}
@@ -103,34 +123,67 @@ function ProgramSection({
   units,
   onEditPlan,
   onStart,
+  onPlanChange,
 }: {
   plan: Plan | null;
   units: Profile["units"];
   onEditPlan: () => void;
   onStart: (pw: ProgramWorkout) => void;
+  onPlanChange: (plan: Plan | null) => void;
 }) {
+  const [advancing, setAdvancing] = useState(false);
+  // The evaluation workout whose results are being typed in manually, or null.
+  const [entryFor, setEntryFor] = useState<ProgramWorkout | null>(null);
+
   const program = plan?.program;
-  if (!program || program.workouts.length === 0) return null;
+  if (!plan || !program || program.workouts.length === 0) return null;
+
+  const cur = currentGroup(program);
+  const evaluating = isEvaluationGroup(program, cur);
+  const groupWorkouts = workoutsInGroup(program, cur);
+  const doneCount = groupWorkouts.filter((w) => w.completedAt != null).length;
+  const complete = isGroupComplete(program, cur);
+  const nextIsEvaluation = isEvaluationGroup(program, cur + 1);
 
   // Benchmark-first: until every benchmark has a baseline, the training workouts
-  // are provisional — the assessment is what calibrates them. Surface that.
+  // are provisional — the evaluation is what calibrates them. Surface that.
   const needsAssessment = program.benchmarks.some((b) => b.baseline == null);
-  // Find the assessment workout(s) so the benchmark card can open one.
+  // A benchmark card is tappable when its measuring workout is in the CURRENT
+  // group and still undone (i.e. tapping it is a sensible next action).
   const workoutForBenchmark = (id: string) =>
-    program.workouts.find((w) => w.benchmarkId === id || w.benchmarkIds?.includes(id));
+    groupWorkouts.find(
+      (w) => (w.benchmarkId === id || w.benchmarkIds?.includes(id)) && w.completedAt == null,
+    );
+
+  const toggleDone = async (pw: ProgramWorkout) => {
+    onPlanChange(await toggleWorkoutDone(plan, pw.id, pw.completedAt == null));
+  };
+
+  const advance = async () => {
+    setAdvancing(true);
+    try {
+      onPlanChange(await startNextGroup(plan));
+    } finally {
+      setAdvancing(false);
+    }
+  };
 
   return (
     <section className="plan-section program-section">
       <div className="section-label">
         Your workouts
+        <span className={`group-chip${evaluating ? " eval" : ""}`}>
+          {evaluating ? "Evaluation" : `Group ${cur}`}
+        </span>
         <button className="link-btn section-action" onClick={onEditPlan}>
           Edit plan
         </button>
       </div>
 
-      {needsAssessment && (
+      {evaluating && needsAssessment && (
         <p className="muted small program-assess-hint">
-          Do your benchmark first — your workouts calibrate to your results.
+          Measure where you are first — your workouts calibrate to your results. Do the
+          evaluation, or enter your numbers if you already know them.
         </p>
       )}
 
@@ -142,32 +195,221 @@ function ProgramSection({
       })}
 
       <ul className="workout-list">
-        {program.workouts.map((pw) => {
-          // A non-assessment workout is "provisional" until the baselines exist.
+        {groupWorkouts.map((pw) => {
+          const done = pw.completedAt != null;
+          // A non-evaluation workout is "provisional" until the baselines exist.
           const provisional = needsAssessment && !pw.isBenchmark;
           return (
-            <li key={pw.id}>
-              <button className="workout-card" onClick={() => onStart(pw)}>
-                <div className="workout-card-text">
-                  <div className="workout-name">
-                    {pw.workout.name}
-                    {pw.isBenchmark && <span className="benchmark-badge">Assessment</span>}
-                  </div>
-                  {pw.workout.summary && <div className="workout-summary">{pw.workout.summary}</div>}
-                  <div className="workout-meta">
-                    {metaLine(pw.workout)}
-                    {provisional && <span className="provisional-tag"> · provisional</span>}
-                  </div>
-                </div>
-                <span className="workout-play" aria-hidden>
-                  <PlayIcon size={18} />
-                </span>
+            <li key={pw.id} className="workout-row">
+              <button
+                className={`workout-check${done ? " done" : ""}`}
+                aria-label={done ? `Mark ${pw.workout.name} not done` : `Mark ${pw.workout.name} done`}
+                onClick={() => void toggleDone(pw)}
+              >
+                {done && <CheckIcon size={16} />}
               </button>
+              <div className="workout-row-main">
+                <button className={`workout-card${done ? " done" : ""}`} onClick={() => onStart(pw)}>
+                  <div className="workout-card-text">
+                    <div className="workout-name">
+                      {pw.workout.name}
+                      {pw.isBenchmark && <span className="benchmark-badge">Evaluation</span>}
+                    </div>
+                    {pw.workout.summary && <div className="workout-summary">{pw.workout.summary}</div>}
+                    <div className="workout-meta">
+                      {metaLine(pw.workout)}
+                      {provisional && <span className="provisional-tag"> · provisional</span>}
+                    </div>
+                  </div>
+                  <span className="workout-play" aria-hidden>
+                    <PlayIcon size={18} />
+                  </span>
+                </button>
+                {pw.isBenchmark && !done && (
+                  <button className="link-btn workout-manual-entry" onClick={() => setEntryFor(pw)}>
+                    Know your numbers? Enter results instead
+                  </button>
+                )}
+              </div>
             </li>
           );
         })}
       </ul>
+
+      <div className="group-progress muted small">
+        {doneCount} of {groupWorkouts.length} done
+        {complete ? " — nice work." : ""}
+      </div>
+
+      {complete && (
+        <button className="btn primary block" disabled={advancing} onClick={() => void advance()}>
+          {advancing
+            ? "Building your next workouts…"
+            : nextIsEvaluation
+              ? "Start your next evaluation"
+              : "Start your next group"}
+        </button>
+      )}
+
+      {entryFor && (
+        <EvalEntrySheet
+          plan={plan}
+          programWorkout={entryFor}
+          units={units}
+          onClose={() => setEntryFor(null)}
+          onSaved={(next) => {
+            setEntryFor(null);
+            onPlanChange(next);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+// ── Manual evaluation entry ────────────────────────────────────────────
+
+/** Convert a display-units entry to the benchmark's storage value. */
+function toStorageValue(b: Benchmark, shown: number, units: Profile["units"]): number {
+  if (b.metric === "weightKg") return weightToKg(shown, units);
+  if (b.metric === "distanceKm" && units === "imperial") return shown * 1.609344;
+  return shown;
+}
+
+/** What the input's unit label should read for a benchmark, per display units. */
+function entryUnitLabel(b: Benchmark, units: Profile["units"]): string {
+  if (b.metric === "weightKg") return weightUnit(units);
+  if (b.metric === "distanceKm") return units === "imperial" ? "mi" : "km";
+  return b.unit;
+}
+
+/**
+ * "I already know my numbers" — a sheet that records evaluation results without
+ * running the workout. One row per benchmark the evaluation measures (time
+ * entries split into min + sec); saving routes through the same fold-in +
+ * calibration path a performed evaluation takes and checks the workout off.
+ */
+function EvalEntrySheet({
+  plan,
+  programWorkout,
+  units,
+  onClose,
+  onSaved,
+}: {
+  plan: Plan;
+  programWorkout: ProgramWorkout;
+  units: Profile["units"];
+  onClose: () => void;
+  onSaved: (plan: Plan | null) => void;
+}) {
+  useScrollLock();
+  const program = plan.program!;
+  const ids = new Set(programWorkout.benchmarkIds ?? (programWorkout.benchmarkId ? [programWorkout.benchmarkId] : []));
+  const benchmarks = program.benchmarks.filter((b) => ids.size === 0 || ids.has(b.id));
+  // Raw strings per benchmark id; duration benchmarks get ":min" and ":sec" keys.
+  const [raw, setRaw] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  const numOf = (key: string): number => {
+    const n = Number((raw[key] ?? "").replace(/[^0-9.]/g, ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const entries = (): ManualBenchmarkEntry[] =>
+    benchmarks
+      .map((b) => {
+        const value =
+          b.metric === "durationSec"
+            ? numOf(`${b.id}:min`) * 60 + numOf(`${b.id}:sec`)
+            : toStorageValue(b, numOf(b.id), units);
+        return { benchmarkId: b.id, value };
+      })
+      .filter((e) => e.value > 0);
+
+  const canSave = entries().length > 0 && !busy;
+
+  const save = async () => {
+    if (!canSave) return;
+    setBusy(true);
+    try {
+      const next = await recordManualBenchmarkEntry(plan, programWorkout.id, entries());
+      onSaved(next);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setKey = (key: string, v: string) => {
+    if (v === "" || /^\d*\.?\d*$/.test(v)) setRaw((prev) => ({ ...prev, [key]: v }));
+  };
+
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet entry-edit" onClick={(e) => e.stopPropagation()}>
+        <header className="sheet-head">
+          <h2>Enter your results</h2>
+          <button className="link-btn" onClick={onClose}>
+            Cancel
+          </button>
+        </header>
+
+        <div className="sheet-body">
+          <p className="muted small">
+            Already know where you stand? Enter your numbers and your workouts calibrate to them —
+            same as doing the evaluation. Leave anything you're unsure of blank.
+          </p>
+          {benchmarks.map((b) => (
+            <div className="field" key={b.id}>
+              <span>{b.name}</span>
+              {b.metric === "durationSec" ? (
+                <div className="row gap eval-entry-duration">
+                  <input
+                    className="text-input"
+                    inputMode="numeric"
+                    type="text"
+                    placeholder="min"
+                    aria-label={`${b.name} minutes`}
+                    value={raw[`${b.id}:min`] ?? ""}
+                    onChange={(e) => setKey(`${b.id}:min`, e.target.value)}
+                  />
+                  <input
+                    className="text-input"
+                    inputMode="numeric"
+                    type="text"
+                    placeholder="sec"
+                    aria-label={`${b.name} seconds`}
+                    value={raw[`${b.id}:sec`] ?? ""}
+                    onChange={(e) => setKey(`${b.id}:sec`, e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div className="row gap eval-entry-value">
+                  <input
+                    className="text-input"
+                    inputMode="decimal"
+                    type="text"
+                    placeholder="0"
+                    aria-label={b.name}
+                    value={raw[b.id] ?? ""}
+                    onChange={(e) => setKey(b.id, e.target.value)}
+                  />
+                  <span className="muted small eval-entry-unit">{entryUnitLabel(b, units)}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <footer className="sheet-foot">
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn primary" disabled={!canSave} onClick={() => void save()}>
+            {busy ? "Saving…" : "Save results"}
+          </button>
+        </footer>
+      </div>
+    </div>
   );
 }
 

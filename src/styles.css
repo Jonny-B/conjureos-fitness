@@ -1337,6 +1337,77 @@ body {
   flex-direction: column;
   gap: 12px;
 }
+/* Grouped program: check-toggle beside each workout card. */
+.workout-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.workout-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.workout-check {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin-top: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: var(--bg-2);
+  color: var(--bg-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color var(--cui-duration) var(--cui-ease),
+              background var(--cui-duration) var(--cui-ease);
+}
+.workout-check.done {
+  background: var(--cui-accent, #7c6cff);
+  border-color: var(--cui-accent, #7c6cff);
+  color: #fff;
+}
+.workout-card.done {
+  opacity: 0.55;
+}
+.workout-card.done .workout-name {
+  text-decoration: line-through;
+}
+.workout-manual-entry {
+  align-self: flex-start;
+  font-size: 12px;
+}
+.group-chip {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.group-chip.eval {
+  color: var(--cui-accent, #7c6cff);
+  border-color: var(--cui-accent-tint, rgba(124, 108, 255, 0.4));
+}
+.group-progress {
+  margin: 10px 0;
+}
+.eval-entry-duration .text-input,
+.eval-entry-value .text-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.eval-entry-unit {
+  align-self: center;
+  flex: 0 0 auto;
+}
 .workout-card {
   width: 100%;
   display: flex;

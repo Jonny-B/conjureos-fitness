@@ -26,8 +26,10 @@ import type {
 } from "../../types";
 import { DEFAULT_PROFILE } from "../../types";
 import { getRepository } from "../../data/repository";
-import { recordBenchmarkResult } from "./program";
+import { newId } from "../../data/id";
+import { measureSession, recordBenchmarkResult } from "./program";
 import { calibrateToBenchmark, maybeAdapt } from "./analyze";
+import { advanceToNextGroup, setWorkoutDone } from "./groups";
 
 /** Body stats the wizard collects, reconciled into the Profile on commit. */
 export interface WizardBody {
@@ -205,6 +207,10 @@ export async function clearPlan(): Promise<void> {
 export async function recordSessionAndAdapt(
   plan: Plan | null,
   session: WorkoutSession,
+  opts?: {
+    /** The ProgramWorkout this session fulfilled — checks it off in its group. */
+    programWorkoutId?: string;
+  },
 ): Promise<Plan | null> {
   const repo = await getRepository();
   await repo.saveWorkoutSession(session).catch(() => {});
@@ -213,12 +219,16 @@ export async function recordSessionAndAdapt(
   const measuresBenchmark = Boolean(session.benchmarkId || session.benchmarkIds?.length);
 
   let next: Plan = plan;
+  if (opts?.programWorkoutId) {
+    const done = setWorkoutDone(plan.program, opts.programWorkoutId, true, session.completedAt);
+    if (done !== plan.program) next = { ...plan, program: done };
+  }
   let baselineJustSet = false;
   if (measuresBenchmark) {
-    const before = plan.program;
+    const before = next.program!;
     const program = recordBenchmarkResult(before, session);
     if (program !== before) {
-      next = { ...plan, program };
+      next = { ...next, program };
       // A benchmark whose baseline flipped null → value this fold-in means the
       // user just did their first assessment — time to calibrate the program.
       // (recordBenchmarkResult preserves benchmark order, so indexes align.)
@@ -244,4 +254,101 @@ export async function recordSessionAndAdapt(
 
   if (next !== plan) await repo.savePlan(next).catch(() => {});
   return next;
+}
+
+/** Manually toggle a program workout's done state (skipped workouts shouldn't
+ *  wedge the group) and persist. Returns the updated plan. */
+export async function toggleWorkoutDone(plan: Plan, programWorkoutId: string, done: boolean): Promise<Plan> {
+  if (!plan.program) return plan;
+  const program = setWorkoutDone(plan.program, programWorkoutId, done);
+  if (program === plan.program) return plan;
+  const next: Plan = { ...plan, program };
+  const repo = await getRepository();
+  await repo.savePlan(next).catch(() => {});
+  return next;
+}
+
+/** Advance to the next group (generating it when needed) and persist. */
+export async function startNextGroup(plan: Plan): Promise<Plan> {
+  const repo = await getRepository();
+  const sessions = await repo.listWorkoutSessions(200).catch(() => [] as WorkoutSession[]);
+  const next = await advanceToNextGroup(plan, sessions);
+  if (next !== plan) await repo.savePlan(next).catch(() => {});
+  return next;
+}
+
+/** One manually-entered benchmark result: the Benchmark id + the value in the
+ *  benchmark's STORAGE metric (reps / kg / seconds / km). */
+export interface ManualBenchmarkEntry {
+  benchmarkId: string;
+  value: number;
+}
+
+/**
+ * Record an evaluation's results WITHOUT running the workout — an experienced
+ * lifter often already knows their numbers. Builds a synthetic session carrying
+ * each entered value in the shape `measureSession` reads (strength values as a
+ * recorded set on the benchmark's exercise key; run/ride results as a cardio
+ * block), then routes it through the exact same fold-in + calibration path a
+ * performed assessment takes, checking the evaluation workout off its group.
+ */
+export async function recordManualBenchmarkEntry(
+  plan: Plan,
+  programWorkoutId: string,
+  entries: ManualBenchmarkEntry[],
+): Promise<Plan | null> {
+  const program = plan.program;
+  if (!program || entries.length === 0) return plan;
+  const now = new Date().toISOString();
+  const stamp = { startedAt: now, completedAt: now };
+
+  const byExercise: NonNullable<WorkoutSession["byExercise"]> = [];
+  let cardio: WorkoutSession["cardio"];
+  const benchmarkIds: string[] = [];
+
+  for (const e of entries) {
+    const b = program.benchmarks.find((x) => x.id === e.benchmarkId);
+    if (!b || !Number.isFinite(e.value) || e.value <= 0) continue;
+    benchmarkIds.push(b.id);
+    if (b.metric === "distanceKm") {
+      cardio = { distanceKm: e.value, durationSec: cardio?.durationSec ?? 0, source: "manual" };
+    } else if (b.metric === "durationSec" && isCardioBenchmark(b.exerciseKey)) {
+      cardio = { distanceKm: cardio?.distanceKm ?? 0, durationSec: e.value, source: "manual" };
+    } else {
+      const set =
+        b.metric === "weightKg"
+          ? { weightKg: e.value, ...stamp }
+          : b.metric === "durationSec"
+            ? { durationSec: Math.round(e.value), ...stamp }
+            : { reps: Math.round(e.value), ...stamp };
+      byExercise.push({ exerciseKey: b.exerciseKey, name: b.name, sets: [set] });
+    }
+  }
+  if (benchmarkIds.length === 0) return plan;
+
+  const session: WorkoutSession = {
+    id: newId(),
+    date: now.slice(0, 10),
+    planned: [],
+    actual: [],
+    reprompts: [],
+    ...(byExercise.length ? { byExercise } : {}),
+    ...(cardio ? { cardio } : {}),
+    benchmarkIds,
+    completedAt: now,
+  };
+  // Sanity: every entered benchmark must actually be measurable off this
+  // session; drop silently-unmeasurable ones rather than recording a no-op.
+  const measurable = program.benchmarks.some(
+    (b) => benchmarkIds.includes(b.id) && measureSession(b, session) != null,
+  );
+  if (!measurable) return plan;
+
+  return recordSessionAndAdapt(plan, session, { programWorkoutId });
+}
+
+/** Heuristic: a benchmark keyed to a run/ride/row-style movement records its
+ *  time as a cardio result rather than a timed strength set. */
+function isCardioBenchmark(exerciseKey: string): boolean {
+  return /\b(run|jog|sprint|bike|cycle|cycling|row|rowing|swim|walk|ruck)\b/.test(exerciseKey);
 }

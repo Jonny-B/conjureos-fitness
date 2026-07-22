@@ -39,6 +39,7 @@ type RunnerView =
  */
 export function WorkoutRunner({
   workout,
+  programWorkoutId,
   benchmarkId,
   benchmarkIds,
   isBenchmark,
@@ -50,6 +51,8 @@ export function WorkoutRunner({
   onEditPlan,
 }: {
   workout: Workout;
+  /** The plan ProgramWorkout being run — finishing checks it off in its group. */
+  programWorkoutId?: string;
   benchmarkId?: string;
   /** All benchmarks this run measures (a multi-part assessment). */
   benchmarkIds?: string[];
@@ -64,13 +67,14 @@ export function WorkoutRunner({
   const [view, setView] = useState<RunnerView>({ screen: "overview" });
 
   // Persist a finished session and run the adaptive loop via the plan service
-  // (benchmark fold-in + periodic AI adaptation), then hand the new plan back up.
+  // (benchmark fold-in + group check-off + periodic AI adaptation), then hand
+  // the new plan back up.
   const saveSession = useCallback(
     async (session: WorkoutSession) => {
-      const next = await recordSessionAndAdapt(plan, session);
+      const next = await recordSessionAndAdapt(plan, session, { programWorkoutId });
       onPlanChange(next);
     },
-    [plan, onPlanChange],
+    [plan, onPlanChange, programWorkoutId],
   );
 
   const begin = () => setView({ screen: isCardio(workout) ? "cardio" : "player" });

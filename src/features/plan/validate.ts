@@ -33,8 +33,22 @@ export function validateProgram(
   if (!modeHasWorkouts(mode)) {
     reasons.push(`a ${mode} plan must not carry a workout program`);
   }
-  if (program.workouts.length < 1 || program.workouts.length > MAX_PROGRAM_WORKOUTS) {
-    reasons.push(`program has ${program.workouts.length} workouts (expected 1-${MAX_PROGRAM_WORKOUTS})`);
+  // The workout cap applies PER GROUP: a program retains the current group plus
+  // the evaluation/training templates it clones the next group from, so the
+  // flat total can legitimately exceed one group's worth. (Local derivation of
+  // a workout's group — groups.ts imports this module, so no import cycle.)
+  const groupNums = new Map<number, number>();
+  for (const pw of program.workouts) {
+    const g = pw.group ?? (pw.isBenchmark ? 1 : 2);
+    groupNums.set(g, (groupNums.get(g) ?? 0) + 1);
+  }
+  if (program.workouts.length < 1) {
+    reasons.push("program has no workouts");
+  }
+  for (const [g, count] of groupNums) {
+    if (count > MAX_PROGRAM_WORKOUTS) {
+      reasons.push(`group ${g} has ${count} workouts (max ${MAX_PROGRAM_WORKOUTS})`);
+    }
   }
   for (const pw of program.workouts) {
     for (const e of pw.workout.exercises) {

@@ -193,16 +193,21 @@ export function parseProgram(raw: unknown): WorkoutProgram | null {
     byWorkout[idx]!.push(b.id);
   }
 
+  // Groups: assessment workouts form the EVALUATION group (group 1 — measure
+  // first); everything else is the first training group (group 2). The user
+  // works one group at a time; finishing a group unlocks the next (groups.ts).
   const programWorkouts: ProgramWorkout[] = workouts.map((workout, i) => {
     const ids = byWorkout[i]!;
     return {
       id: newId(),
       workout,
-      ...(ids.length ? { isBenchmark: true, benchmarkId: ids[0], benchmarkIds: ids } : {}),
+      ...(ids.length
+        ? { isBenchmark: true, benchmarkId: ids[0], benchmarkIds: ids, group: 1 }
+        : { group: 2 }),
     };
   });
 
-  return { workouts: programWorkouts, benchmarks, analysisCursor: 0 };
+  return { workouts: programWorkouts, benchmarks, analysisCursor: 0, currentGroup: 1 };
 }
 
 const maxOf = (nums: (number | undefined)[]): number | null => {
@@ -216,24 +221,29 @@ const maxOf = (nums: (number | undefined)[]): number | null => {
  * the matching exercise; cardio metrics read the tracked distance/duration.
  */
 export function measureSession(benchmark: Benchmark, session: WorkoutSession): number | null {
-  // Cardio benchmark: read straight off the tracked result.
+  // Keyed strength result first: a manually-entered assessment can carry both
+  // strength results (pull-ups, a plank) AND a cardio block (the run) in one
+  // session, and each benchmark should read its own slice. A result recorded
+  // against the benchmark's own exercise key always wins.
+  const ex = session.byExercise?.find((e) => e.exerciseKey === benchmark.exerciseKey);
+  if (ex && ex.sets.length > 0) {
+    const keyed =
+      benchmark.metric === "reps"
+        ? maxOf(ex.sets.map((s) => s.reps))
+        : benchmark.metric === "weightKg"
+          ? maxOf(ex.sets.map((s) => s.weightKg))
+          : benchmark.metric === "durationSec"
+            ? maxOf(ex.sets.map((s) => s.durationSec))
+            : null;
+    if (keyed != null) return keyed;
+  }
+  // Cardio benchmark: read straight off the tracked result (cardio carries no
+  // exercise key, so distance/duration metrics claim it).
   if (session.cardio) {
     if (benchmark.metric === "distanceKm") return session.cardio.distanceKm ?? null;
     if (benchmark.metric === "durationSec") return session.cardio.durationSec ?? null;
-    return null;
   }
-  const ex = session.byExercise?.find((e) => e.exerciseKey === benchmark.exerciseKey);
-  if (!ex || ex.sets.length === 0) return null;
-  switch (benchmark.metric) {
-    case "reps":
-      return maxOf(ex.sets.map((s) => s.reps));
-    case "weightKg":
-      return maxOf(ex.sets.map((s) => s.weightKg));
-    case "durationSec":
-      return maxOf(ex.sets.map((s) => s.durationSec));
-    default:
-      return null;
-  }
+  return null;
 }
 
 /**

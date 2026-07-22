@@ -411,6 +411,15 @@ export interface ProgramWorkout {
    *  baselines at once (e.g. Murph: pull-ups + push-ups + run). Additive;
    *  when absent, `benchmarkId` (if any) is the single measured benchmark. */
   benchmarkIds?: string[];
+  /**
+   * Which group this workout belongs to (1-based). Group 1 is the evaluation
+   * group; training groups follow. Absent on pre-groups plans — derived as
+   * group 1 for benchmark/assessment workouts, group 2 otherwise.
+   */
+  group?: number;
+  /** ISO timestamp the user finished (or manually checked off) this workout
+   *  within its group. Cleared on clones when a new group is built. */
+  completedAt?: string;
 }
 
 /**
@@ -423,6 +432,19 @@ export interface WorkoutProgram {
   benchmarks: Benchmark[];
   /** Sessions logged when the adaptation engine last ran (W5). */
   analysisCursor?: number;
+  /**
+   * The group the user is currently working through (see ProgramWorkout.group).
+   * Groups replace "weeks" — no dates, no falling behind: finish the group,
+   * start the next. Absent on pre-groups plans; derived there (evaluation group
+   * until every benchmark has a baseline, else the first training group).
+   */
+  currentGroup?: number;
+  /**
+   * How many groups make one cycle. The first group of every cycle is an
+   * EVALUATION group (re-test the benchmarks); the rest are training groups.
+   * Defaults to 4 (evaluation + 3 training groups).
+   */
+  groupsPerCycle?: number;
 }
 
 /**

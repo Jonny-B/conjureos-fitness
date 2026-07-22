@@ -46,9 +46,16 @@ export function ProgramEditor({ program, mode, injuries, units, onSave, onCancel
   const addWorkout = () =>
     setDraft((d) => ({
       ...d,
+      // Land the new workout in the group the user is currently on, so it shows
+      // up on the Plan tab immediately (pre-groups drafts fall back to the
+      // first training group, matching the legacy derivation).
       workouts: [
         ...d.workouts,
-        { id: newId(), workout: { id: newId(), name: "New workout", origin: "user", exercises: [emptyExercise()] } },
+        {
+          id: newId(),
+          group: d.currentGroup ?? 2,
+          workout: { id: newId(), name: "New workout", origin: "user", exercises: [emptyExercise()] },
+        },
       ],
     }));
   const removeWorkout = (wi: number) =>
