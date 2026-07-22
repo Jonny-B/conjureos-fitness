@@ -21,15 +21,24 @@ interface Props {
  */
 export function NumberField({ value, onChange, min, max, className = "text-input", placeholder, "aria-label": ariaLabel }: Props) {
   const [raw, setRaw] = useState<string>(value != null ? String(value) : "");
+  // Whether the field is currently being edited. Prop→field resync is suppressed
+  // while focused (see below).
+  const [focused, setFocused] = useState(false);
 
   // Resync from the outside only when the committed value changes to something
-  // the field isn't already showing (e.g. "Use recommended" sets goals) — never
-  // mid-typing, which would clobber the caret.
+  // the field isn't already showing (e.g. "Use recommended" sets goals). CRUCIAL:
+  // never while the field is focused. In a UNIT-CONVERTED field (imperial weight /
+  // goal weight) every keystroke emits a value the parent stores as kg (rounded to
+  // 0.1) and hands back as a *different* lb number — e.g. typing "1" round-trips to
+  // "1.1". Resyncing to that mid-type overwrote the user's digits with the
+  // converted value (the "decimals get added while I type" bug) and jumped the
+  // caret. While focused, the raw typed string is authoritative; blur clamps/rounds.
   useEffect(() => {
+    if (focused) return;
     const typed = raw.trim() === "" ? undefined : Number(raw);
     if (value !== typed) setRaw(value != null ? String(value) : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  }, [value, focused]);
 
   const emit = (s: string) => {
     if (s.trim() === "") {
@@ -66,6 +75,7 @@ export function NumberField({ value, onChange, min, max, className = "text-input
       value={raw}
       placeholder={placeholder}
       aria-label={ariaLabel}
+      onFocus={() => setFocused(true)}
       onChange={(e) => {
         const v = e.target.value;
         // Allow only a numeric shape (digits + one optional dot); empty allowed.
@@ -74,7 +84,10 @@ export function NumberField({ value, onChange, min, max, className = "text-input
           emit(v);
         }
       }}
-      onBlur={commit}
+      onBlur={() => {
+        commit();
+        setFocused(false);
+      }}
     />
   );
 }
