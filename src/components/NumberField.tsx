@@ -6,6 +6,9 @@ interface Props {
   onChange: (n: number | undefined) => void;
   min?: number;
   max?: number;
+  /** Decimal places kept on blur (default 0 = whole numbers). Weight fields
+   *  pass 1 so a typed 182.4 isn't silently rounded to 182 when leaving. */
+  decimals?: number;
   className?: string;
   placeholder?: string;
   "aria-label"?: string;
@@ -19,7 +22,7 @@ interface Props {
  * (unclamped, so multi-digit entry isn't fought), and only clamps + rounds on
  * blur. Same pattern the plan wizard already uses for height/weight.
  */
-export function NumberField({ value, onChange, min, max, className = "text-input", placeholder, "aria-label": ariaLabel }: Props) {
+export function NumberField({ value, onChange, min, max, decimals = 0, className = "text-input", placeholder, "aria-label": ariaLabel }: Props) {
   const [raw, setRaw] = useState<string>(value != null ? String(value) : "");
   // Whether the field is currently being edited. Prop→field resync is suppressed
   // while focused (see below).
@@ -60,7 +63,8 @@ export function NumberField({ value, onChange, min, max, className = "text-input
       onChange(undefined);
       return;
     }
-    n = Math.round(n);
+    const p = 10 ** decimals;
+    n = Math.round(n * p) / p;
     if (min != null) n = Math.max(min, n);
     if (max != null) n = Math.min(max, n);
     setRaw(String(n));
@@ -71,7 +75,7 @@ export function NumberField({ value, onChange, min, max, className = "text-input
     <input
       className={className}
       type="text"
-      inputMode="numeric"
+      inputMode={decimals > 0 ? "decimal" : "numeric"}
       value={raw}
       placeholder={placeholder}
       aria-label={ariaLabel}

@@ -42,8 +42,14 @@ function clampNum(v: number | undefined, min: number, max: number, dflt: number)
   if (v == null || !Number.isFinite(v)) return dflt;
   return Math.min(max, Math.max(min, Math.round(v)));
 }
+/** Like clampNum but keeps two decimals — weight is stored to 0.01 kg so a
+ *  one-decimal lb entry (182.4) survives the lb→kg→lb round-trip intact. */
+function clampNum2(v: number | undefined, min: number, max: number, dflt: number): number {
+  if (v == null || !Number.isFinite(v)) return dflt;
+  return Math.min(max, Math.max(min, Math.round(v * 100) / 100));
+}
 function toProfile(d: ProfileDraft): Profile {
-  const weightKg = clampNum(d.weightKg, 25, 400, DEFAULT_PROFILE.weightKg);
+  const weightKg = clampNum2(d.weightKg, 25, 400, DEFAULT_PROFILE.weightKg);
   return {
     ...d,
     age: clampNum(d.age, 10, 120, DEFAULT_PROFILE.age),
@@ -215,7 +221,8 @@ export function SettingsSheet({
                 value={p.weightKg == null ? undefined : weightToDisplay(p.weightKg, p.units)}
                 min={weightToDisplay(25, p.units)}
                 max={weightToDisplay(400, p.units)}
-                onChange={(n) => set("weightKg", n == null ? undefined : Math.round(weightToKg(n, p.units) * 10) / 10)}
+                decimals={1}
+                onChange={(n) => set("weightKg", n == null ? undefined : Math.round(weightToKg(n, p.units) * 100) / 100)}
                 aria-label="Weight"
               />
             </Field>

@@ -2697,10 +2697,18 @@ button.home-card:hover {
 /* ── Shared plan fields (wizard + cog) ────────────────────────────────── */
 /* Height/weight row with the units toggle to their left. */
 .body-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.body-stats-row {
   display: grid;
-  grid-template-columns: auto 1fr 1fr;
+  grid-template-columns: 1.2fr 1fr;
   gap: 10px;
   align-items: end;
+}
+.body-stats .field span {
+  white-space: nowrap;
 }
 .units-toggle { flex-wrap: nowrap; }
 .units-toggle .chip { padding: 7px 10px; font-size: 12px; }

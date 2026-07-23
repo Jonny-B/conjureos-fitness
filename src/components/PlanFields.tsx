@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ActivityLevel, ExperienceLevel, GoalDirection, Profile, Sex } from "../types";
 import { ACTIVITY_LABELS } from "../features/goals";
 import { NumberField } from "./NumberField";
@@ -45,7 +46,8 @@ export function UnitsToggle({
   );
 }
 
-/** Height + weight number inputs with the metric/imperial toggle to their left. */
+/** Units toggle on its own row, then height + weight side by side — the old
+ *  three-column squeeze wrapped labels and left the ft/in inputs unusable. */
 export function BodyStatsFields({
   units,
   heightCm,
@@ -67,17 +69,20 @@ export function BodyStatsFields({
         <span>Units</span>
         <UnitsToggle units={units} onChange={onUnits} />
       </label>
-      <HeightField units={units} heightCm={heightCm} onChange={onHeightCm} />
-      <label className="field">
-        <span>Weight ({weightUnit(units)})</span>
-        <NumberField
-          value={weightKg == null ? undefined : weightToDisplay(weightKg, units)}
-          min={weightToDisplay(25, units)}
-          max={weightToDisplay(400, units)}
-          onChange={(n) => onWeightKg(n == null ? undefined : Math.round(weightToKg(n, units) * 10) / 10)}
-          aria-label="Weight"
-        />
-      </label>
+      <div className="body-stats-row">
+        <HeightField units={units} heightCm={heightCm} onChange={onHeightCm} />
+        <label className="field">
+          <span>Weight ({weightUnit(units)})</span>
+          <NumberField
+            value={weightKg == null ? undefined : weightToDisplay(weightKg, units)}
+            min={weightToDisplay(25, units)}
+            max={weightToDisplay(400, units)}
+            decimals={1}
+            onChange={(n) => onWeightKg(n == null ? undefined : Math.round(weightToKg(n, units) * 100) / 100)}
+            aria-label="Weight"
+          />
+        </label>
+      </div>
     </div>
   );
 }
@@ -110,23 +115,96 @@ export function HeightField({
       </label>
     );
   }
-  const totalIn = heightCm == null ? undefined : Math.round(cmToIn(heightCm));
-  const ft = totalIn == null ? undefined : Math.floor(totalIn / 12);
-  const inch = totalIn == null ? undefined : totalIn % 12;
-  const set = (f: number | undefined, i: number | undefined) => {
-    if (f == null && i == null) {
+  // Remount when switching to imperial so the ft/in fields re-seed from the
+  // freshest cm value (their raw text is otherwise self-owned — see below).
+  return <ImperialHeight key="imperial" heightCm={heightCm} onChange={onChange} />;
+}
+
+/** Seed ft + fractional inches from a stored cm value. */
+function splitImperial(heightCm: number | undefined): { ft: string; inch: string } {
+  if (heightCm == null) return { ft: "", inch: "" };
+  const total = Math.round(cmToIn(heightCm) * 10) / 10;
+  const ft = Math.floor(total / 12);
+  const inch = Math.round((total - ft * 12) * 10) / 10;
+  return { ft: String(ft), inch: String(inch) };
+}
+
+/**
+ * Imperial height, feet + inches. The two inputs OWN their text: they seed from
+ * the stored cm once (on mount / units switch) and only push cm upward. The
+ * previous version re-derived both fields from cm on every keystroke, and the
+ * in↔cm rounding round-trip made values jump while typing. Inches accept
+ * decimals (5' 10.5"); an inches entry ≥ 12 folds into feet on blur.
+ */
+function ImperialHeight({
+  heightCm,
+  onChange,
+}: {
+  heightCm: number | undefined;
+  onChange: (cm: number | undefined) => void;
+}) {
+  const [seed] = useState(() => splitImperial(heightCm));
+  const [ftRaw, setFtRaw] = useState(seed.ft);
+  const [inRaw, setInRaw] = useState(seed.inch);
+
+  const push = (f: string, i: string) => {
+    const ft = f.trim() === "" ? null : Number(f);
+    const inch = i.trim() === "" ? null : Number(i);
+    if (ft == null && inch == null) {
       onChange(undefined);
       return;
     }
-    const total = (f ?? 0) * 12 + (i ?? 0);
-    onChange(total > 0 ? Math.round(inToCm(total)) : undefined);
+    const total = (ft ?? 0) * 12 + (inch ?? 0);
+    onChange(total > 0 ? Math.round(inToCm(total) * 10) / 10 : undefined);
   };
+
+  const onFt = (v: string) => {
+    // Feet are a single digit — a second digit is someone typing inches here.
+    if (v === "" || /^\d$/.test(v)) {
+      setFtRaw(v);
+      push(v, inRaw);
+    }
+  };
+  const onIn = (v: string) => {
+    if (v === "" || /^\d{0,2}(\.\d{0,2})?$/.test(v)) {
+      setInRaw(v);
+      push(ftRaw, v);
+    }
+  };
+  // 14" folds to +1' 2" when leaving the field, so the pair always reads sanely.
+  const normalize = () => {
+    const inch = Number(inRaw);
+    if (!Number.isFinite(inch) || inch < 12) return;
+    const ft = Math.min(8, (Number(ftRaw) || 0) + Math.floor(inch / 12));
+    const rem = Math.round((inch % 12) * 10) / 10;
+    setFtRaw(String(ft));
+    setInRaw(String(rem));
+    push(String(ft), String(rem));
+  };
+
   return (
     <label className="field">
       <span>Height (ft / in)</span>
       <div className="height-imperial">
-        <NumberField value={ft} min={3} max={8} onChange={(n) => set(n, inch)} aria-label="Height feet" placeholder="ft" />
-        <NumberField value={inch} min={0} max={11} onChange={(n) => set(ft, n)} aria-label="Height inches" placeholder="in" />
+        <input
+          className="text-input"
+          type="text"
+          inputMode="numeric"
+          value={ftRaw}
+          placeholder="ft"
+          aria-label="Height feet"
+          onChange={(e) => onFt(e.target.value)}
+        />
+        <input
+          className="text-input"
+          type="text"
+          inputMode="decimal"
+          value={inRaw}
+          placeholder="in"
+          aria-label="Height inches"
+          onChange={(e) => onIn(e.target.value)}
+          onBlur={normalize}
+        />
       </div>
     </label>
   );
@@ -155,7 +233,8 @@ export function GoalWeightField({
         value={goalWeightKg == null ? undefined : weightToDisplay(goalWeightKg, units)}
         min={weightToDisplay(25, units)}
         max={weightToDisplay(400, units)}
-        onChange={(n) => onChange(n == null ? undefined : Math.round(weightToKg(n, units) * 10) / 10)}
+        decimals={1}
+        onChange={(n) => onChange(n == null ? undefined : Math.round(weightToKg(n, units) * 100) / 100)}
         aria-label="Goal weight"
         placeholder={optional ? "blank = maintain" : undefined}
       />
