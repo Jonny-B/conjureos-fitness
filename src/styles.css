@@ -1417,6 +1417,9 @@ body {
   min-width: 0;
   flex: 1 1 0;
 }
+.field-hint {
+  margin-top: 4px;
+}
 /* Small in-section separators (Benchmarks / this group's workouts). */
 .mini-label {
   margin: 10px 0 6px;
@@ -2704,6 +2707,16 @@ button.home-card:hover {
 .plan-dates { align-items: end; gap: 14px; }
 .plan-dates .field { flex: 1 1 0; min-width: 0; }
 .plan-dates .text-input { width: 100%; }
+/* iOS date inputs size to their intrinsic width and overflow the column —
+   pin them to the field like every other input. */
+input[type="date"].text-input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+}
 
 /* Review-step workout list — surfaces the actual AI-authored exercises. */
 .plan-workouts { display: flex; flex-direction: column; gap: 10px; }

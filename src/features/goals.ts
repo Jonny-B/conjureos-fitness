@@ -25,6 +25,20 @@ export const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
   very_active: "Very active (hard daily training)",
 };
 
+/**
+ * Direction is DERIVED, not asked: a goal weight below the current weight means
+ * lose, above means gain, and none (or within ~1 kg — nobody targets a sub-kilo
+ * change) means maintain. Kills the redundant lose/maintain/gain selector.
+ */
+export function deriveDirection(
+  weightKg: number | undefined,
+  goalWeightKg: number | undefined,
+): GoalDirection {
+  if (weightKg == null || goalWeightKg == null || goalWeightKg <= 0) return "maintain";
+  if (Math.abs(goalWeightKg - weightKg) < 1) return "maintain";
+  return goalWeightKg < weightKg ? "lose" : "gain";
+}
+
 /** Calorie delta per day for each direction (~0.5 kg/week ≈ 500 kcal). */
 const DIRECTION_DELTA: Record<GoalDirection, number> = {
   lose: -500,

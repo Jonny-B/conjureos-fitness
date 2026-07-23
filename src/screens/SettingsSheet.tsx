@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
-import type { ActivityLevel, ExperienceLevel, GoalDirection, Goals, Plan, PlanGoal, PlanMode, Profile, Sex } from "../types";
+import type { ActivityLevel, ExperienceLevel, Goals, Plan, PlanGoal, PlanMode, Profile, Sex } from "../types";
 import { DEFAULT_GOALS, DEFAULT_PROFILE } from "../types";
 import { getRepository } from "../data/repository";
-import { ACTIVITY_LABELS, recommendGoals } from "../features/goals";
+import { ACTIVITY_LABELS, deriveDirection, recommendGoals } from "../features/goals";
 import { goalsToTargets, saveProgram, targetsToGoals, updatePlan } from "../features/plan/planService";
 import { ProgramEditor } from "../components/ProgramEditor";
 import { GoalWeightField, HeightField, PlanDatesField, weeksBetween } from "../components/PlanFields";
@@ -43,11 +43,15 @@ function clampNum(v: number | undefined, min: number, max: number, dflt: number)
   return Math.min(max, Math.max(min, Math.round(v)));
 }
 function toProfile(d: ProfileDraft): Profile {
+  const weightKg = clampNum(d.weightKg, 25, 400, DEFAULT_PROFILE.weightKg);
   return {
     ...d,
     age: clampNum(d.age, 10, 120, DEFAULT_PROFILE.age),
     heightCm: clampNum(d.heightCm, 90, 250, DEFAULT_PROFILE.heightCm),
-    weightKg: clampNum(d.weightKg, 25, 400, DEFAULT_PROFILE.weightKg),
+    weightKg,
+    // Direction is derived from goal weight vs weight (no selector anymore):
+    // below = lose, above = gain, blank/±1 kg = maintain.
+    direction: deriveDirection(weightKg, d.goalWeightKg),
   };
 }
 function toGoals(d: GoalsDraft): Goals {
@@ -241,21 +245,12 @@ export function SettingsSheet({
             </select>
           </Field>
 
-          <Field label="Goal">
-            <select className="select" value={p.direction} onChange={(e) => set("direction", e.target.value as GoalDirection)}>
-              <option value="lose">Lose weight</option>
-              <option value="maintain">Maintain</option>
-              <option value="gain">Gain weight</option>
-            </select>
-          </Field>
-
-          {p.direction !== "maintain" && (
-            <GoalWeightField
-              units={p.units}
-              goalWeightKg={p.goalWeightKg}
-              onChange={(kg) => set("goalWeightKg", kg)}
-            />
-          )}
+          <GoalWeightField
+            units={p.units}
+            goalWeightKg={p.goalWeightKg}
+            onChange={(kg) => set("goalWeightKg", kg)}
+            optional
+          />
 
           <Field label="Experience level">
             <select

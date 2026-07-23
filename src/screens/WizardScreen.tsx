@@ -12,7 +12,7 @@ import type {
 } from "../types";
 import { INJURY_REGIONS } from "../features/safety/injuryExclusions";
 import { requiresLoggingOnly, resolveSafeMode } from "../features/safety/intakeGate";
-import { recommendGoals } from "../features/goals";
+import { deriveDirection, recommendGoals } from "../features/goals";
 import { shiftDate, todayISO } from "../features/diary";
 import { DisclaimerCard, DISCLAIMER_SHORT } from "../components/DisclaimerCard";
 import { ProgramEditor } from "../components/ProgramEditor";
@@ -20,7 +20,6 @@ import {
   ActivityField,
   AgeField,
   BodyStatsFields,
-  DirectionField,
   ExperienceField,
   GoalWeightField,
   PlanDatesField,
@@ -106,7 +105,9 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
   const [goalWeightKg, setGoalWeightKg] = useState<number | undefined>(profile?.goalWeightKg);
   const [sex, setSex] = useState<Sex>(profile?.sex ?? "female");
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>(profile?.activityLevel ?? "moderate");
-  const [direction, setDirection] = useState<GoalDirection>(profile?.direction ?? "maintain");
+  // No lose/maintain/gain selector — the goal weight vs current weight already
+  // says it. Below = lose, above = gain, blank/equal = maintain.
+  const direction: GoalDirection = deriveDirection(weightKg, goalWeightKg);
   // The user's current weight is best represented by their latest weigh-in (a
   // real measurement) over the profile's stored number, so seed from it when
   // present — but never stomp a value the user has already typed in the wizard.
@@ -363,10 +364,12 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
               />
               <SexField sex={sex} onChange={setSex} />
               <ActivityField value={activityLevel} onChange={setActivityLevel} />
-              <DirectionField value={direction} onChange={setDirection} />
-              {direction !== "maintain" && (
-                <GoalWeightField units={unitPref} goalWeightKg={goalWeightKg} onChange={setGoalWeightKg} />
-              )}
+              <GoalWeightField
+                units={unitPref}
+                goalWeightKg={goalWeightKg}
+                onChange={setGoalWeightKg}
+                optional
+              />
             </>
           )}
 

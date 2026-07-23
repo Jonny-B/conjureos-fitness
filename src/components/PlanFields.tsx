@@ -132,26 +132,38 @@ export function HeightField({
   );
 }
 
-/** Target weight, shown for lose/gain goals. Storage metric; display per units. */
+/**
+ * Target weight. Storage metric; display per units. With `optional`, it frames
+ * the derive-the-direction flow: below your weight = lose, above = gain, blank
+ * = maintain — no separate lose/maintain/gain selector needed.
+ */
 export function GoalWeightField({
   units,
   goalWeightKg,
   onChange,
+  optional = false,
 }: {
   units: Profile["units"];
   goalWeightKg: number | undefined;
   onChange: (kg: number | undefined) => void;
+  optional?: boolean;
 }) {
   return (
     <label className="field">
-      <span>Goal weight ({weightUnit(units)})</span>
+      <span>Goal weight ({weightUnit(units)}){optional ? " — optional" : ""}</span>
       <NumberField
         value={goalWeightKg == null ? undefined : weightToDisplay(goalWeightKg, units)}
         min={weightToDisplay(25, units)}
         max={weightToDisplay(400, units)}
         onChange={(n) => onChange(n == null ? undefined : Math.round(weightToKg(n, units) * 10) / 10)}
         aria-label="Goal weight"
+        placeholder={optional ? "blank = maintain" : undefined}
       />
+      {optional && (
+        <span className="muted small field-hint">
+          Below your weight = lose · above = gain · blank = maintain
+        </span>
+      )}
     </label>
   );
 }
