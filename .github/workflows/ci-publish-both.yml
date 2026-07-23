@@ -28,21 +28,6 @@ jobs:
           ref: dev
           token: ${{ secrets.CONJUREOS_REPO_TOKEN }}
           path: .conjureos
-      - name: Build single-file HTML (dev project)
-        env:
-          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_REF }}.supabase.co
-          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xcHZqbHN5d3JwdGVmZ3d1enRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTA3OTMsImV4cCI6MjA5NTQ4Njc5M30.ITZjX5KkMNgbJuFEHS5-IqFFJC6A39OynVgOznZeqD8
-        run: npm run build:inline
-      - name: Publish to App Store (dev)
-        uses: ./.conjureos/.github/actions/publish-anchor-app
-        with:
-          supabase-url: https://${{ secrets.SUPABASE_DEV_PROJECT_REF }}.supabase.co
-          supabase-anon-key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xcHZqbHN5d3JwdGVmZ3d1enRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTA3OTMsImV4cCI6MjA5NTQ4Njc5M30.ITZjX5KkMNgbJuFEHS5-IqFFJC6A39OynVgOznZeqD8
-          bot-email: conjureosbot@gmail.com
-          bot-password: ${{ secrets.PUBLISH_BOT_DEV_PASSWORD }}
-          html-path: dist/index.html
-          slug: fitness
-          changelog: "Plan generation is more reliable: if custom workouts can't be built on the first try it retries, tells you when starter workouts were used, and adds a Rebuild workouts button. Plus workout calorie sync improvements."
       - name: Build single-file HTML (prod project)
         env:
           VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
