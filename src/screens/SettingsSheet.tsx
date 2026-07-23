@@ -5,9 +5,9 @@ import { getRepository } from "../data/repository";
 import { ACTIVITY_LABELS, recommendGoals } from "../features/goals";
 import { goalsToTargets, saveProgram, targetsToGoals, updatePlan } from "../features/plan/planService";
 import { ProgramEditor } from "../components/ProgramEditor";
-import { GoalWeightField, PlanDatesField, weeksBetween } from "../components/PlanFields";
+import { GoalWeightField, HeightField, PlanDatesField, weeksBetween } from "../components/PlanFields";
 import { NumberField } from "../components/NumberField";
-import { heightToCm, heightToDisplay, heightUnit, weightToDisplay, weightToKg, weightUnit } from "../features/units";
+import { weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { CloseIcon } from "../components/icons";
 import { useScrollLock } from "../hooks/useScrollLock";
 
@@ -201,15 +201,11 @@ export function SettingsSheet({
             <Field label="Age">
               <NumberField value={p.age} min={10} max={120} onChange={(n) => set("age", n)} aria-label="Age" />
             </Field>
-            <Field label={`Height (${heightUnit(p.units)})`}>
-              <NumberField
-                value={p.heightCm == null ? undefined : heightToDisplay(p.heightCm, p.units)}
-                min={heightToDisplay(90, p.units)}
-                max={heightToDisplay(250, p.units)}
-                onChange={(n) => set("heightCm", n == null ? undefined : Math.round(heightToCm(n, p.units)))}
-                aria-label="Height"
-              />
-            </Field>
+            <HeightField
+              units={p.units}
+              heightCm={p.heightCm}
+              onChange={(cm) => set("heightCm", cm)}
+            />
             <Field label={`Weight (${weightUnit(p.units)})`}>
               <NumberField
                 value={p.weightKg == null ? undefined : weightToDisplay(p.weightKg, p.units)}

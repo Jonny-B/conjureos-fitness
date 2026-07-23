@@ -1,7 +1,7 @@
 import type { ActivityLevel, ExperienceLevel, GoalDirection, Profile, Sex } from "../types";
 import { ACTIVITY_LABELS } from "../features/goals";
 import { NumberField } from "./NumberField";
-import { heightToCm, heightToDisplay, heightUnit, weightToDisplay, weightToKg, weightUnit } from "../features/units";
+import { cmToIn, inToCm, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 
 /**
  * Shared plan/profile field widgets used by BOTH the wizard and the Settings
@@ -67,16 +67,7 @@ export function BodyStatsFields({
         <span>Units</span>
         <UnitsToggle units={units} onChange={onUnits} />
       </label>
-      <label className="field">
-        <span>Height ({heightUnit(units)})</span>
-        <NumberField
-          value={heightCm == null ? undefined : heightToDisplay(heightCm, units)}
-          min={heightToDisplay(90, units)}
-          max={heightToDisplay(250, units)}
-          onChange={(n) => onHeightCm(n == null ? undefined : Math.round(heightToCm(n, units)))}
-          aria-label="Height"
-        />
-      </label>
+      <HeightField units={units} heightCm={heightCm} onChange={onHeightCm} />
       <label className="field">
         <span>Weight ({weightUnit(units)})</span>
         <NumberField
@@ -88,6 +79,56 @@ export function BodyStatsFields({
         />
       </label>
     </div>
+  );
+}
+
+/**
+ * Height input. Metric = one cm field; imperial = feet + inches side by side
+ * (nobody thinks of themselves as "72 inches"). Storage is always cm. Shared by
+ * the wizard and the Settings cog so the two stay in lockstep.
+ */
+export function HeightField({
+  units,
+  heightCm,
+  onChange,
+}: {
+  units: Profile["units"];
+  heightCm: number | undefined;
+  onChange: (cm: number | undefined) => void;
+}) {
+  if (units === "metric") {
+    return (
+      <label className="field">
+        <span>Height (cm)</span>
+        <NumberField
+          value={heightCm == null ? undefined : Math.round(heightCm)}
+          min={90}
+          max={250}
+          onChange={(n) => onChange(n == null ? undefined : n)}
+          aria-label="Height"
+        />
+      </label>
+    );
+  }
+  const totalIn = heightCm == null ? undefined : Math.round(cmToIn(heightCm));
+  const ft = totalIn == null ? undefined : Math.floor(totalIn / 12);
+  const inch = totalIn == null ? undefined : totalIn % 12;
+  const set = (f: number | undefined, i: number | undefined) => {
+    if (f == null && i == null) {
+      onChange(undefined);
+      return;
+    }
+    const total = (f ?? 0) * 12 + (i ?? 0);
+    onChange(total > 0 ? Math.round(inToCm(total)) : undefined);
+  };
+  return (
+    <label className="field">
+      <span>Height (ft / in)</span>
+      <div className="height-imperial">
+        <NumberField value={ft} min={3} max={8} onChange={(n) => set(n, inch)} aria-label="Height feet" placeholder="ft" />
+        <NumberField value={inch} min={0} max={11} onChange={(n) => set(ft, n)} aria-label="Height inches" placeholder="in" />
+      </div>
+    </label>
   );
 }
 

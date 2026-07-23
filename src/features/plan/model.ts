@@ -44,6 +44,10 @@ export interface PlanInput {
    *  set, it fills/overrides the AI's number so a missing AI target can't force
    *  the fallback template — see createPlan. */
   calorieTarget?: number | null;
+  /** The user's display-unit preference. Storage stays metric; this only tells
+   *  the generator to write user-facing TEXT (summary, goal labels, workout
+   *  descriptions) in the units the user actually reads. */
+  units?: "metric" | "imperial";
   safety: SafetyIntake;
 }
 

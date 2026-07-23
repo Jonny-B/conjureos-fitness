@@ -174,6 +174,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
     age: tracksFood ? age : undefined,
     sex: tracksFood ? sex : undefined,
     calorieTarget: localCalorieTarget(),
+    units: unitPref,
     safety: intake,
   });
 
@@ -398,6 +399,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
                 </div>
               )}
               <p className="plan-summary">{preview.gen.summary}</p>
+              <div className="section-label">Daily &amp; weekly goals</div>
               <ul className="plan-goal-list">
                 {preview.gen.goals.map((g, i) => (
                   <li className="plan-goal" key={i}>
@@ -409,20 +411,51 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
 
               {preview.plan.program && preview.plan.program.workouts.length > 0 && (
                 <div className="plan-workouts">
-                  <div className="section-label">Your workouts</div>
-                  {preview.plan.program.workouts.map((pw: ProgramWorkout) => (
-                    <div className="plan-workout" key={pw.id}>
-                      <div className="plan-workout-name">{pw.workout.name}</div>
-                      <ul className="plan-exercise-list">
-                        {pw.workout.exercises.map((e) => (
-                          <li key={e.id}>
-                            <span className="pe-name">{e.name}</span>
-                            <span className="pe-sets">{setSummary(e.sets)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
+                  {(() => {
+                    const all = preview.plan.program!.workouts as ProgramWorkout[];
+                    const evals = all.filter((pw) => pw.isBenchmark);
+                    const training = all.filter((pw) => !pw.isBenchmark);
+                    const card = (pw: ProgramWorkout) => (
+                      <div className="plan-workout" key={pw.id}>
+                        <div className="plan-workout-name">
+                          {pw.workout.name}
+                          {pw.isBenchmark && <span className="benchmark-badge">Evaluation</span>}
+                        </div>
+                        <ul className="plan-exercise-list">
+                          {pw.workout.exercises.map((e) => (
+                            <li key={e.id}>
+                              <span className="pe-name">{e.name}</span>
+                              <span className="pe-sets">{setSummary(e.sets)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                    return (
+                      <>
+                        {evals.length > 0 && (
+                          <>
+                            <div className="section-label">Evaluation — do this first</div>
+                            <p className="muted small plan-section-hint">
+                              Measures your benchmarks so your training calibrates to your real
+                              numbers. Already know them? Enter them on the Plan tab instead.
+                            </p>
+                            {evals.map(card)}
+                          </>
+                        )}
+                        {training.length > 0 && (
+                          <>
+                            <div className="section-label">Training workouts</div>
+                            <p className="muted small plan-section-hint">
+                              You'll work through these in groups, at your own pace — finish a
+                              group to unlock the next.
+                            </p>
+                            {training.map(card)}
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -459,7 +492,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
                   <button className="btn" onClick={() => setEditOpen(true)}>Edit workouts</button>
                 )}
                 <button className="btn primary" onClick={start}>
-                  <CheckIcon size={16} /> Start the plan
+                  <CheckIcon size={16} /> Start plan
                 </button>
               </div>
 

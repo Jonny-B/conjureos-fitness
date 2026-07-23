@@ -85,6 +85,25 @@ describe("createPlan (two-phase generation)", () => {
     expect(res.failureReason).toMatch(/didn't include any goals/i);
   });
 
+  it("writes imperial numbers + a units directive into the prompt when the user reads imperial", async () => {
+    complete.mockResolvedValueOnce(GOOD_CORE).mockResolvedValueOnce(GOOD_PROGRAM);
+    await createPlan({ ...input, units: "imperial", goalWeightKg: 72 }, liability);
+    const msg = (complete.mock.calls[0]![0] as unknown as { messages: { content: string }[] }).messages[0]!.content;
+    expect(msg).toContain(`5'10"`); // 178 cm
+    expect(msg).toContain("176 lb"); // 80 kg
+    expect(msg).toContain("159 lb"); // 72 kg goal
+    expect(msg).toContain("UNITS: the user reads IMPERIAL");
+  });
+
+  it("keeps metric prompts unchanged when the user reads metric", async () => {
+    complete.mockResolvedValueOnce(GOOD_CORE).mockResolvedValueOnce(GOOD_PROGRAM);
+    await createPlan({ ...input, units: "metric" }, liability);
+    const msg = (complete.mock.calls[0]![0] as unknown as { messages: { content: string }[] }).messages[0]!.content;
+    expect(msg).toContain("178 cm");
+    expect(msg).toContain("80 kg");
+    expect(msg).not.toContain("UNITS:");
+  });
+
   // (Transport-error → fallback with the thrown message is the pre-existing
   // try/catch path in createPlan, unchanged by the split; a mock that throws
   // trips vitest's uncaught-error guard, so it isn't re-asserted here.)

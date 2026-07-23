@@ -187,6 +187,7 @@ function ProgramSection({
         </p>
       )}
 
+      <div className="mini-label muted small">Benchmarks — what your plan is measured by</div>
       {program.benchmarks.map((b) => {
         const pw = workoutForBenchmark(b.id);
         return (
@@ -194,6 +195,7 @@ function ProgramSection({
         );
       })}
 
+      <div className="mini-label muted small">This group's workouts</div>
       <ul className="workout-list">
         {groupWorkouts.map((pw) => {
           const done = pw.completedAt != null;
@@ -443,7 +445,7 @@ function BenchmarkCard({
       </div>
       {b.baseline == null ? (
         <div className="muted small">
-          {onStart ? "Tap to do the benchmark and set your baseline." : "Complete the benchmark workout to set your baseline."}
+          {onStart ? "Tap to do the evaluation and set your baseline." : "Do the evaluation workout to set your baseline."}
         </div>
       ) : (
         <>

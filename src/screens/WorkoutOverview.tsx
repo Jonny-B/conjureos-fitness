@@ -72,7 +72,7 @@ export function WorkoutOverview({
       <div className="overview-head">
         <h1 className="overview-title">
           {workout.name}
-          {isBenchmark && <span className="benchmark-badge">Benchmark</span>}
+          {isBenchmark && <span className="benchmark-badge">Evaluation</span>}
         </h1>
         <div className="overview-meta">
           {cardio ? (

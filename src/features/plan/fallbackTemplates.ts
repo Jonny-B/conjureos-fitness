@@ -153,6 +153,7 @@ export function fallbackProgram(
         isBenchmark: true,
         benchmarkId,
         benchmarkIds: [benchmarkId],
+        group: 1,
       },
     ],
     benchmarks: [
@@ -168,6 +169,7 @@ export function fallbackProgram(
       },
     ],
     analysisCursor: 0,
+    currentGroup: 1,
   };
 }
 

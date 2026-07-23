@@ -15,6 +15,7 @@ import { complete, isAiAvailable } from "../../bridge/ai";
 import { newId } from "../../data/id";
 import { shiftDate, todayISO } from "../diary";
 import { macrosForCalories } from "../goals";
+import { fmtHeight, kgToLb } from "../units";
 import { movementsExcludedFor } from "../safety/injuryExclusions";
 import type { GeneratedGoal, GeneratedPlan, PlanInput } from "./model";
 import { modeHasWorkouts, modeTracksFood } from "./model";
@@ -54,10 +55,10 @@ Return ONLY a JSON object with the program:
     "benchmarks": [ { "exercise": string, "metric": "reps" | "weightKg" | "durationSec" | "distanceKm", "target": number, "unit": string, "lowerIsBetter"?: boolean } ] }
 Rules:
 - BENCHMARKS COME FIRST. Pick 1-4 benchmarks that ARE the measurable test of THIS person's goal — the movements they're training, tested at capacity (max reps, a rep-max weight, or a timed effort). For a compound goal (e.g. the Murph: pull-ups, push-ups, a timed run), give ONE benchmark PER component. Never a generic filler like "sit-to-stand" for someone training hard.
-- The FIRST workout MUST be the assessment: name it "Assessment" (or "<goal> Test"), containing exactly the benchmark movements at max effort ("as many reps as possible", a timed run), so the user tests once and sets every baseline. Each benchmark's "exercise" MUST appear by name in a workout (the assessment counts).
+- The FIRST workout MUST be the evaluation: name it "Evaluation" (or "<goal> Evaluation"), containing exactly the benchmark movements at max effort ("as many reps as possible", a timed run), so the user tests once and sets every baseline. Each benchmark's "exercise" MUST appear by name in a workout (the evaluation counts).
 - Then give the training workouts — one per training day (match "days per week"), up to 5 more, each a distinct session (push / pull / legs / conditioning), 3-8 exercises, built to move those benchmarks. 1-2 sentence "description" each.
 - Scale HARD to experience: beginner = form + lighter volume; intermediate/advanced = real named lifts, higher volume, progression, weighted movements. An advanced person must never get a beginner bodyweight routine.
-- Sets have reps OR durationSec, plus restSec (metric units: kg, km, seconds). Include a warmup note in the assessment's first exercise "notes".
+- Sets have reps OR durationSec, plus restSec (metric units: kg, km, seconds). Include a warmup note in the evaluation's first exercise "notes".
 - set lowerIsBetter=true for a timed effort (faster wins).
 - Respect the user's equipment and any HARD SAFETY avoid-list exactly.
 - Output ONLY the JSON. No prose, no markdown fences.`;
@@ -77,15 +78,30 @@ function buildUserPrompt(input: PlanInput, priorReasons?: string[]): string {
     if (input.daysPerWeek) lines.push(`Workout days per week: ${input.daysPerWeek} (give about this many distinct workouts).`);
     lines.push(`Equipment: ${input.equipment?.trim() || "none / bodyweight"}.`);
   }
+  const imperial = input.units === "imperial";
   if (modeTracksFood(input.mode)) {
-    if (input.heightCm) lines.push(`Height: ${input.heightCm} cm.`);
-    if (input.weightKg) lines.push(`Weight: ${input.weightKg} kg.`);
+    if (input.heightCm) {
+      lines.push(
+        `Height: ${imperial ? `${fmtHeight(input.heightCm, "imperial")} (${Math.round(input.heightCm)} cm)` : `${input.heightCm} cm`}.`,
+      );
+    }
+    if (input.weightKg) {
+      lines.push(
+        `Weight: ${imperial ? `${Math.round(kgToLb(input.weightKg))} lb (${input.weightKg} kg)` : `${input.weightKg} kg`}.`,
+      );
+    }
     if (input.goalWeightKg) {
       const dir = input.weightKg && input.goalWeightKg < input.weightKg ? "lose" : input.weightKg && input.goalWeightKg > input.weightKg ? "gain" : "reach";
-      lines.push(`Goal weight: ${input.goalWeightKg} kg (they want to ${dir} weight to reach it) — reference it in the plan.`);
+      const shown = imperial ? `${Math.round(kgToLb(input.goalWeightKg))} lb` : `${input.goalWeightKg} kg`;
+      lines.push(`Goal weight: ${shown} (they want to ${dir} weight to reach it) — reference it in the plan.`);
     }
     if (input.age) lines.push(`Age: ${input.age}.`);
     if (input.sex) lines.push(`Sex (for calorie floor only): ${input.sex}.`);
+  }
+  if (imperial) {
+    lines.push(
+      "UNITS: the user reads IMPERIAL. Every user-facing string (summary, goal labels/details, workout names, descriptions, exercise notes) MUST use imperial numbers (lb, miles, ft/in) — never kg/km/cm. Numeric JSON fields (weightKg, distanceKm, durationSec) stay metric.",
+    );
   }
   const avoid = movementsExcludedFor(input.safety.injuries);
   if (avoid.length) {
