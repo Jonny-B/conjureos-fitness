@@ -55,6 +55,7 @@ Return ONLY a JSON object with the program:
     "benchmarks": [ { "exercise": string, "metric": "reps" | "weightKg" | "durationSec" | "distanceKm", "target": number, "unit": string, "lowerIsBetter"?: boolean } ] }
 Rules:
 - BENCHMARKS COME FIRST. Pick 1-4 benchmarks that ARE the measurable test of THIS person's goal — the movements they're training, tested at capacity (max reps, a rep-max weight, or a timed effort). For a compound goal (e.g. the Murph: pull-ups, push-ups, a timed run), give ONE benchmark PER component. Never a generic filler like "sit-to-stand" for someone training hard.
+- If the goal NAMES a known workout, the benchmarks and the evaluation MUST use exactly its movements — Murph / half Murph = pull-ups + push-ups + air squats + a timed 1-mile run. An evaluation that omits the goal's own movements is WRONG.
 - The FIRST workout MUST be the evaluation: name it "Evaluation" (or "<goal> Evaluation"), containing exactly the benchmark movements at max effort ("as many reps as possible", a timed run), so the user tests once and sets every baseline. Each benchmark's "exercise" MUST appear by name in a workout (the evaluation counts).
 - Then give the training workouts — one per training day (match "days per week"), up to 5 more, each a distinct session (push / pull / legs / conditioning), 3-8 exercises, built to move those benchmarks. 1-2 sentence "description" each.
 - Scale HARD to experience: beginner = form + lighter volume; intermediate/advanced = real named lifts, higher volume, progression, weighted movements. An advanced person must never get a beginner bodyweight routine.
@@ -259,19 +260,32 @@ async function generateCore(input: PlanInput, priorReasons?: string[]): Promise<
  * truncation, transport error, or unparseable output — so the caller can fall
  * back to a template program without sinking the (already valid) plan.
  */
-async function generateProgram(input: PlanInput, goals: GeneratedGoal[]): Promise<WorkoutProgram | null> {
+async function generateProgramOnce(
+  input: PlanInput,
+  goals: GeneratedGoal[],
+  priorReason?: string,
+): Promise<{ program: WorkoutProgram | null; reason?: string }> {
   let raw: string;
   try {
     raw = await complete({
       system: SYSTEM_PROGRAM,
-      messages: [{ role: "user", content: buildProgramPrompt(input, goals) }],
+      messages: [
+        {
+          role: "user",
+          content:
+            buildProgramPrompt(input, goals) +
+            (priorReason
+              ? `\nYour previous attempt was REJECTED for: ${priorReason}. Fix this exactly and return ONLY the compact JSON.`
+              : ""),
+        },
+      ],
       // A full multi-day advanced program with an assessment overflows a smaller
       // budget and truncates → parse fail → the beginner fallback. Give it room.
       maxTokens: 4096,
       tier: "capable",
     });
-  } catch {
-    return null;
+  } catch (err) {
+    return { program: null, reason: err instanceof Error ? err.message : "the AI was unreachable" };
   }
   let json: unknown;
   try {
@@ -281,12 +295,46 @@ async function generateProgram(input: PlanInput, goals: GeneratedGoal[]): Promis
       // eslint-disable-next-line no-console
       console.warn(`[plan-gen] program parse failed:\n${raw}`);
     }
-    return null;
+    const truncated = !extractJson(raw ?? "").trim().endsWith("}");
+    return {
+      program: null,
+      reason: truncated
+        ? "the output was cut off — return more COMPACT JSON (shorter descriptions, fewer exercises)"
+        : "the output wasn't valid JSON",
+    };
   }
   const o = json && typeof json === "object" ? (json as Record<string, unknown>) : {};
   // Accept either a bare program object or one wrapped in { program: {...} }.
   const progObj = o.program && typeof o.program === "object" ? o.program : o;
-  return parseProgram(progObj);
+  const program = parseProgram(progObj);
+  return program
+    ? { program }
+    : { program: null, reason: "the JSON was missing required workouts/benchmarks fields" };
+}
+
+/**
+ * Generate the workout program with ONE retry, feeding the rejection reason
+ * back so the model fixes it instead of repeating it (the same treatment the
+ * core call already gets). Exported so the wizard's "Rebuild workouts" action
+ * can re-run JUST this half without regenerating the goals.
+ */
+export async function regenerateProgram(
+  input: PlanInput,
+  goals: GeneratedGoal[],
+  injuries: string[],
+): Promise<{ program: WorkoutProgram | null; reason?: string }> {
+  let reason: string | undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await generateProgramOnce(input, goals, reason);
+    if (res.program) {
+      const rs = validateProgram(res.program, input.mode, injuries);
+      if (rs.length === 0) return { program: res.program };
+      reason = rs.join("; ");
+    } else {
+      reason = res.reason;
+    }
+  }
+  return { program: null, reason };
 }
 
 const CORE_FAIL_MESSAGE: Record<CoreFail, string> = {
@@ -347,6 +395,12 @@ export interface CreatePlanResult {
   /** When usedFallback, WHY — the AI error or the validation reasons. Surfaced
    *  for diagnostics instead of being silently swallowed. */
   failureReason?: string;
+  /** Goals are AI-built but the WORKOUT PROGRAM fell back to the starter
+   *  template (both program attempts failed). The review flags it and offers a
+   *  "Rebuild workouts" retry so a generic evaluation never masquerades as a
+   *  goal-tuned one. */
+  programFallback?: boolean;
+  programFallbackReason?: string;
 }
 
 /**
@@ -405,17 +459,33 @@ export async function createPlan(
         // 2. Program — bulky + optional. Best-effort AI program (kept only if it
         //    passes the same safety rails), else the known-safe starter program
         //    so the Workouts tab isn't empty. Never sinks the AI plan.
+        let programFallback = false;
+        let programFallbackReason: string | undefined;
         if (modeHasWorkouts(input.mode)) {
           onStage?.("workouts");
-          const aiProg = await generateProgram(input, core.plan.goals).catch(() => null);
-          if (aiProg && validateProgram(aiProg, input.mode, injuries).length === 0) {
-            candidate = { ...candidate, program: aiProg };
+          const res = await regenerateProgram(input, core.plan.goals, injuries).catch(() => ({
+            program: null as WorkoutProgram | null,
+            reason: "the AI was unreachable",
+          }));
+          if (res.program) {
+            candidate = { ...candidate, program: res.program };
           } else {
+            // Attach the safe starter so the Plan tab isn't empty — but SAY SO:
+            // a generic evaluation next to goal-specific AI goals reads as "the
+            // app ignored my goal" unless the review flags it and offers a
+            // rebuild.
             const tmpl = fallbackProgram(input.mode, injuries, input.experienceLevel);
             if (tmpl) candidate = { ...candidate, program: tmpl };
+            programFallback = Boolean(tmpl);
+            programFallbackReason = res.reason;
           }
         }
-        return { plan: buildPlan(candidate, input, liability), gen: candidate, usedFallback: false };
+        return {
+          plan: buildPlan(candidate, input, liability),
+          gen: candidate,
+          usedFallback: false,
+          ...(programFallback ? { programFallback, programFallbackReason } : {}),
+        };
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
       }

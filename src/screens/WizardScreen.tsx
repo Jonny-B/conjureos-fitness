@@ -27,7 +27,7 @@ import {
   weeksBetween,
 } from "../components/PlanFields";
 import { AlertTriangle, CheckIcon, CloseIcon } from "../components/icons";
-import { createPlan, type CreatePlanResult, type PlanStage } from "../features/plan/generate";
+import { createPlan, regenerateProgram, type CreatePlanResult, type PlanStage } from "../features/plan/generate";
 import { getRepository } from "../data/repository";
 import type { PlanInput } from "../features/plan/model";
 import { modeHasWorkouts, modeTracksFood } from "../features/plan/model";
@@ -130,6 +130,34 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
   const [tweakOpen, setTweakOpen] = useState(false);
   const [tweakText, setTweakText] = useState("");
   const [editOpen, setEditOpen] = useState(false);
+  // "Rebuild workouts" (program-only retry when the goals are AI but the
+  // workouts fell back to the starter template).
+  const [rebuilding, setRebuilding] = useState(false);
+
+  const rebuildWorkouts = async () => {
+    if (!preview || rebuilding) return;
+    setRebuilding(true);
+    try {
+      const res = await regenerateProgram(buildInput(), preview.gen.goals, [...injuries]);
+      if (res.program) {
+        setPreview((prev) =>
+          prev
+            ? {
+                ...prev,
+                programFallback: false,
+                programFallbackReason: undefined,
+                gen: { ...prev.gen, program: res.program! },
+                plan: { ...prev.plan, program: res.program! },
+              }
+            : prev,
+        );
+      } else {
+        setPreview((prev) => (prev ? { ...prev, programFallbackReason: res.reason } : prev));
+      }
+    } finally {
+      setRebuilding(false);
+    }
+  };
 
   const ageBand = ageToBand(age ?? 30);
   const intake: SafetyIntake = {
@@ -399,6 +427,20 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
                   {preview.failureReason && (
                     <div className="muted small">Why the AI didn't generate one: {preview.failureReason}</div>
                   )}
+                </div>
+              )}
+              {!preview.usedFallback && preview.programFallback && (
+                <div className="notice notice-soft">
+                  <span>
+                    Your goals are custom, but the workout builder hit a snag — these are STARTER
+                    workouts, not tuned to your goal yet.
+                  </span>
+                  {preview.programFallbackReason && (
+                    <div className="muted small">Why: {preview.programFallbackReason}</div>
+                  )}
+                  <button className="btn block" disabled={rebuilding} onClick={() => void rebuildWorkouts()}>
+                    {rebuilding ? "Rebuilding workouts…" : "Rebuild workouts"}
+                  </button>
                 </div>
               )}
               <p className="plan-summary">{preview.gen.summary}</p>

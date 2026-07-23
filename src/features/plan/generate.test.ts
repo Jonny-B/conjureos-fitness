@@ -62,12 +62,33 @@ describe("createPlan (two-phase generation)", () => {
     expect(res.plan.program?.workouts[0]?.workout.name).toBe("Full Body A");
   });
 
-  it("keeps the AI plan and attaches the template program when the program call truncates", async () => {
+  it("retries the program once and uses the second attempt when the first truncates", async () => {
     const TRUNCATED_PROGRAM = '{"workouts":[{"name":"Full Body A","exercises":[{"name":"Squat","sets":[{"reps":12';
-    complete.mockResolvedValueOnce(GOOD_CORE).mockResolvedValueOnce(TRUNCATED_PROGRAM);
+    complete
+      .mockResolvedValueOnce(GOOD_CORE)
+      .mockResolvedValueOnce(TRUNCATED_PROGRAM)
+      .mockResolvedValueOnce(GOOD_PROGRAM);
+    const res = await createPlan(input, liability);
+    expect(res.usedFallback).toBe(false);
+    expect(res.programFallback).toBeUndefined();
+    expect(res.plan.program?.workouts[0]?.workout.name).toBe("Full Body A"); // retry won
+    // The retry prompt carried the rejection reason forward.
+    const retryMsg = (complete.mock.calls[2]![0] as unknown as { messages: { content: string }[] })
+      .messages[0]!.content;
+    expect(retryMsg).toMatch(/REJECTED for: .*cut off/i);
+  });
+
+  it("flags programFallback + attaches the template when BOTH program attempts fail", async () => {
+    const TRUNCATED_PROGRAM = '{"workouts":[{"name":"Full Body A","exercises":[{"name":"Squat","sets":[{"reps":12';
+    complete
+      .mockResolvedValueOnce(GOOD_CORE)
+      .mockResolvedValueOnce(TRUNCATED_PROGRAM)
+      .mockResolvedValueOnce(TRUNCATED_PROGRAM);
     const res = await createPlan(input, liability);
     expect(res.usedFallback).toBe(false); // AI goals survived
     expect(res.plan.program?.workouts[0]?.workout.name).toBe("Bodyweight Starter"); // template program
+    expect(res.programFallback).toBe(true);
+    expect(res.programFallbackReason).toMatch(/cut off/i);
   });
 
   it("falls back with a 'too long' reason when the core JSON is truncated on both attempts", async () => {
