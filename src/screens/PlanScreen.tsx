@@ -168,6 +168,76 @@ function ProgramSection({
     }
   };
 
+  // ── Benchmark-first gate ─────────────────────────────────────────────
+  // Until the benchmark is done, the Plan tab shows ONE thing: a single,
+  // clearly-labeled Benchmark card (the old four benchmark cards stacked above
+  // workout cards read as seven workouts). Training stays visibly locked —
+  // the coach can't calibrate it until the scores exist.
+  if (evaluating && needsAssessment && !complete) {
+    const evalWorkouts = groupWorkouts.filter((w) => w.isBenchmark);
+    const nextEval = evalWorkouts.find((w) => w.completedAt == null) ?? evalWorkouts[0];
+    return (
+      <section className="plan-section program-section">
+        <div className="section-label">
+          Your plan
+          <button className="link-btn section-action" onClick={onEditPlan}>
+            Edit plan
+          </button>
+        </div>
+
+        <div className="benchmark-hero">
+          <div className="benchmark-hero-head">
+            <span className="benchmark-badge">Benchmark</span>
+            <h3 className="benchmark-hero-title">First, measure where you are</h3>
+          </div>
+          <p className="muted small benchmark-hero-blurb">
+            One test session — it sets your starting numbers so your coach can size every
+            training workout to you. Not a workout to beat, just an honest measurement.
+          </p>
+          <ul className="benchmark-hero-rows">
+            {program.benchmarks.map((b) => (
+              <li key={b.id}>
+                <span className="bh-name">{b.name}</span>
+                <span className="muted small">
+                  goal {b.lowerIsBetter ? "≤ " : ""}
+                  {formatBenchmarkValue(b.target, b, units)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {nextEval && (
+            <>
+              <button className="btn primary block" onClick={() => onStart(nextEval)}>
+                Start the benchmark
+              </button>
+              <button className="link-btn benchmark-hero-manual" onClick={() => setEntryFor(nextEval)}>
+                Know your numbers? Enter them instead
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="muted small program-locked">
+          Your training workouts unlock once the benchmark is done — the coach adjusts them to
+          your scores.
+        </div>
+
+        {entryFor && (
+          <EvalEntrySheet
+            plan={plan}
+            programWorkout={entryFor}
+            units={units}
+            onClose={() => setEntryFor(null)}
+            onSaved={(next) => {
+              setEntryFor(null);
+              onPlanChange(next);
+            }}
+          />
+        )}
+      </section>
+    );
+  }
+
   return (
     <section className="plan-section program-section">
       <div className="section-label">
@@ -179,13 +249,6 @@ function ProgramSection({
           Edit plan
         </button>
       </div>
-
-      {evaluating && needsAssessment && (
-        <p className="muted small program-assess-hint">
-          Measure where you are first — your workouts calibrate to your results. Do the
-          evaluation, or enter your numbers if you already know them.
-        </p>
-      )}
 
       <div className="mini-label muted small">Benchmarks — what your plan is measured by</div>
       {program.benchmarks.map((b) => {

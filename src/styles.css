@@ -1450,6 +1450,65 @@ body {
 .group-progress {
   margin: 10px 0;
 }
+/* Benchmark-first gate: the single accent card shown until the benchmark is
+   done. Deliberately styled apart from workout cards — it's a measurement,
+   not another workout in the list. */
+.benchmark-hero {
+  border: 1px solid var(--cui-accent, #7c6cff);
+  background:
+    linear-gradient(180deg, rgba(124, 108, 255, 0.12), rgba(124, 108, 255, 0.03));
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.benchmark-hero-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.benchmark-hero-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+.benchmark-hero-blurb {
+  margin: 0;
+}
+.benchmark-hero-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.benchmark-hero-rows li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.benchmark-hero-rows li:last-child {
+  border-bottom: none;
+}
+.bh-name {
+  font-weight: 600;
+}
+.benchmark-hero-manual {
+  align-self: center;
+  font-size: 13px;
+}
+.program-locked {
+  text-align: center;
+  padding: 10px 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
 .eval-entry-duration .text-input,
 .eval-entry-value .text-input {
   flex: 1 1 auto;
