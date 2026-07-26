@@ -12,15 +12,14 @@ import type {
 } from "../types";
 import { INJURY_REGIONS } from "../features/safety/injuryExclusions";
 import { requiresLoggingOnly, resolveSafeMode } from "../features/safety/intakeGate";
-import { deriveDirection, recommendGoals } from "../features/goals";
+import { activityForDaysPerWeek, deriveDirection, recommendGoals } from "../features/goals";
+import { fmtSeconds } from "../features/units";
 import { shiftDate, todayISO } from "../features/diary";
 import { DisclaimerCard, DISCLAIMER_SHORT } from "../components/DisclaimerCard";
 import { ProgramEditor } from "../components/ProgramEditor";
 import {
-  ActivityField,
   AgeField,
   BodyStatsFields,
-  ExperienceField,
   GoalWeightField,
   PlanDatesField,
   SexField,
@@ -71,13 +70,26 @@ function ageToBand(age: number): AgeBand {
   return "60_plus";
 }
 
-/** Terse "3 × 10" / "4 × 30s" summary of an exercise's sets for the review list. */
+/** Terse "3 × 10" / "4 × 30s" / "1 × 8:00" summary of an exercise's sets. */
 function setSummary(sets: ExerciseSet[]): string {
   if (!sets.length) return "";
   const s = sets[0]!;
-  const per = s.durationSec != null ? `${s.durationSec}s` : s.reps != null ? `${s.reps}` : "";
+  const per = s.durationSec != null ? fmtSeconds(s.durationSec) : s.reps != null ? `${s.reps}` : "";
   return per ? `${sets.length} × ${per}` : `${sets.length} sets`;
 }
+
+const DAYS_OPTIONS = [2, 3, 4, 5, 6] as const;
+const EXPERIENCE_OPTIONS: { value: ExperienceLevel; label: string }[] = [
+  { value: "beginner", label: "Beginner" },
+  { value: "intermediate", label: "Intermediate" },
+  { value: "advanced", label: "Advanced" },
+];
+const EATER_ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
+  { value: "sedentary", label: "Mostly sitting" },
+  { value: "light", label: "Lightly active" },
+  { value: "moderate", label: "Moderately active" },
+  { value: "active", label: "Very active" },
+];
 
 export function WizardScreen({ onComplete, onClose, units = "metric", profile }: Props) {
   const [step, setStep] = useState<Step>("disclaimer");
@@ -160,12 +172,17 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
   };
 
   const ageBand = ageToBand(age ?? 30);
+  // Activity is DERIVED from training days for workout modes — asking "how
+  // active are you" next to "how many days will you train" was a duplicate.
+  // The explicit chips remain only for food-only plans (no days/week there).
+  const effectiveActivity: ActivityLevel =
+    mode === "eat_better" ? activityLevel : activityForDaysPerWeek(daysPerWeek);
   const intake: SafetyIntake = {
     ageBand,
     pregnant,
     cardiacFlag,
     injuries: [...injuries],
-    activityLevel,
+    activityLevel: effectiveActivity,
   };
   const gated = requiresLoggingOnly(intake);
   const effectiveMode = resolveSafeMode(mode, intake);
@@ -181,7 +198,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
       age: age ?? 30,
       heightCm,
       weightKg,
-      activityLevel,
+      activityLevel: effectiveActivity,
       direction,
       units: unitPref,
     };
@@ -251,7 +268,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
       goalWeightKg: tracksFood && direction !== "maintain" ? goalWeightKg : undefined,
       age,
       ageBand,
-      activityLevel,
+      activityLevel: effectiveActivity,
       experienceLevel: hasWorkouts ? experienceLevel : undefined,
       direction: tracksFood ? direction : undefined,
       units: unitPref,
@@ -288,6 +305,21 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
               </button>
             ))}
           </div>
+
+          <label className="field goal-describe">
+            <span className="field-label">Describe it in your own words (optional)</span>
+            <textarea
+              className="text-area"
+              rows={2}
+              placeholder="e.g. lose a few pounds and get better at the Murph"
+              value={goalText}
+              onChange={(e) => setGoalText(e.target.value)}
+            />
+            <span className="muted small field-hint">
+              The more specific you are, the better your plan and benchmark fit.
+            </span>
+          </label>
+
           <div className="wizard-nav">
             <button className="btn primary block" onClick={() => setStep("safety")}>
               Continue
@@ -298,11 +330,39 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
 
       {step === "safety" && (
         <div className="mode-body wizard-step">
-          <WizardHead n={2} title="A quick safety check" />
-          <p className="muted small">This keeps your plan appropriate. Nothing leaves your device.</p>
+          <WizardHead n={2} title="About you" />
+          <p className="muted small">
+            Everything about your body in one place. Nothing leaves your device.
+          </p>
 
-          <AgeField age={age} onChange={setAge} />
+          <div className="form-grid">
+            <AgeField age={age} onChange={setAge} />
+            <SexField sex={sex} onChange={setSex} />
+          </div>
 
+          {tracksFood && (
+            <>
+              <BodyStatsFields
+                units={unitPref}
+                heightCm={heightCm}
+                weightKg={weightKg}
+                onUnits={setUnitPref}
+                onHeightCm={setHeightCm}
+                onWeightKg={(kg) => {
+                  weightTouched.current = true;
+                  setWeightKg(kg);
+                }}
+              />
+              <GoalWeightField
+                units={unitPref}
+                goalWeightKg={goalWeightKg}
+                onChange={setGoalWeightKg}
+                optional
+              />
+            </>
+          )}
+
+          <div className="section-label">Safety check</div>
           <label className="check-row">
             <input type="checkbox" checked={pregnant} onChange={(e) => setPregnant(e.target.checked)} />
             <span>Pregnant or recently postpartum</span>
@@ -330,41 +390,57 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
           {gated && (
             <div className="notice notice-soft">
               <AlertTriangle />
-              <span>Based on your answers we'll keep this to food &amp; habit tracking — no workout prescriptions. You can always talk to your doctor about adding exercise.</span>
+              <span>Based on your answers we'll keep this to food &amp; habit tracking, with no workout prescriptions. You can always talk to your doctor about adding exercise.</span>
             </div>
           )}
 
           <div className="wizard-nav">
             <button className="btn" onClick={() => setStep("mode")}>Back</button>
-            <button className="btn primary" onClick={() => setStep("inputs")}>Continue</button>
+            <button className="btn primary" disabled={!inputsValid} onClick={() => setStep("inputs")}>
+              Continue
+            </button>
           </div>
         </div>
       )}
 
       {step === "inputs" && (
         <div className="mode-body wizard-step">
-          <WizardHead n={3} title="Tell us a little more" />
-
-          <label className="field">
-            <span className="field-label">What's your goal, in your words?</span>
-            <textarea
-              className="text-area"
-              rows={2}
-              placeholder="e.g. lose a few pounds and get better at the Murph"
-              value={goalText}
-              onChange={(e) => setGoalText(e.target.value)}
-            />
-          </label>
+          <WizardHead n={3} title="Your training" />
 
           <PlanDatesField startDate={startDate} endDate={endDate} onStart={setStartDate} onEnd={setEndDate} hideStart />
 
           {hasWorkouts && (
             <>
-              <label className="field">
-                <span className="field-label">Workout days per week: {daysPerWeek}</span>
-                <input type="range" min={1} max={6} value={daysPerWeek} onChange={(e) => setDaysPerWeek(Number(e.target.value))} />
-              </label>
-              <ExperienceField value={experienceLevel} onChange={setExperienceLevel} />
+              <div className="field">
+                <span className="field-label">Workout days per week</span>
+                <div className="chip-row">
+                  {DAYS_OPTIONS.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      className={`chip${daysPerWeek === d ? " active" : ""}`}
+                      onClick={() => setDaysPerWeek(d)}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="field">
+                <span className="field-label">Experience level</span>
+                <div className="chip-row">
+                  {EXPERIENCE_OPTIONS.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      className={`chip${experienceLevel === o.value ? " active" : ""}`}
+                      onClick={() => setExperienceLevel(o.value)}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <label className="field">
                 <span className="field-label">Equipment (optional)</span>
                 <input
@@ -377,28 +453,23 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
             </>
           )}
 
-          {tracksFood && (
-            <>
-              <BodyStatsFields
-                units={unitPref}
-                heightCm={heightCm}
-                weightKg={weightKg}
-                onUnits={setUnitPref}
-                onHeightCm={setHeightCm}
-                onWeightKg={(kg) => {
-                  weightTouched.current = true;
-                  setWeightKg(kg);
-                }}
-              />
-              <SexField sex={sex} onChange={setSex} />
-              <ActivityField value={activityLevel} onChange={setActivityLevel} />
-              <GoalWeightField
-                units={unitPref}
-                goalWeightKg={goalWeightKg}
-                onChange={setGoalWeightKg}
-                optional
-              />
-            </>
+          {!hasWorkouts && (
+            <div className="field">
+              <span className="field-label">How active is a typical day?</span>
+              <div className="chip-row">
+                {EATER_ACTIVITY_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    className={`chip${activityLevel === o.value ? " active" : ""}`}
+                    onClick={() => setActivityLevel(o.value)}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <span className="muted small field-hint">Used only to estimate your daily calories.</span>
+            </div>
           )}
 
           <div className="wizard-nav">
@@ -444,15 +515,19 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
                 </div>
               )}
               <p className="plan-summary">{preview.gen.summary}</p>
-              <div className="section-label">Daily &amp; weekly goals</div>
-              <ul className="plan-goal-list">
-                {preview.gen.goals.map((g, i) => (
-                  <li className="plan-goal" key={i}>
-                    <span className={`goal-kind goal-${g.kind}`}>{g.kind}</span>
-                    <span className="goal-label">{g.label}</span>
-                  </li>
-                ))}
-              </ul>
+
+              {tracksFood && preview.plan.targets?.dailyCalories != null && (
+                <div className="calorie-callout">
+                  <div className="calorie-callout-num">
+                    <span className="big-number">{Math.round(preview.plan.targets.dailyCalories)}</span>
+                    <span className="big-unit">kcal / day</span>
+                  </div>
+                  <span className="muted small">
+                    Your daily calorie target, computed from your stats and goal weight. This is
+                    what the ring on your home screen tracks.
+                  </span>
+                </div>
+              )}
 
               {preview.plan.program && preview.plan.program.workouts.length > 0 && (
                 <div className="plan-workouts">

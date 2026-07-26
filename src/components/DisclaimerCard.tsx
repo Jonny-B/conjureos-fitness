@@ -18,7 +18,7 @@ export const DISCLAIMER_HEADLINE = "Read this before we build your plan";
 
 export const DISCLAIMER_BODY = [
   "Conjure Health creates general fitness and nutrition suggestions. It is not medical advice, diagnosis, or treatment, and it does not replace a doctor, dietitian, or physical therapist.",
-  "Talk to a healthcare professional before starting a new exercise or eating plan — especially if you have a health condition, an injury, are pregnant, or take medication.",
+  "Talk to a healthcare professional before starting a new exercise or eating plan, especially if you have a health condition, an injury, are pregnant, or take medication.",
   "Stop and seek help if you feel chest pain, shortness of breath, dizziness, or any symptom that worries you. You are always in control; skip anything that doesn't feel right.",
 ];
 

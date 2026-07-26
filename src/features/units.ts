@@ -46,6 +46,15 @@ export function fmtHeight(cm: number, u: Units): string {
   return `${Math.round(cm)} cm`;
 }
 
+/** Seconds → a human duration: short efforts stay "45s", anything from 90s up
+ *  reads m:ss ("8:00", "50:00") — a 3000-second run should never print "3000s". */
+export function fmtSeconds(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 90) return `${Math.round(sec)}s`;
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 export function fmtDistance(km: number, u: Units): string {
   return u === "imperial" ? `${kmToMi(km).toFixed(2)} mi` : `${km.toFixed(2)} km`;
 }

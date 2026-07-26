@@ -1,6 +1,7 @@
 import type { Workout } from "../types";
 import { ExplainerDropdown } from "../components/ExplainerDropdown";
 import { ChevronLeft, PlayIcon } from "../components/icons";
+import { fmtSeconds } from "../features/units";
 
 /**
  * Pre-workout splash — shown when a workout is tapped, before the guided
@@ -20,7 +21,7 @@ const isCardio = (w: Workout) => w.kind === "run" || w.kind === "bike";
 function setSummary(sets: Workout["exercises"][number]["sets"]): string {
   if (!sets.length) return "";
   const s = sets[0]!;
-  const per = s.durationSec != null ? `${s.durationSec}s` : s.reps != null ? `${s.reps}` : "";
+  const per = s.durationSec != null ? fmtSeconds(s.durationSec) : s.reps != null ? `${s.reps}` : "";
   const base = per ? `${sets.length} × ${per}` : `${sets.length} sets`;
   return s.weightKg ? `${base} @ ${s.weightKg}kg` : base;
 }

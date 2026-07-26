@@ -1530,6 +1530,26 @@ body {
 .field-hint {
   margin-top: 4px;
 }
+.goal-describe {
+  margin-top: 14px;
+}
+/* Review: the one number that must be right — the daily calorie target that
+   drives the home-screen ring. */
+.calorie-callout {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.calorie-callout-num {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
 /* Small in-section separators (Benchmarks / this group's workouts). */
 .mini-label {
   margin: 10px 0 6px;
