@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ActivityLevel, ExperienceLevel, Goals, Plan, PlanGoal, PlanMode, Profile, Sex } from "../types";
 import { DEFAULT_GOALS, DEFAULT_PROFILE } from "../types";
 import { getRepository } from "../data/repository";
@@ -10,6 +10,7 @@ import { NumberField } from "../components/NumberField";
 import { weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { CloseIcon } from "../components/icons";
 import { useScrollLock } from "../hooks/useScrollLock";
+import { clearAllHistories, clearHistory, HISTORY_ITEMS } from "../features/resetData";
 
 const EXPERIENCE_LABELS: Record<ExperienceLevel, string> = {
   beginner: "Beginner",
@@ -85,6 +86,7 @@ export function SettingsSheet({
   onSave,
   onPlanChange,
   onStartNewPlan,
+  onDataCleared,
 }: {
   goals: Goals;
   profile: Profile | null;
@@ -95,6 +97,8 @@ export function SettingsSheet({
   onPlanChange: (plan: Plan) => void;
   /** Open the wizard to rebuild the whole plan (history is preserved). */
   onStartNewPlan: () => void;
+  /** Fired after any history clear so screens re-read their data. */
+  onDataCleared?: () => void;
 }) {
   const [p, setP] = useState<ProfileDraft>(profile ?? DEFAULT_PROFILE);
   // Nutrition targets shown reflect the plan when it drives them.
@@ -107,6 +111,9 @@ export function SettingsSheet({
     initialView === "program" && plan?.program ? "program" : "main",
   );
   const [busy, setBusy] = useState(false);
+  // "Reset health data" dropdown (collapsed by default — it's rarely used and
+  // shouldn't crowd the sheet).
+  const [resetOpen, setResetOpen] = useState(false);
   useScrollLock();
 
   const set = <K extends keyof ProfileDraft>(key: K, value: ProfileDraft[K]) =>
@@ -356,6 +363,38 @@ export function SettingsSheet({
               </div>
             </>
           )}
+
+          <div className="section-label">Data</div>
+          <button className="btn block" onClick={() => setResetOpen((o) => !o)}>
+            {resetOpen ? "Hide reset options" : "Reset health data…"}
+          </button>
+          {resetOpen && (
+            <div className="reset-list">
+              <p className="muted small reset-warning">
+                Clearing is permanent. Your profile, units, and current plan are kept.
+              </p>
+              {HISTORY_ITEMS.map((item) => (
+                <ResetRow
+                  key={item.kind}
+                  label={item.label}
+                  desc={item.desc}
+                  onClear={async () => {
+                    await clearHistory(item.kind);
+                    onDataCleared?.();
+                  }}
+                />
+              ))}
+              <ResetRow
+                label="Clear all history"
+                desc="Everything above, in one go"
+                danger
+                onClear={async () => {
+                  await clearAllHistories();
+                  onDataCleared?.();
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <footer className="sheet-foot">
@@ -377,5 +416,63 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span>{label}</span>
       {children}
     </label>
+  );
+}
+
+/**
+ * One history row in "Reset health data". Destructive, so the button arms on
+ * the first tap ("Tap to confirm") and disarms itself after a few seconds —
+ * no accidental single-tap wipes, no browser confirm() dialogs (unreliable in
+ * the app WebView).
+ */
+function ResetRow({
+  label,
+  desc,
+  danger = false,
+  onClear,
+}: {
+  label: string;
+  desc: string;
+  danger?: boolean;
+  onClear: () => Promise<void>;
+}) {
+  const [state, setState] = useState<"idle" | "armed" | "busy" | "done">("idle");
+
+  useEffect(() => {
+    if (state !== "armed") return;
+    const t = setTimeout(() => setState("idle"), 3500);
+    return () => clearTimeout(t);
+  }, [state]);
+
+  const click = async () => {
+    if (state === "idle") {
+      setState("armed");
+      return;
+    }
+    if (state !== "armed") return;
+    setState("busy");
+    try {
+      await onClear();
+      setState("done");
+      setTimeout(() => setState("idle"), 2000);
+    } catch {
+      setState("idle");
+    }
+  };
+
+  return (
+    <div className="reset-row">
+      <div className="reset-row-text">
+        <div className={`reset-row-label${danger ? " danger-text" : ""}`}>{label}</div>
+        <div className="muted small">{desc}</div>
+      </div>
+      <button
+        className={`btn reset-btn${state === "armed" || danger ? " danger" : ""}`}
+        disabled={state === "busy"}
+        onClick={() => void click()}
+      >
+        {state === "idle" ? "Clear" : state === "armed" ? "Tap to confirm" : state === "busy" ? "Clearing…" : "Cleared ✓"}
+      </button>
+    </div>
   );
 }

@@ -27,7 +27,7 @@ export function pickWeightKg(
   return { kg: null, fromProfile: false };
 }
 
-export function WeightCard({ profile }: { profile: Profile | null }) {
+export function WeightCard({ profile, nonce = 0 }: { profile: Profile | null; nonce?: number }) {
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [input, setInput] = useState("");
   const units = profile?.units ?? "metric";
@@ -36,9 +36,12 @@ export function WeightCard({ profile }: { profile: Profile | null }) {
     const repo = await getRepository();
     setWeights(await repo.listWeights());
   };
+  // Re-read on any app-wide write nonce bump too — e.g. after "Reset health
+  // data" clears the weight history while this card is mounted underneath.
   useEffect(() => {
     reload();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonce]);
 
   const add = async () => {
     const shown = Number(input);

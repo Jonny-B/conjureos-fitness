@@ -245,6 +245,22 @@ export class MockRepository implements Repository {
     await this.flush();
   }
 
+  async clearDiary(): Promise<void> {
+    this.store.diary = [];
+    await this.flush();
+  }
+
+  async clearWeights(): Promise<void> {
+    this.store.weights = [];
+    await this.flush();
+  }
+
+  async clearWorkoutHistory(): Promise<void> {
+    this.store.workoutSessions = [];
+    this.store.dayLogs = {};
+    await this.flush();
+  }
+
   // ── v2: plans + daily check-off + coached sessions ──────────────────
 
   async getPlan(): Promise<Plan | null> {

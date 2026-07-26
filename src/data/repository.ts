@@ -67,6 +67,14 @@ export interface Repository {
   /** One canonical weight per day; last write wins. */
   upsertWeight(entry: WeightEntry): Promise<void>;
 
+  // ── History resets (settings → "Reset health data") ─────────────────
+  /** Delete every diary entry. Destructive; no undo. */
+  clearDiary(): Promise<void>;
+  /** Delete the whole weight history. Destructive; no undo. */
+  clearWeights(): Promise<void>;
+  /** Delete all workout sessions + daily check-offs. Destructive; no undo. */
+  clearWorkoutHistory(): Promise<void>;
+
   // ── v2: plans + daily check-off + coached sessions ──────────────────
   // VFS-only today. SupabaseRepository throws PLAN_REQUIRES_V2_BACKEND for
   // every method here (see DECISIONS 2026-06-24).

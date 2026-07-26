@@ -333,6 +333,7 @@ export function App() {
           onSave={onSaveGoals}
           onPlanChange={setPlan}
           onStartNewPlan={startNewPlan}
+          onDataCleared={() => setNonce((n) => n + 1)}
         />
       )}
     </div>

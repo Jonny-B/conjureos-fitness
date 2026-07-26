@@ -160,6 +160,21 @@ export class SupabaseRepository implements Repository {
     await this.client.upsert("weights", { date: entry.date, weight_kg: entry.weightKg }, "user_id,date");
   }
 
+  // RLS scopes deletes to the caller's rows; the always-true filter satisfies
+  // PostgREST's require-a-filter rule for bulk deletes.
+  async clearDiary(): Promise<void> {
+    await this.client.remove("diary_entries", "id=not.is.null");
+  }
+
+  async clearWeights(): Promise<void> {
+    await this.client.remove("weights", "date=not.is.null");
+  }
+
+  async clearWorkoutHistory(): Promise<void> {
+    // Workout sessions/day logs are VFS-only (v2) — nothing server-side yet.
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+
   // ── v2: VFS-only today; no backend rows yet (DECISIONS 2026-06-24). ──
   // Every method throws so callers can detect the unsupported backend and
   // route plan data through the mock layer instead.

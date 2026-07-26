@@ -134,7 +134,7 @@ export function DiaryScreen({
         <MacroBars total={total} goals={goals} />
       </section>
 
-      <WeightCard profile={profile} />
+      <WeightCard profile={profile} nonce={nonce} />
       <CoachPlanCard plan={plan} goals={goals} onOpen={onOpenPlan} />
     </div>
   );
