@@ -13,18 +13,17 @@ import { weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { Sparkline } from "./Sparkline";
 
 /**
- * The weight to show, in kg: the newest weigh-in if there is one, else the
- * weight entered in the plan wizard (Profile.weightKg). `fromProfile` marks the
- * latter so the card can caption it. Null only when nothing is known yet.
+ * The weight to show, in kg: the newest real weigh-in, or null when the user
+ * hasn't logged one yet. We deliberately do NOT fall back to the profile's
+ * stored weight here. The profile number is entered in a unit-typed field and,
+ * for a value captured while the app was in metric, can be a pounds figure
+ * sitting in the kilograms slot — rendering it ×2.2046 produced the phantom
+ * "399 lb default" a user with zero weigh-ins would see. The trend cards are
+ * for *tracked* weight, so with no weigh-in they show an empty prompt, never a
+ * fabricated stat.
  */
-export function pickWeightKg(
-  weights: WeightEntry[],
-  profile: Profile | null,
-): { kg: number | null; fromProfile: boolean } {
-  const latest = weights[0];
-  if (latest) return { kg: latest.weightKg, fromProfile: false };
-  if (profile && profile.weightKg > 0) return { kg: profile.weightKg, fromProfile: true };
-  return { kg: null, fromProfile: false };
+export function pickWeightKg(weights: WeightEntry[]): number | null {
+  return weights[0]?.weightKg ?? null;
 }
 
 export function WeightCard({ profile, nonce = 0 }: { profile: Profile | null; nonce?: number }) {
@@ -62,10 +61,8 @@ export function WeightCard({ profile, nonce = 0 }: { profile: Profile | null; no
       ? Math.round(changeKg * 2.2046226218 * 10) / 10
       : Math.round(changeKg * 10) / 10;
 
-  // Always show the last known weight: the newest weigh-in, else the weight the
-  // user entered in the plan wizard (Profile.weightKg). Only genuinely-unknown
-  // (profile still loading, or never set) shows a prompt instead of a stat.
-  const { kg: latestKg, fromProfile } = pickWeightKg(weights, profile);
+  // Show a stat only for a real weigh-in; otherwise the empty prompt below.
+  const latestKg = pickWeightKg(weights);
 
   return (
     <section className="home-card weight-card">
@@ -85,7 +82,6 @@ export function WeightCard({ profile, nonce = 0 }: { profile: Profile | null; no
           <div className="big-stat">
             <span className="big-number">{weightToDisplay(latestKg, units)}</span>
             <span className="big-unit">{weightUnit(units)}</span>
-            {fromProfile && <span className="big-note muted">from your plan</span>}
           </div>
           <Sparkline points={[...weights].reverse().map((w) => w.weightKg)} />
         </div>

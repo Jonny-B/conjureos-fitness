@@ -576,7 +576,7 @@ function TrendsPanel({ profile }: { profile: Profile | null }) {
 
   // Graceful "last known weight": newest weigh-in, else the plan/profile weight;
   // only truly empty when neither exists (then a prompt, never a bare dash).
-  const { kg: latestKg, fromProfile } = pickWeightKg(weights, profile);
+  const latestKg = pickWeightKg(weights);
   const oldest = weights[weights.length - 1];
   const latest = weights[0];
   const changeKg = latest && oldest && weights.length > 1 ? latest.weightKg - oldest.weightKg : 0;
@@ -596,14 +596,12 @@ function TrendsPanel({ profile }: { profile: Profile | null }) {
               <span className="big-unit">{weightUnit(units)}</span>
             </div>
             <div className="stat-row">
-              {weights.length > 1 ? (
+              {weights.length > 1 && (
                 <span className={changeKg <= 0 ? "good" : "bad"}>
                   {changeKg > 0 ? "+" : ""}
                   {changeDisplay} {weightUnit(units)} overall
                 </span>
-              ) : fromProfile ? (
-                <span className="muted small">from your plan</span>
-              ) : null}
+              )}
               {profile && (
                 <span className="muted">
                   BMI {bmi({ ...profile, weightKg: latest?.weightKg ?? profile.weightKg })}
