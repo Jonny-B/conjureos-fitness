@@ -12,7 +12,7 @@ import type {
 } from "../types";
 import { INJURY_REGIONS } from "../features/safety/injuryExclusions";
 import { requiresLoggingOnly, resolveSafeMode } from "../features/safety/intakeGate";
-import { activityForDaysPerWeek, deriveDirection, recommendGoals } from "../features/goals";
+import { activityForDaysPerWeek, daysPerWeekForActivity, deriveDirection, recommendGoals } from "../features/goals";
 import { fmtSeconds } from "../features/units";
 import { shiftDate, todayISO } from "../features/diary";
 import { DisclaimerCard, DISCLAIMER_SHORT } from "../components/DisclaimerCard";
@@ -31,6 +31,7 @@ import { getRepository } from "../data/repository";
 import type { PlanInput } from "../features/plan/model";
 import { modeHasWorkouts, modeTracksFood } from "../features/plan/model";
 import type { WizardBody } from "../features/plan/planService";
+import { decidePlanEdit } from "../features/plan/planService";
 import type { ExerciseSet, ProgramWorkout } from "../types";
 
 type Step = "disclaimer" | "mode" | "safety" | "inputs" | "review";
@@ -49,6 +50,16 @@ interface Props {
    * when `commitNewPlan` merges `body.sex ?? base.sex`.
    */
   profile?: Profile | null;
+  /**
+   * EDIT MODE. When set, the wizard is the single "edit my plan" surface: it
+   * prefills every answer from this plan and, on commit, decides via
+   * `decidePlanEdit` whether the change forks a brand-new plan (`onComplete`,
+   * archive + regenerate) or modifies this one in place (`onModify`, keep id +
+   * workout progress, recompute calories). Absent → create mode as before.
+   */
+  editPlan?: Plan | null;
+  /** Commit an in-place modification (edit mode, non-forking change). */
+  onModify?: (body: WizardBody, patch: { endDate?: string; durationWeeks?: number }) => void;
 }
 
 const MODE_CARDS: { mode: PlanMode; title: string; blurb: string; recommended?: boolean }[] = [
@@ -91,11 +102,14 @@ const EATER_ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
   { value: "active", label: "Very active" },
 ];
 
-export function WizardScreen({ onComplete, onClose, units = "metric", profile }: Props) {
-  const [step, setStep] = useState<Step>("disclaimer");
+export function WizardScreen({ onComplete, onClose, units = "metric", profile, editPlan, onModify }: Props) {
+  const editMode = !!editPlan;
+  // In edit mode the liability was already acked on the original plan, so skip
+  // the disclaimer gate and open on the first real question.
+  const [step, setStep] = useState<Step>(editMode ? "mode" : "disclaimer");
 
-  // Step 1
-  const [mode, setMode] = useState<PlanMode>("both");
+  // Step 1 — mode + free-text goal prefill from the plan being edited.
+  const [mode, setMode] = useState<PlanMode>(editPlan?.mode ?? "both");
   // Step 2 (safety intake) — age is a number now; the band is derived.
   // Prefill every body-stat field from the existing profile so nothing entered
   // in the cog is lost or re-typed; fall back to the same defaults as before
@@ -105,10 +119,15 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
   const [cardiacFlag, setCardiacFlag] = useState(false);
   const [injuries, setInjuries] = useState<Set<string>>(new Set());
   // Step 3 (inputs)
-  const [goalText, setGoalText] = useState("");
-  const [startDate, setStartDate] = useState(todayISO());
-  const [endDate, setEndDate] = useState(shiftDate(todayISO(), 13)); // ~2 weeks
-  const [daysPerWeek, setDaysPerWeek] = useState(3);
+  const [goalText, setGoalText] = useState(editPlan?.goalText ?? "");
+  const [startDate, setStartDate] = useState(editPlan?.startDate ?? todayISO());
+  const [endDate, setEndDate] = useState(editPlan?.endDate ?? shiftDate(todayISO(), 13)); // ~2 weeks
+  // Seed days/week so the editor re-derives the SAME activity the plan was built
+  // with — otherwise a trivial edit would silently downgrade a 6-day trainer's
+  // activity (and calorie target) back to the 3-day default.
+  const [daysPerWeek, setDaysPerWeek] = useState(
+    editMode && profile ? daysPerWeekForActivity(profile.activityLevel) : 3,
+  );
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(profile?.experienceLevel ?? "beginner");
   const [equipment, setEquipment] = useState("");
   const [unitPref, setUnitPref] = useState<Profile["units"]>(profile?.units ?? units);
@@ -248,12 +267,38 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
     }
   };
 
+  // In edit mode, whether the current answers fork a brand-new plan or modify
+  // the existing one in place. Drives whether we regenerate (createPlan) or just
+  // recompute targets — see decidePlanEdit for the locked trigger.
+  const editDecision = editMode && editPlan
+    ? decidePlanEdit(editPlan, { mode: effectiveMode, goalText, startDate })
+    : "new";
+  const isModify = editMode && editDecision === "modify";
+
   const goReview = () => {
     setStep("review");
-    void runPreview();
+    // A modify keeps the existing workouts + goals, so there's nothing to
+    // generate — we only recompute the calorie target locally. Regenerating
+    // here would throw away the program/progress we intend to preserve.
+    if (!isModify) void runPreview();
   };
 
   const inputsValid = tracksFood ? heightCm != null && weightKg != null : true;
+
+  /** The body stats to reconcile into the profile on commit (shared by the
+   *  new-plan and modify-in-place paths). */
+  const buildBody = (): WizardBody => ({
+    sex: tracksFood ? sex : undefined,
+    heightCm: tracksFood ? heightCm : undefined,
+    weightKg: tracksFood ? weightKg : undefined,
+    goalWeightKg: tracksFood && direction !== "maintain" ? goalWeightKg : undefined,
+    age,
+    ageBand,
+    activityLevel: effectiveActivity,
+    experienceLevel: hasWorkouts ? experienceLevel : undefined,
+    direction: tracksFood ? direction : undefined,
+    units: unitPref,
+  });
 
   const start = () => {
     if (!preview) return;
@@ -261,19 +306,12 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
       ...preview.plan,
       liability: { acknowledged: true, acceptedAt: new Date().toISOString(), appVersion: APP_VERSION },
     };
-    const body: WizardBody = {
-      sex: tracksFood ? sex : undefined,
-      heightCm: tracksFood ? heightCm : undefined,
-      weightKg: tracksFood ? weightKg : undefined,
-      goalWeightKg: tracksFood && direction !== "maintain" ? goalWeightKg : undefined,
-      age,
-      ageBand,
-      activityLevel: effectiveActivity,
-      experienceLevel: hasWorkouts ? experienceLevel : undefined,
-      direction: tracksFood ? direction : undefined,
-      units: unitPref,
-    };
-    onComplete(plan, body);
+    onComplete(plan, buildBody());
+  };
+
+  /** Commit an in-place plan modification (edit mode, non-forking change). */
+  const commitModify = () => {
+    onModify?.(buildBody(), { endDate, durationWeeks: weeksBetween(startDate, endDate) });
   };
 
   return (
@@ -407,7 +445,15 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
         <div className="mode-body wizard-step">
           <WizardHead n={3} title="Your training" />
 
-          <PlanDatesField startDate={startDate} endDate={endDate} onStart={setStartDate} onEnd={setEndDate} hideStart />
+          {/* Start date is only editable when editing a plan — moving it forks a
+              new plan. On first creation it's simply "today". */}
+          <PlanDatesField
+            startDate={startDate}
+            endDate={endDate}
+            onStart={setStartDate}
+            onEnd={setEndDate}
+            hideStart={!editMode}
+          />
 
           {hasWorkouts && (
             <>
@@ -475,13 +521,45 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile }:
           <div className="wizard-nav">
             <button className="btn" onClick={() => setStep("safety")}>Back</button>
             <button className="btn primary" disabled={!inputsValid} onClick={goReview}>
-              Build my plan
+              {isModify ? "Review changes" : editMode ? "Rebuild my plan" : "Build my plan"}
             </button>
           </div>
         </div>
       )}
 
-      {step === "review" && (
+      {step === "review" && isModify && (
+        <div className="mode-body wizard-step">
+          <WizardHead n={4} title="Review your changes" />
+
+          <p className="plan-summary">
+            We'll update your plan and keep your workouts, groups, and progress exactly where they are.
+          </p>
+
+          {tracksFood && localCalorieTarget() != null ? (
+            <div className="calorie-callout">
+              <div className="calorie-callout-num">
+                <span className="big-number">{Math.round(localCalorieTarget()!)}</span>
+                <span className="big-unit">kcal / day</span>
+              </div>
+              <span className="muted small">
+                Your new daily calorie target, recomputed from your stats and goal weight. This is
+                what the ring on your home screen tracks.
+              </span>
+            </div>
+          ) : (
+            <p className="muted small">Your daily targets stay the same for this kind of plan.</p>
+          )}
+
+          <div className="wizard-nav">
+            <button className="btn" onClick={() => setStep("inputs")}>Back</button>
+            <button className="btn primary" onClick={commitModify}>
+              <CheckIcon size={16} /> Save changes
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === "review" && !isModify && (
         <div className="mode-body wizard-step">
           <WizardHead n={4} title="Here's your plan" />
 

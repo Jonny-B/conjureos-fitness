@@ -1995,6 +1995,12 @@ html.modal-open .screen {
   letter-spacing: 0;
   padding: 0;
 }
+/* Two section actions (Edit plan · Edit workouts) sit together, right-aligned. */
+.section-actions {
+  display: inline-flex;
+  gap: 14px;
+  align-items: baseline;
+}
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -374,6 +374,9 @@ export function buildPlan(gen: GeneratedPlan, input: PlanInput, liability: Liabi
     safety: input.safety,
     liability,
     createdAt: new Date().toISOString(),
+    // Persist the free-text goal so the plan editor can prefill it and the
+    // new-vs-modify diff can tell whether the goal itself changed.
+    ...(input.goalText ? { goalText: input.goalText } : {}),
     // Attach the adaptive program (W4) when generation produced one and the
     // mode actually prescribes workouts. Food-only plans never carry a program.
     ...(gen.program && modeHasWorkouts(input.mode) ? { program: gen.program } : {}),

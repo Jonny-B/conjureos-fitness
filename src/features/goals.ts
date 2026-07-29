@@ -51,6 +51,25 @@ export function activityForDaysPerWeek(days: number): ActivityLevel {
   return "very_active";
 }
 
+/**
+ * Inverse of `activityForDaysPerWeek`: a representative days/week that maps back
+ * to the given activity level. Used to seed the plan editor's days chip from a
+ * stored profile so editing the plan doesn't silently re-derive a DIFFERENT
+ * activity (and thus a different calorie target) than the plan was built with.
+ */
+export function daysPerWeekForActivity(activity: ActivityLevel): number {
+  switch (activity) {
+    case "very_active":
+      return 6;
+    case "active":
+      return 5;
+    case "moderate":
+      return 3;
+    default:
+      return 2; // light / sedentary
+  }
+}
+
 /** Calorie delta per day for each direction (~0.5 kg/week ≈ 500 kcal). */
 const DIRECTION_DELTA: Record<GoalDirection, number> = {
   lose: -500,

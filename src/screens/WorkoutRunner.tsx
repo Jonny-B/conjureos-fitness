@@ -48,7 +48,7 @@ export function WorkoutRunner({
   units,
   onPlanChange,
   onExit,
-  onEditPlan,
+  onEditWorkouts,
 }: {
   workout: Workout;
   /** The plan ProgramWorkout being run — finishing checks it off in its group. */
@@ -62,7 +62,7 @@ export function WorkoutRunner({
   units: Profile["units"];
   onPlanChange: (plan: Plan | null) => void;
   onExit: () => void;
-  onEditPlan?: () => void;
+  onEditWorkouts?: () => void;
 }) {
   const [view, setView] = useState<RunnerView>({ screen: "overview" });
 
@@ -129,7 +129,7 @@ export function WorkoutRunner({
       isBenchmark={isBenchmark}
       onBack={onExit}
       onStart={begin}
-      onEdit={fromPlan ? onEditPlan : undefined}
+      onEdit={fromPlan ? onEditWorkouts : undefined}
     />
   );
 }

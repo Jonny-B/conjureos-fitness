@@ -8,6 +8,7 @@ import {
   archivePlan,
   commitNewPlan,
   loadPlan,
+  modifyPlanInPlace,
   targetsToGoals,
   type WizardBody,
 } from "./features/plan/planService";
@@ -59,6 +60,9 @@ export function App() {
   // Plan wizard as a dismissible dialog, plus a per-session dismiss for its
   // banner (resets on reload = shows again while there's still no plan).
   const [planWizardOpen, setPlanWizardOpen] = useState(false);
+  // The plan currently being edited (edit mode) vs null = create-a-new-plan.
+  // Both open the same full-screen WizardScreen.
+  const [planEditor, setPlanEditor] = useState<Plan | null>(null);
   const [planBannerDismissed, setPlanBannerDismissed] = useState(false);
   // The meal the Add flow should default to when opened from a meal's "+".
   const [addMeal, setAddMeal] = useState<MealType>("breakfast");
@@ -167,6 +171,7 @@ export function App() {
       setProfile(res.profile);
       setGoals(res.goals);
       setPlanWizardOpen(false);
+      setPlanEditor(null);
       setPlanBannerDismissed(false);
       setNonce((n) => n + 1);
       setTab("diary");
@@ -174,10 +179,41 @@ export function App() {
     [plan, profile, goals],
   );
 
+  // Edit-mode, non-forking change: modify the current plan in place (keep id,
+  // program, group progress) and recompute the calorie target. No archive, no
+  // recordPlanStarted — this is the same plan, not a new episode.
+  const onModifyPlan = useCallback(
+    async (body: WizardBody, patch: { endDate?: string; durationWeeks?: number }) => {
+      if (!plan) return;
+      const res = await modifyPlanInPlace(plan, body, patch, {
+        currentProfile: profile,
+        currentGoals: goals,
+      });
+      setPlan(res.plan);
+      if (res.profile) setProfile(res.profile);
+      setGoals(res.goals);
+      setPlanWizardOpen(false);
+      setPlanEditor(null);
+      setNonce((n) => n + 1);
+      setTab("plan");
+    },
+    [plan, profile, goals],
+  );
+
+  /** Open the wizard to build a brand-new plan (no plan to edit). */
   const startNewPlan = useCallback(() => {
     setSettingsOpen(false);
+    setPlanEditor(null);
     setPlanWizardOpen(true);
   }, []);
+
+  /** Open the wizard in edit mode, prefilled from the active plan. */
+  const editPlan = useCallback(() => {
+    if (!plan) return;
+    setSettingsOpen(false);
+    setPlanEditor(plan);
+    setPlanWizardOpen(true);
+  }, [plan]);
 
   // The plan wizard, opened from the banner, owns the screen while active but is
   // fully dismissible (no longer a mandatory first-run gate).
@@ -187,7 +223,12 @@ export function App() {
         <main className="screen">
           <WizardScreen
             onComplete={onWizardComplete}
-            onClose={() => setPlanWizardOpen(false)}
+            onModify={onModifyPlan}
+            editPlan={planEditor}
+            onClose={() => {
+              setPlanWizardOpen(false);
+              setPlanEditor(null);
+            }}
             units={profile?.units ?? "metric"}
             profile={profile}
           />
@@ -288,7 +329,8 @@ export function App() {
             units={profile?.units ?? "metric"}
             onPlanChange={setPlan}
             onAskCoach={openCoach}
-            onEditPlan={() => openSettings("program")}
+            onEditPlan={editPlan}
+            onEditWorkouts={() => openSettings("program")}
             onStartPlan={startNewPlan}
           />
         ) : tab === "workouts" && !loggingOnly ? (
@@ -332,7 +374,6 @@ export function App() {
           onClose={() => setSettingsOpen(false)}
           onSave={onSaveGoals}
           onPlanChange={setPlan}
-          onStartNewPlan={startNewPlan}
           onDataCleared={() => setNonce((n) => n + 1)}
         />
       )}

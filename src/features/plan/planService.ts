@@ -30,6 +30,8 @@ import { newId } from "../../data/id";
 import { measureSession, recordBenchmarkResult } from "./program";
 import { calibrateToBenchmark, maybeAdapt } from "./analyze";
 import { advanceToNextGroup, setWorkoutDone } from "./groups";
+import { modeTracksFood } from "./model";
+import { recommendGoals } from "../goals";
 
 /** Body stats the wizard collects, reconciled into the Profile on commit. */
 export interface WizardBody {
@@ -95,6 +97,28 @@ export interface CommitResult {
 }
 
 /**
+ * Merge the wizard's body stats onto a profile (each field falls back to the
+ * base when the wizard didn't collect it). Shared by plan creation and in-place
+ * plan edits so both reconcile the profile identically. Storage stays metric —
+ * the wizard's `PlanFields` already convert display→kg before we get here.
+ */
+export function mergeBodyIntoProfile(base: Profile, b: WizardBody): Profile {
+  return {
+    ...base,
+    sex: b.sex ?? base.sex,
+    heightCm: b.heightCm ?? base.heightCm,
+    weightKg: b.weightKg ?? base.weightKg,
+    goalWeightKg: b.goalWeightKg ?? base.goalWeightKg,
+    // Prefer the exact age; fall back to the age-band's representative age.
+    age: b.age ?? (b.ageBand ? AGE_FOR_BAND[b.ageBand] : base.age),
+    activityLevel: b.activityLevel ?? base.activityLevel,
+    experienceLevel: b.experienceLevel ?? base.experienceLevel,
+    direction: b.direction ?? base.direction,
+    units: b.units ?? base.units,
+  };
+}
+
+/**
  * Persist a newly-created plan and reconcile the other two stores:
  *  - merge the wizard's body stats into the Profile (so Trends/BMI work and the
  *    user never re-enters height/weight in settings), and
@@ -111,20 +135,7 @@ export async function commitNewPlan(
   let profile = ctx.currentProfile;
   const b = ctx.body;
   if (b && (b.heightCm != null || b.weightKg != null || b.sex != null || b.age != null)) {
-    const base = ctx.currentProfile ?? DEFAULT_PROFILE;
-    profile = {
-      ...base,
-      sex: b.sex ?? base.sex,
-      heightCm: b.heightCm ?? base.heightCm,
-      weightKg: b.weightKg ?? base.weightKg,
-      goalWeightKg: b.goalWeightKg ?? base.goalWeightKg,
-      // Prefer the exact age; fall back to the age-band's representative age.
-      age: b.age ?? (b.ageBand ? AGE_FOR_BAND[b.ageBand] : base.age),
-      activityLevel: b.activityLevel ?? base.activityLevel,
-      experienceLevel: b.experienceLevel ?? base.experienceLevel,
-      direction: b.direction ?? base.direction,
-      units: b.units ?? base.units,
-    };
+    profile = mergeBodyIntoProfile(ctx.currentProfile ?? DEFAULT_PROFILE, b);
   }
   // ALWAYS persist a profile once a plan exists — never leave store.json.profile
   // null. A null profile makes the cog fall back to DEFAULT_PROFILE (and older
@@ -190,6 +201,73 @@ export async function updatePlan(
     await repo.saveGoals(goals).catch(() => {});
   }
   return { plan: next, goals };
+}
+
+// ── Editing an existing plan: new vs modify-in-place ───────────────────
+
+/** The wizard answers that decide whether an edit forks a new plan. */
+export interface PlanEditAnswers {
+  mode: Plan["mode"];
+  goalText: string;
+  startDate: string;
+}
+
+export type PlanEditDecision = "new" | "modify";
+
+const normGoal = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+/**
+ * Decide whether editing a plan should regenerate a brand-new plan or modify
+ * the existing one in place. Owner-locked trigger: a change to the GOAL TEXT,
+ * the MODE, or the START DATE means the plan itself is different → new plan
+ * (archive + regenerate workouts). Everything else (end date, calories/macros,
+ * goal weight, activity, experience, days/week, equipment) is a tune of the
+ * same plan → modify in place, keeping the plan id + program/group progress.
+ *
+ * Legacy plans created before `goalText` was persisted can't be diffed on text,
+ * so for those only mode/start-date fork a new plan (a freshly typed goal won't
+ * surprise-archive an old plan the user is just tweaking).
+ */
+export function decidePlanEdit(plan: Plan, next: PlanEditAnswers): PlanEditDecision {
+  if (next.mode !== plan.mode) return "new";
+  if (next.startDate !== plan.startDate) return "new";
+  if (plan.goalText != null && normGoal(next.goalText) !== normGoal(plan.goalText)) return "new";
+  return "modify";
+}
+
+/**
+ * Modify the active plan in place from an edit that didn't change its identity.
+ * Keeps the plan id, the workout program (group progress, benchmark history,
+ * every `completedAt`), and the plan goals — but re-merges body stats into the
+ * profile and RECOMPUTES the daily calorie target from that updated profile.
+ *
+ * The recompute is the fix for the old cog behaviour, where editing goal weight
+ * only moved `profile.direction` and never touched the calorie target, so the
+ * diary ring never changed. Targets only recompute when the mode tracks food; a
+ * workouts-only plan keeps whatever (null) target it had.
+ */
+export async function modifyPlanInPlace(
+  plan: Plan,
+  body: WizardBody,
+  patch: { endDate?: string; durationWeeks?: number },
+  ctx: { currentProfile: Profile | null; currentGoals: Goals },
+): Promise<CommitResult> {
+  const profile = mergeBodyIntoProfile(ctx.currentProfile ?? DEFAULT_PROFILE, body);
+  const repo = await getRepository();
+  await repo.saveProfile(profile).catch(() => {});
+
+  const targets: PlanTargets = modeTracksFood(plan.mode)
+    ? goalsToTargets(recommendGoals(profile))
+    : plan.targets ?? { dailyCalories: null };
+
+  // Patch intentionally omits program / goals / mode → updatePlan's spread
+  // preserves them, so group progress and benchmark history survive untouched.
+  const { plan: next, goals } = await updatePlan(
+    plan,
+    { targets, ...patch },
+    { currentGoals: ctx.currentGoals },
+  );
+  return { plan: next, profile, goals };
 }
 
 /** Drop the active plan. */

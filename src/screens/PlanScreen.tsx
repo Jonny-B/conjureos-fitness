@@ -40,6 +40,7 @@ export function PlanScreen({
   onPlanChange,
   onAskCoach,
   onEditPlan,
+  onEditWorkouts,
   onStartPlan,
 }: {
   profile: Profile | null;
@@ -47,7 +48,10 @@ export function PlanScreen({
   units: Profile["units"];
   onPlanChange: (plan: Plan | null) => void;
   onAskCoach: (question: string) => void;
+  /** Edit the whole plan — re-opens the wizard questions (goals, dates, stats). */
   onEditPlan: () => void;
+  /** Edit just the workouts/sets — opens the program editor. */
+  onEditWorkouts: () => void;
   /** Open the plan wizard — the Plan tab's own entry point when no plan exists. */
   onStartPlan: () => void;
 }) {
@@ -67,7 +71,7 @@ export function PlanScreen({
         units={units}
         onPlanChange={onPlanChange}
         onExit={() => setRunning(null)}
-        onEditPlan={onEditPlan}
+        onEditWorkouts={onEditWorkouts}
       />
     );
   }
@@ -79,6 +83,7 @@ export function PlanScreen({
           plan={plan}
           units={units}
           onEditPlan={onEditPlan}
+          onEditWorkouts={onEditWorkouts}
           onStart={setRunning}
           onPlanChange={onPlanChange}
         />
@@ -122,12 +127,14 @@ function ProgramSection({
   plan,
   units,
   onEditPlan,
+  onEditWorkouts,
   onStart,
   onPlanChange,
 }: {
   plan: Plan | null;
   units: Profile["units"];
   onEditPlan: () => void;
+  onEditWorkouts: () => void;
   onStart: (pw: ProgramWorkout) => void;
   onPlanChange: (plan: Plan | null) => void;
 }) {
@@ -180,9 +187,16 @@ function ProgramSection({
       <section className="plan-section program-section">
         <div className="section-label">
           Your plan
-          <button className="link-btn section-action" onClick={onEditPlan}>
-            Edit plan
-          </button>
+          <span className="section-actions">
+            <button className="link-btn section-action" onClick={onEditPlan}>
+              Edit plan
+            </button>
+            {plan?.program && (
+              <button className="link-btn section-action" onClick={onEditWorkouts}>
+                Edit workouts
+              </button>
+            )}
+          </span>
         </div>
 
         <div className="benchmark-hero">
@@ -245,9 +259,14 @@ function ProgramSection({
         <span className={`group-chip${evaluating ? " eval" : ""}`}>
           {evaluating ? "Evaluation" : `Group ${cur}`}
         </span>
-        <button className="link-btn section-action" onClick={onEditPlan}>
-          Edit plan
-        </button>
+        <span className="section-actions">
+          <button className="link-btn section-action" onClick={onEditPlan}>
+            Edit plan
+          </button>
+          <button className="link-btn section-action" onClick={onEditWorkouts}>
+            Edit workouts
+          </button>
+        </span>
       </div>
 
       <div className="mini-label muted small">Benchmarks — what your plan is measured by</div>

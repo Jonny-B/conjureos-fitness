@@ -484,6 +484,10 @@ export interface Plan {
   liability: LiabilityAck;
   /** ISO timestamp the plan was created. */
   createdAt: string;
+  /** The free-text goal the user typed in the wizard ("get better at the half
+   *  Murph"). Additive — absent on pre-1.17 plans; the plan-edit diff then can't
+   *  compare goal text for those and only mode/start-date fork a new plan. */
+  goalText?: string;
   /** Structured, adaptive workout program (W4). Additive — absent on food-only
    *  and all pre-W4 plans. */
   program?: WorkoutProgram;
