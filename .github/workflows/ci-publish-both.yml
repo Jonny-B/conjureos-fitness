@@ -42,7 +42,7 @@ jobs:
           bot-password: ${{ secrets.PUBLISH_BOT_DEV_PASSWORD }}
           html-path: dist/index.html
           slug: fitness
-          changelog: "One place to change your plan: "Edit plan" on the Plan tab now re-opens your setup questions, and updating them (like your goal weight) recalculates your daily calories right away. Settings is now just units, a manual target override, and reset. "Edit workouts" still lets you fine-tune the exercises."
+          changelog: "One place to change your plan: 'Edit plan' on the Plan tab now re-opens your setup questions, and updating them (like your goal weight) recalculates your daily calories right away. Settings is now just units, a manual target override, and reset. 'Edit workouts' still lets you fine-tune the exercises."
       - name: Build single-file HTML (prod project)
         env:
           VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
@@ -57,4 +57,4 @@ jobs:
           bot-password: ${{ secrets.PUBLISH_BOT_PROD_PASSWORD }}
           html-path: dist/index.html
           slug: fitness
-          changelog: "One place to change your plan: "Edit plan" on the Plan tab now re-opens your setup questions, and updating them (like your goal weight) recalculates your daily calories right away. Settings is now just units, a manual target override, and reset. "Edit workouts" still lets you fine-tune the exercises."
+          changelog: "One place to change your plan: 'Edit plan' on the Plan tab now re-opens your setup questions, and updating them (like your goal weight) recalculates your daily calories right away. Settings is now just units, a manual target override, and reset. 'Edit workouts' still lets you fine-tune the exercises."
