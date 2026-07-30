@@ -64,9 +64,10 @@ export function SettingsSheet({
   const [units, setUnitsState] = useState<Profile["units"]>(profile?.units ?? "metric");
   // Manual target-override draft, seeded from what the plan/goals currently show.
   const [g, setG] = useState<GoalsDraft>(targetsToGoals(plan, goals));
-  const [view, setView] = useState<SettingsView>(
-    initialView === "program" && plan?.program ? "program" : "main",
-  );
+  // The program sub-view (Edit workouts) is only ever entered directly via
+  // initialView; the cog itself no longer links to it, so this never changes
+  // after mount — closing the editor closes the whole sheet.
+  const view: SettingsView = initialView === "program" && plan?.program ? "program" : "main";
   const [busy, setBusy] = useState(false);
   // Both advanced/rare panels are collapsed by default so the sheet stays short.
   const [overrideOpen, setOverrideOpen] = useState(false);
@@ -125,11 +126,11 @@ export function SettingsSheet({
         mode={plan.mode}
         injuries={plan.safety.injuries ?? []}
         units={units}
-        onCancel={() => setView("main")}
+        onCancel={onClose}
         onSave={async (updated) => {
           const next = await saveProgram(plan, updated);
           onPlanChange(next);
-          setView("main");
+          onClose();
         }}
       />
     );

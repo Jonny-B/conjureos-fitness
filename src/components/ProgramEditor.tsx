@@ -76,7 +76,7 @@ export function ProgramEditor({ program, mode, injuries, units, onSave, onCancel
     <div className="sheet-backdrop" onClick={onCancel}>
       <div className="sheet program-editor" onClick={(e) => e.stopPropagation()}>
         <header className="sheet-head">
-          <h2>Edit plan</h2>
+          <h2>Edit workouts</h2>
           <button className="icon-btn" aria-label="Close" onClick={onCancel}>
             <CloseIcon size={20} />
           </button>
