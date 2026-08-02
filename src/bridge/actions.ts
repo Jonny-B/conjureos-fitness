@@ -18,21 +18,14 @@ import { getRepository } from "../data/repository";
 import { parseMeal } from "../features/naturalLanguage";
 import { buildDayView, todayISO } from "../features/diary";
 import { getRecipe, markCooked, RecipesAppClosedError, type ListedRecipe } from "./recipeBridge";
-import { readBurnedForDate } from "./health";
+import { exerciseCaloriesForDate } from "../features/exercise";
 import { newId } from "../data/id";
 
-/** Exercise calories for a date: wearable/health broker first, else the sum of
- *  in-app logged sessions. Shared by todayTotals + (indirectly) the diary. */
+/** Exercise calories for a date: wearable (Apple Health, etc.) + in-app logged
+ *  sessions, added, minus any the user removed. Shared with the diary ring via
+ *  features/exercise so both stay consistent. */
 async function exerciseCaloriesFor(date: string): Promise<number> {
-  const repo = await getRepository();
-  const [broker, sessions] = await Promise.all([
-    readBurnedForDate(date),
-    repo.listWorkoutSessions().catch(() => []),
-  ]);
-  if (broker > 0) return broker;
-  return sessions
-    .filter((s) => s.date === date)
-    .reduce((n, s) => n + (s.caloriesBurned ?? 0), 0);
+  return exerciseCaloriesForDate(date);
 }
 
 function asObject(v: unknown): Record<string, unknown> {

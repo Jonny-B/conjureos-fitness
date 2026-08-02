@@ -309,4 +309,9 @@ export class MockRepository implements Repository {
     else this.store.workoutSessions.push(session);
     await this.flush();
   }
+
+  async removeWorkoutSession(id: string): Promise<void> {
+    this.store.workoutSessions = this.store.workoutSessions.filter((s) => s.id !== id);
+    await this.flush();
+  }
 }

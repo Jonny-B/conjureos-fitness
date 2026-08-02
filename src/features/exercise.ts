@@ -1,0 +1,179 @@
+/**
+ * The day's completed workouts + exercise-calorie total, COMBINING in-app
+ * sessions with wearable/Apple-Health workouts.
+ *
+ * Calories from both sources ADD together (a manual workout and an Apple Health
+ * workout are distinct efforts). Because we can't delete from Apple Health, the
+ * user "removes" a wearable workout by excluding it locally and "edits" it by
+ * storing a kcal override — both per-day on `DailyCheckoff` (reversible). In-app
+ * sessions are edited/deleted for real.
+ *
+ * Single source of truth for exercise calories: the diary ring and the cross-app
+ * `todayTotals` action both call `exerciseCaloriesForDate`.
+ */
+
+import type { WorkoutSession } from "../types";
+import { getRepository } from "../data/repository";
+import { readWorkouts, type WorkoutBurn } from "../bridge/health";
+
+export type CompletedSource = "app" | "wearable";
+
+export interface CompletedWorkout {
+  /** Stable key: the session id (app) or `${start}-${workoutType}` (wearable). */
+  key: string;
+  source: CompletedSource;
+  /** Short provenance label, e.g. "In-app" or the wearable/app source name. */
+  sourceLabel: string;
+  name: string;
+  /** Effective calories (wearable override applied). */
+  kcal: number;
+  durationSec?: number;
+  /** Wearable workout the user removed from this day's total (still listed so it
+   *  can be restored). Always false for in-app sessions. */
+  excluded: boolean;
+}
+
+/** Key a wearable workout stably (HealthKit gives no id). */
+export function wearableKey(w: WorkoutBurn): string {
+  return `${w.start}-${w.workoutType}`;
+}
+
+const WORKOUT_TYPE_LABELS: Record<string, string> = {
+  running: "Run",
+  walking: "Walk",
+  cycling: "Ride",
+  hiking: "Hike",
+  swimming: "Swim",
+  rowing: "Row",
+  elliptical: "Elliptical",
+  functionalStrengthTraining: "Strength",
+  traditionalStrengthTraining: "Strength",
+  highIntensityIntervalTraining: "HIIT",
+  yoga: "Yoga",
+  coreTraining: "Core",
+};
+
+function labelForWorkoutType(t: string): string {
+  if (WORKOUT_TYPE_LABELS[t]) return WORKOUT_TYPE_LABELS[t];
+  // Fallback: split camelCase / capitalize, or a bare "Workout" for opaque codes.
+  const spaced = t.replace(/([a-z])([A-Z])/g, "$1 $2");
+  const cleaned = spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  return /^[a-zA-Z ]+$/.test(cleaned) ? cleaned : "Workout";
+}
+
+function nameForSession(s: WorkoutSession): string {
+  if (s.workoutName) return s.workoutName;
+  if (s.cardio) return "Cardio";
+  return "Workout";
+}
+
+async function readWorkoutsForDate(date: string): Promise<WorkoutBurn[]> {
+  const start = new Date(`${date}T00:00:00`).getTime();
+  const end = new Date(`${date}T23:59:59.999`).getTime();
+  if (Number.isNaN(start) || Number.isNaN(end)) return [];
+  return readWorkouts(start, end).catch(() => []);
+}
+
+/**
+ * Every completed workout for a date — in-app sessions plus wearable workouts —
+ * newest first. Excluded wearable items are included (marked `excluded`) so the
+ * UI can offer a restore.
+ */
+export async function listCompletedWorkouts(date: string): Promise<CompletedWorkout[]> {
+  const repo = await getRepository();
+  const [sessions, wearable, dayLog] = await Promise.all([
+    repo.listWorkoutSessions().catch(() => [] as WorkoutSession[]),
+    readWorkoutsForDate(date),
+    repo.getDayLog(date).catch(() => null),
+  ]);
+  const excluded = new Set(dayLog?.excludedWearableKeys ?? []);
+  const overrides = dayLog?.wearableKcalOverrides ?? {};
+
+  const app = sessions
+    .filter((s) => s.date === date)
+    .map((s) => ({
+      item: {
+        key: s.id,
+        source: "app" as const,
+        sourceLabel: "In-app",
+        name: nameForSession(s),
+        kcal: s.caloriesBurned ?? 0,
+        durationSec: s.durationSec ?? s.cardio?.durationSec ?? undefined,
+        excluded: false,
+      },
+      ts: Date.parse(s.completedAt || "") || 0,
+    }));
+
+  const wear = wearable.map((w) => {
+    const key = wearableKey(w);
+    return {
+      item: {
+        key,
+        source: "wearable" as const,
+        sourceLabel: w.source || "Apple Health",
+        name: labelForWorkoutType(w.workoutType),
+        kcal: overrides[key] ?? w.caloriesBurned,
+        durationSec: w.end > w.start ? Math.round((w.end - w.start) / 1000) : undefined,
+        excluded: excluded.has(key),
+      },
+      ts: w.end || w.start || 0,
+    };
+  });
+
+  return [...app, ...wear].sort((a, b) => b.ts - a.ts).map((x) => x.item);
+}
+
+/**
+ * Total exercise calories for a date = sum of every NON-excluded completed
+ * workout (in-app + wearable). Replaces the old broker-precedence logic.
+ */
+export async function exerciseCaloriesForDate(date: string): Promise<number> {
+  const items = await listCompletedWorkouts(date);
+  return items.filter((i) => !i.excluded).reduce((n, i) => n + (i.kcal || 0), 0);
+}
+
+// ── Mutations ──────────────────────────────────────────────────────────
+
+async function patchDay(
+  date: string,
+  fn: (dl: import("../types").DailyCheckoff | null) => Partial<import("../types").DailyCheckoff>,
+): Promise<void> {
+  const repo = await getRepository();
+  const dl = await repo.getDayLog(date).catch(() => null);
+  await repo.saveDayLog(date, fn(dl)).catch(() => {});
+}
+
+/** Delete an in-app session. */
+export async function removeSession(id: string): Promise<void> {
+  const repo = await getRepository();
+  await repo.removeWorkoutSession(id).catch(() => {});
+}
+
+/** Edit an in-app session's burned calories. */
+export async function setSessionKcal(id: string, kcal: number): Promise<void> {
+  const repo = await getRepository();
+  const s = (await repo.listWorkoutSessions().catch(() => [])).find((x) => x.id === id);
+  if (!s) return;
+  await repo.saveWorkoutSession({ ...s, caloriesBurned: Math.max(0, Math.round(kcal)) }).catch(() => {});
+}
+
+/** Remove a wearable workout from this day's total (reversible). */
+export async function excludeWearable(date: string, key: string): Promise<void> {
+  await patchDay(date, (dl) => ({
+    excludedWearableKeys: Array.from(new Set([...(dl?.excludedWearableKeys ?? []), key])),
+  }));
+}
+
+/** Restore a previously-removed wearable workout. */
+export async function restoreWearable(date: string, key: string): Promise<void> {
+  await patchDay(date, (dl) => ({
+    excludedWearableKeys: (dl?.excludedWearableKeys ?? []).filter((k) => k !== key),
+  }));
+}
+
+/** Override a wearable workout's burned calories for this day. */
+export async function setWearableKcal(date: string, key: string, kcal: number): Promise<void> {
+  await patchDay(date, (dl) => ({
+    wearableKcalOverrides: { ...(dl?.wearableKcalOverrides ?? {}), [key]: Math.max(0, Math.round(kcal)) },
+  }));
+}

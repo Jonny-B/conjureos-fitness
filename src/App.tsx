@@ -334,7 +334,14 @@ export function App() {
             onStartPlan={startNewPlan}
           />
         ) : tab === "workouts" && !loggingOnly ? (
-          <WorkoutsScreen units={profile?.units ?? "metric"} plan={plan} onPlanChange={setPlan} />
+          <WorkoutsScreen
+            units={profile?.units ?? "metric"}
+            plan={plan}
+            onPlanChange={setPlan}
+            date={date}
+            nonce={nonce}
+            onMutated={() => setNonce((n) => n + 1)}
+          />
         ) : tab === "coach" ? (
           <CoachScreen onPlanChange={setPlan} initialPrompt={coachInitialPrompt} />
         ) : (

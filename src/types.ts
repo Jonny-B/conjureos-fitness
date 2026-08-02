@@ -507,6 +507,13 @@ export interface DailyCheckoff {
   weightKg?: number;
   /** The evening "how did your day go?" coach check-in, once submitted. */
   checkin?: DayCheckin;
+  /** Wearable/Apple-Health workouts the user removed from THIS day's exercise
+   *  total. Keyed by `${start}-${workoutType}` (HealthKit gives no id). We can't
+   *  delete from Apple Health, so we exclude locally (reversible). Additive. */
+  excludedWearableKeys?: string[];
+  /** Per-wearable-workout calorie overrides (same key), when the user edited the
+   *  burned number. Additive/optional. */
+  wearableKcalOverrides?: Record<string, number>;
 }
 
 /** A submitted end-of-day check-in — the answers as shown, verbatim. */
@@ -582,6 +589,8 @@ export interface WorkoutSession {
   date: string;
   /** The Workout this session was based on, when it came from the library. */
   workoutId?: string;
+  /** Display name of the workout, for the "completed today" list. Additive. */
+  workoutName?: string;
   planned: ExerciseSet[];
   actual: ExerciseSet[];
   reprompts: CoachReprompt[];

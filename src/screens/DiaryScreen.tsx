@@ -7,7 +7,7 @@ import { CalorieRing, MacroBars } from "../components/rings";
 import { ChevronLeft, ChevronRight, WorkoutsIcon } from "../components/icons";
 import { WeightCard } from "../components/WeightCard";
 import { CoachPlanCard } from "../components/CoachPlanCard";
-import { readBurnedForDate } from "../bridge/health";
+import { exerciseCaloriesForDate } from "../features/exercise";
 
 interface Props {
   date: string;
@@ -45,16 +45,10 @@ export function DiaryScreen({
       const repo = await getRepository();
       const entries = await repo.listDiary(date);
       if (alive) setView(buildDayView(date, entries));
-      // Prefer the wearable/health broker (Apple Watch, etc.); fall back to
-      // in-app logged sessions when no wearable source is wired.
-      const [broker, sessions] = await Promise.all([
-        readBurnedForDate(date),
-        repo.listWorkoutSessions().catch(() => []),
-      ]);
-      const logged = sessions
-        .filter((s) => s.date === date)
-        .reduce((n, s) => n + (s.caloriesBurned ?? 0), 0);
-      if (alive) setExercise(broker > 0 ? broker : logged);
+      // Exercise calories = wearable (Apple Health, etc.) + in-app sessions,
+      // added together, minus any the user removed. See features/exercise.
+      const burned = await exerciseCaloriesForDate(date).catch(() => 0);
+      if (alive) setExercise(burned);
     })();
     return () => {
       alive = false;

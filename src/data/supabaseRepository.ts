@@ -203,6 +203,9 @@ export class SupabaseRepository implements Repository {
   async saveWorkoutSession(_session: WorkoutSession): Promise<void> {
     throw new Error(PLAN_REQUIRES_V2_BACKEND);
   }
+  async removeWorkoutSession(_id: string): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
 }
 
 function rowToEntry(r: DiaryRow): DiaryEntry {

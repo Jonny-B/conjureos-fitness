@@ -97,6 +97,8 @@ export interface Repository {
   listWorkoutSessions(limit?: number): Promise<WorkoutSession[]>;
   /** Persist a workout session, replacing one with the same id. */
   saveWorkoutSession(session: WorkoutSession): Promise<void>;
+  /** Delete a single workout session by id. Idempotent. */
+  removeWorkoutSession(id: string): Promise<void>;
 }
 
 // ── Singleton selector ────────────────────────────────────────────────
