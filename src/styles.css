@@ -1639,55 +1639,37 @@ body {
   color: #fff;
   background: var(--cui-accent);
 }
-.benchmark-card {
+/* Compact, read-only "Your progress" strip: one bordered panel, benchmark rows
+   separated by hairlines. Deliberately NOT workout-card-like (no play FAB, no
+   hover lift) — benchmarks are measurements, not tasks. */
+.progress-strip {
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 14px 16px;
-  margin-bottom: 12px;
+  padding: 4px 14px;
+  margin-top: 14px;
 }
-/* Tappable variant: opens the workout that measures this benchmark, matching
-   the workout cards so every card in the list is clickable. */
-.benchmark-card.tappable {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-  transition: border-color var(--cui-duration) var(--cui-ease),
-              background var(--cui-duration) var(--cui-ease),
-              transform var(--cui-duration) var(--cui-ease),
-              box-shadow var(--cui-duration) var(--cui-ease);
+.progress-strip .mini-label {
+  margin: 8px 0 2px;
 }
-.benchmark-card.tappable .benchmark-card-main {
-  flex: 1;
-  min-width: 0;
+.progress-row {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
 }
-.benchmark-card.tappable:hover {
-  border-color: var(--cui-accent-tint);
-  background: var(--bg-3);
-  transform: translateY(-1px);
-  box-shadow: var(--cui-shadow-accent);
+.progress-strip .mini-label + .progress-row {
+  border-top: none;
 }
-.benchmark-card.tappable:hover .workout-play {
-  transform: scale(1.08);
-}
-.benchmark-head {
+.progress-row-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
 }
-.benchmark-name {
-  font-size: 15px;
-  font-weight: 700;
+.progress-name {
+  font-size: 14px;
+  font-weight: 600;
 }
-.benchmark-target {
-  color: var(--muted);
-  font-size: 12px;
+.progress-target {
   white-space: nowrap;
 }
 .benchmark-track {
@@ -1712,6 +1694,76 @@ body {
   font-size: 13px;
   font-weight: 700;
   color: var(--good);
+}
+
+/* Press-and-hold button: label bar fills over --hold-ms while held. */
+.hold-btn {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+.hold-btn .hold-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: rgba(255, 255, 255, 0.22);
+  transition: width 120ms ease-out;
+  pointer-events: none;
+}
+.hold-btn.holding .hold-fill {
+  width: 100%;
+  transition: width var(--hold-ms, 800ms) linear;
+}
+.hold-btn .hold-label {
+  position: relative;
+  z-index: 1;
+}
+
+/* Global workout pause overlay */
+.pause-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+}
+.pause-card {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px;
+  border-radius: var(--cui-radius);
+  background: var(--bg-1, var(--bg-2));
+  border: 1px solid var(--line);
+  text-align: center;
+}
+.pause-card h2 {
+  margin: 0 0 4px;
+}
+.pause-card .link-btn {
+  margin-top: 2px;
+}
+
+/* Post-workout calorie-burn estimate */
+.burn-estimate .burn-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 18px 0 8px;
+}
+.burn-adjust {
+  margin: 12px 0;
+}
+.burn-actions {
+  margin-top: 8px;
 }
 
 /* Program editor (W6) */

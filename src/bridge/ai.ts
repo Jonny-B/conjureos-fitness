@@ -37,7 +37,8 @@ declare global {
   }
 }
 
-const bridge = () => window.__conjureos?.ai?.complete;
+const bridge = () =>
+  typeof window !== "undefined" ? window.__conjureos?.ai?.complete : undefined;
 
 export function isAiAvailable(): boolean {
   return typeof bridge() === "function";

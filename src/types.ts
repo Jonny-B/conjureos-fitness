@@ -596,8 +596,13 @@ export interface WorkoutSession {
   benchmarkIds?: string[];
   /** ISO timestamp the session finished. */
   completedAt: string;
-  /** Active energy burned, kcal — from the wearable/health broker or a manual
-   *  log. Feeds the diary's exercise-calories add-back. Additive/optional. */
+  /** Wall-clock length of the session in seconds (start → finish). Additive —
+   *  absent on pre-1.18 sessions; used to estimate calories burned. Cardio also
+   *  carries duration on `cardio.durationSec`. */
+  durationSec?: number;
+  /** Active energy burned, kcal — from the wearable/health broker, a manual
+   *  log, or the in-app post-workout estimate. Feeds the diary's exercise-
+   *  calories add-back. Additive/optional. */
   caloriesBurned?: number;
   /** Where the session came from. Absent = in-app player (default). */
   source?: "manual" | "healthkit" | "health_connect" | "logWorkout";

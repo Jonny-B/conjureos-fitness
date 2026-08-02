@@ -12,6 +12,8 @@ import { CardioPlayer } from "./CardioPlayer";
 import { WorkoutSummary } from "./WorkoutSummary";
 import { WorkoutOverview } from "./WorkoutOverview";
 import { CoachReflect } from "./CoachReflect";
+import { BurnEstimate } from "./BurnEstimate";
+import { HoldButton } from "../components/HoldButton";
 import { ChevronLeft } from "../components/icons";
 
 // Shared workout helpers — used by both the Workouts library and the Plan tab's
@@ -27,7 +29,8 @@ type RunnerView =
   | { screen: "overview" }
   | { screen: "player" }
   | { screen: "cardio" }
-  | { screen: "summary"; byExercise: ExerciseActual[] }
+  | { screen: "summary"; byExercise: ExerciseActual[]; elapsedSec: number }
+  | { screen: "burn"; session: WorkoutSession }
   | { screen: "reflect"; session: WorkoutSession };
 
 /**
@@ -84,10 +87,9 @@ export function WorkoutRunner({
       <CardioPlayer
         workout={workout}
         units={units}
-        onFinish={async (cardio) => {
+        onFinish={(cardio) => {
           const session = newCardioSession(workout, cardio, benchmarkId, benchmarkIds);
-          await saveSession(session);
-          setView({ screen: "reflect", session });
+          setView({ screen: "burn", session });
         }}
         onCancel={onExit}
       />
@@ -98,23 +100,40 @@ export function WorkoutRunner({
     return (
       <StrengthPlayer
         workout={workout}
-        onFinish={(byExercise) => setView({ screen: "summary", byExercise })}
+        onFinish={(byExercise, elapsedSec) => setView({ screen: "summary", byExercise, elapsedSec })}
         onCancel={onExit}
       />
     );
   }
 
   if (view.screen === "summary") {
+    const { byExercise, elapsedSec } = view;
     return (
       <WorkoutSummary
         workout={workout}
-        byExercise={view.byExercise}
-        onSave={async () => {
-          const session = newSessionFrom(workout, view.byExercise, benchmarkId, benchmarkIds);
-          await saveSession(session);
-          setView({ screen: "reflect", session });
+        byExercise={byExercise}
+        onContinue={() => {
+          const session = newSessionFrom(workout, byExercise, benchmarkId, benchmarkIds, elapsedSec);
+          setView({ screen: "burn", session });
         }}
         onDiscard={onExit}
+      />
+    );
+  }
+
+  // Estimate + confirm calories burned, THEN persist (the slow adaptive save
+  // runs here, behind the hold-to-finish's busy state) and go to reflection.
+  if (view.screen === "burn") {
+    const commit = async (session: WorkoutSession) => {
+      await saveSession(session);
+      setView({ screen: "reflect", session });
+    };
+    return (
+      <BurnEstimate
+        session={view.session}
+        workout={workout}
+        onConfirm={(kcal) => commit({ ...view.session, caloriesBurned: kcal })}
+        onSkip={() => commit(view.session)}
       />
     );
   }
@@ -146,15 +165,21 @@ function StrengthPlayer({
   onCancel,
 }: {
   workout: Workout;
-  onFinish: (byExercise: ExerciseActual[]) => void;
+  onFinish: (byExercise: ExerciseActual[], elapsedSec: number) => void;
   onCancel: () => void;
 }) {
   const stepsRef = useRef<PlayerStep[]>(buildSteps(workout));
   const steps = stepsRef.current;
+  // Wall-clock workout start, for the calorie estimate (per-set times exclude
+  // rest/transitions, so we track the whole session length here).
+  const startedAtRef = useRef<number>(Date.now());
 
   const [index, setIndex] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [running, setRunning] = useState(true);
+  // Global pause: an overlay that stops timers and offers Resume or a
+  // deliberate hold-to-finish (so a stray tap can't end the workout).
+  const [paused, setPaused] = useState(false);
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const [entry, setEntry] = useState<SetEntry>({});
   const step = steps[index];
@@ -225,8 +250,9 @@ function StrengthPlayer({
   const finish = useCallback(() => {
     recordCurrent();
     const by = buildByExercise();
+    const elapsedSec = Math.round((Date.now() - startedAtRef.current) / 1000);
     if (by.length === 0) onCancel();
-    else onFinish(by);
+    else onFinish(by, elapsedSec);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordCurrent, onCancel, onFinish]);
 
@@ -277,13 +303,31 @@ function StrengthPlayer({
   return (
     <div className={`player ${step.kind} ${frameTone}`}>
       <div className="player-top">
-        <button className="link-btn back-link" onClick={finish}>
-          <ChevronLeft size={16} /> End
+        <button className="link-btn back-link" onClick={() => { setPaused(true); setRunning(false); }}>
+          <ChevronLeft size={16} /> Pause
         </button>
         <span className="player-progress">
           Set {Math.min(workDone, totalWork)} / {totalWork}
         </span>
       </div>
+
+      {paused && (
+        <div className="pause-overlay" role="dialog" aria-label="Workout paused">
+          <div className="pause-card">
+            <h2>Paused</h2>
+            <button
+              className="btn primary block"
+              onClick={() => { setPaused(false); setRunning(true); }}
+            >
+              Resume
+            </button>
+            <HoldButton label="Hold to finish" className="btn block" onComplete={finish} />
+            <button className="link-btn danger-text" onClick={onCancel}>
+              Discard workout
+            </button>
+          </div>
+        </div>
+      )}
 
       {step.kind === "work" ? (
         <div className="player-body">

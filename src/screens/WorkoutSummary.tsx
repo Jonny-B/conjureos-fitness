@@ -7,7 +7,8 @@ import { CheckIcon } from "../components/icons";
 interface Props {
   workout: Workout;
   byExercise: ExerciseActual[];
-  onSave: () => void;
+  /** Advance to the calorie-burn estimate step (the terminal save happens there). */
+  onContinue: () => void;
   onDiscard: () => void;
 }
 
@@ -16,7 +17,7 @@ interface Props {
  * exercise breakdown. Loads prior sessions itself so PRs compare against
  * history that excludes this (not-yet-saved) session.
  */
-export function WorkoutSummary({ workout, byExercise, onSave, onDiscard }: Props) {
+export function WorkoutSummary({ workout, byExercise, onContinue, onDiscard }: Props) {
   const [prior, setPrior] = useState<WorkoutSession[] | null>(null);
 
   useEffect(() => {
@@ -74,8 +75,8 @@ export function WorkoutSummary({ workout, byExercise, onSave, onDiscard }: Props
 
       <div className="wizard-nav">
         <button className="btn" onClick={onDiscard}>Discard</button>
-        <button className="btn primary" onClick={onSave}>
-          <CheckIcon size={16} /> Save &amp; finish
+        <button className="btn primary" onClick={onContinue}>
+          <CheckIcon size={16} /> Continue
         </button>
       </div>
     </div>

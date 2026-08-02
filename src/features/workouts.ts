@@ -112,6 +112,7 @@ export function newSessionFrom(
   byExercise: ExerciseActual[],
   benchmarkId?: string,
   benchmarkIds?: string[],
+  elapsedSec?: number,
 ): WorkoutSession {
   const planned: ExerciseSet[] = workout.exercises.flatMap((e) => e.sets);
   const actual: ExerciseSet[] = byExercise.flatMap((e) =>
@@ -132,6 +133,7 @@ export function newSessionFrom(
     byExercise,
     ...(benchmarkId ? { benchmarkId } : {}),
     ...(benchmarkIds && benchmarkIds.length ? { benchmarkIds } : {}),
+    ...(elapsedSec && elapsedSec > 0 ? { durationSec: Math.round(elapsedSec) } : {}),
     completedAt: new Date().toISOString(),
   };
 }
@@ -153,6 +155,7 @@ export function newCardioSession(
     cardio,
     ...(benchmarkId ? { benchmarkId } : {}),
     ...(benchmarkIds && benchmarkIds.length ? { benchmarkIds } : {}),
+    ...(cardio.durationSec > 0 ? { durationSec: Math.round(cardio.durationSec) } : {}),
     completedAt: new Date().toISOString(),
   };
 }

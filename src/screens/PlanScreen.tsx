@@ -157,11 +157,6 @@ function ProgramSection({
   const needsAssessment = program.benchmarks.some((b) => b.baseline == null);
   // A benchmark card is tappable when its measuring workout is in the CURRENT
   // group and still undone (i.e. tapping it is a sensible next action).
-  const workoutForBenchmark = (id: string) =>
-    groupWorkouts.find(
-      (w) => (w.benchmarkId === id || w.benchmarkIds?.includes(id)) && w.completedAt == null,
-    );
-
   const toggleDone = async (pw: ProgramWorkout) => {
     onPlanChange(await toggleWorkoutDone(plan, pw.id, pw.completedAt == null));
   };
@@ -269,14 +264,6 @@ function ProgramSection({
         </span>
       </div>
 
-      <div className="mini-label muted small">Benchmarks — what your plan is measured by</div>
-      {program.benchmarks.map((b) => {
-        const pw = workoutForBenchmark(b.id);
-        return (
-          <BenchmarkCard key={b.id} benchmark={b} units={units} onStart={pw ? () => onStart(pw) : undefined} />
-        );
-      })}
-
       <div className="mini-label muted small">This group's workouts</div>
       <ul className="workout-list">
         {groupWorkouts.map((pw) => {
@@ -333,6 +320,17 @@ function ProgramSection({
               ? "Start your next evaluation"
               : "Start your next group"}
         </button>
+      )}
+
+      {/* Progress: benchmarks are what the plan is measured by — reference, not
+          tasks. Read-only, below the actionable workouts. */}
+      {program.benchmarks.length > 0 && (
+        <div className="progress-strip">
+          <div className="mini-label muted small">Your progress</div>
+          {program.benchmarks.map((b) => (
+            <BenchmarkCard key={b.id} benchmark={b} units={units} />
+          ))}
+        </div>
       )}
 
       {entryFor && (
@@ -498,37 +496,28 @@ function EvalEntrySheet({
 }
 
 /**
- * Benchmark baseline → target progress card, shown atop a plan's program.
- * When `onStart` is given (a plan workout measures this benchmark), the whole
- * card is a button that opens that workout — so in the plan list every card is
- * tappable, not just the workout rows.
+ * A single benchmark as a compact, READ-ONLY progress row: name + target, then a
+ * baseline→target bar with the current value (or "Not measured yet"). Benchmarks
+ * are what the plan is measured by — they are never tapped to launch a workout
+ * (the Evaluation workout in the list does the measuring), so this is not a
+ * button and carries no play affordance.
  */
-function BenchmarkCard({
-  benchmark: b,
-  units,
-  onStart,
-}: {
-  benchmark: Benchmark;
-  units: Profile["units"];
-  onStart?: () => void;
-}) {
+function BenchmarkCard({ benchmark: b, units }: { benchmark: Benchmark; units: Profile["units"] }) {
   const pct = benchmarkProgress(b);
   const latest = b.history.length ? b.history[b.history.length - 1]!.value : null;
   const fmt = (v: number) => formatBenchmarkValue(v, b, units);
 
-  const body = (
-    <div className="benchmark-card-main">
-      <div className="benchmark-head">
-        <span className="benchmark-name">{b.name}</span>
-        <span className="benchmark-target">
+  return (
+    <div className="progress-row">
+      <div className="progress-row-head">
+        <span className="progress-name">{b.name}</span>
+        <span className="progress-target muted small">
           {b.lowerIsBetter ? "target ≤ " : "target "}
           {fmt(b.target)}
         </span>
       </div>
       {b.baseline == null ? (
-        <div className="muted small">
-          {onStart ? "Tap to do the evaluation and set your baseline." : "Do the evaluation workout to set your baseline."}
-        </div>
+        <div className="muted small">Not measured yet</div>
       ) : (
         <>
           <div className="benchmark-track">
@@ -541,16 +530,6 @@ function BenchmarkCard({
         </>
       )}
     </div>
-  );
-
-  if (!onStart) return <div className="benchmark-card">{body}</div>;
-  return (
-    <button className="benchmark-card tappable" onClick={onStart}>
-      {body}
-      <span className="workout-play" aria-hidden>
-        <PlayIcon size={18} />
-      </span>
-    </button>
   );
 }
 
