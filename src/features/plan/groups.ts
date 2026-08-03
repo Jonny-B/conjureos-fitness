@@ -110,6 +110,7 @@ Return ONLY a JSON object describing a SMALL, safe progression:
 Rules:
 - Make at most 4 changes. Progress gently: a rep or two, a small weight bump, or slightly less rest when recent sessions looked comfortable; hold steady or ease off ("deload": true) when they looked hard or sparse.
 - "exerciseKey" MUST be one of the keys listed in the data. Never invent an exercise. A "swap" keeps the same body area and stays equipment-light.
+- If the user's preferences/feedback are listed, HONOR them — swap away movements they disliked, respect constraints/niggles, and don't reintroduce things they asked to avoid.
 - weightKg is in kilograms. Keep everything beginner-safe.
 - Output ONLY the JSON. No prose, no markdown fences.`;
 
@@ -126,6 +127,7 @@ async function buildGroup(
   program: WorkoutProgram,
   n: number,
   sessions: WorkoutSession[],
+  preferences?: string,
 ): Promise<ProgramWorkout[]> {
   const evaluation = isEvaluationGroup(program, n);
   const source = evaluation
@@ -143,7 +145,7 @@ async function buildGroup(
       messages: [
         {
           role: "user",
-          content: `${buildAnalysisPrompt(temp, sessions)}\n\nWrite the progression for the user's next group of these workouts.`,
+          content: `${buildAnalysisPrompt(temp, sessions, preferences)}\n\nWrite the progression for the user's next group of these workouts.`,
         },
       ],
       maxTokens: 1024,
@@ -172,6 +174,7 @@ async function buildGroup(
 export async function advanceToNextGroup(
   plan: Plan,
   sessions: WorkoutSession[],
+  preferences?: string,
 ): Promise<Plan> {
   const program = plan.program;
   if (!program) return plan;
@@ -180,7 +183,8 @@ export async function advanceToNextGroup(
 
   const next = cur + 1;
   const existing = workoutsInGroup(program, next);
-  const nextWorkouts = existing.length > 0 ? existing : await buildGroup(plan, program, next, sessions);
+  const nextWorkouts =
+    existing.length > 0 ? existing : await buildGroup(plan, program, next, sessions, preferences);
   if (nextWorkouts.length === 0) return plan;
 
   // Retention: keep the templates (latest eval + latest training groups) and

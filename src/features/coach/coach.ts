@@ -11,7 +11,7 @@ import { complete, isAiAvailable, type ChatMessage } from "../../bridge/ai";
 import { todayISO } from "../diary";
 import { applyAdjustment, parseAdjustment, type PlanAdjustment } from "../plan/analyze";
 import { validateProgram } from "../plan/validate";
-import { saveProgram } from "../plan/planService";
+import { applyCoachPlanChange, saveProgram, type CoachPlanChange } from "../plan/planService";
 import { renderMemory } from "./context";
 import { remember } from "./memory";
 import type {
@@ -26,6 +26,8 @@ import type {
 
 const ADJUSTMENT_SHAPE = `{ "summary": string, "deload"?: boolean, "benchmarkTargetDelta"?: number,
   "changes": [ { "op": "setReps"|"setWeight"|"setRest"|"swap", "exerciseKey": string, "reps"?: number, "weightKg"?: number, "restSec"?: number, "toName"?: string } ] }`;
+
+const PLAN_CHANGE_SHAPE = `{ "summary": string, "goalWeightKg"?: number (KILOGRAMS), "dailyCalories"?: number, "endDate"?: "YYYY-MM-DD" }`;
 
 const EVAL_SYSTEM = `You are the user's wellness coach inside their fitness app. Friendly, brief, specific — never a doctor.
 They just answered a short check-in. Reply with ONLY a JSON object:
@@ -48,9 +50,11 @@ CHANGING THEIR PROGRAM — always ASK first, never apply silently. When you want
 - 2–4 short, concrete options (e.g. "Ease off — lighter legs this week", "Swap squats for something kinder", "Add a rest day"). The app ALWAYS adds a free-text box and a "Leave it as is" choice — don't add those yourself.
 - "type": "single" when the options are mutually exclusive, "multi" when they could stack.
 ONLY AFTER the user answers a proposal, apply the change with ONE block:
-<adjust>${ADJUSTMENT_SHAPE}</adjust>
-using ONLY exerciseKeys listed in the context — the app validates + applies it. If they decline, leave the plan and say so warmly. Ask AT MOST ONE follow-up <propose> before you either <adjust> or drop it. Never mention these tags.
-Calorie/goal targets are edited in Settings — point them there for those.
+- Workout program (reps/weights/rest/swaps): <adjust>${ADJUSTMENT_SHAPE}</adjust> using ONLY exerciseKeys listed in the context.
+- Plan-level (their goal weight, daily calorie target, or plan end date): <planchange>${PLAN_CHANGE_SHAPE}</planchange>. You CAN change these now — changing goal weight also recomputes their calorie target. goalWeightKg is in KILOGRAMS (convert if they speak in lb).
+The app validates + applies whichever block(s) you include. If they decline, leave things and say so warmly. Ask AT MOST ONE follow-up <propose> before you apply or drop it. Never mention these tags.
+
+MEMORY — when the user shares something durable worth remembering (a preference, dislike, constraint, injury, schedule, or goal — e.g. "I hate burpees", "I train early", "my knee is cranky"), silently record it by including ONE block: <remember>{ "notes": string[], "summary"?: string }</remember> — 0-3 short notes, optionally an updated one-paragraph running summary. This shapes their FUTURE workouts too. Never mention this tag.
 Keep replies short (2-5 sentences) unless they ask for detail.`;
 
 function extractJsonObject(raw: string): string {
@@ -187,7 +191,53 @@ const stripTags = (s: string): string =>
   s
     .replace(/<propose>[\s\S]*?<\/propose>/g, "")
     .replace(/<adjust>[\s\S]*?<\/adjust>/g, "")
+    .replace(/<planchange>[\s\S]*?<\/planchange>/g, "")
+    .replace(/<remember>[\s\S]*?<\/remember>/g, "")
     .trim();
+
+/** Parse a `<remember>` block into notes + summary, or null if absent/empty. */
+function parseRemember(raw: string): { notes?: string[]; summary?: string } | null {
+  const m = raw.match(/<remember>([\s\S]*?)<\/remember>/);
+  if (!m?.[1]) return null;
+  let o: Record<string, unknown>;
+  try {
+    o = JSON.parse(extractJsonObject(m[1])) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const notes = Array.isArray(o.notes)
+    ? o.notes.filter((n): n is string => typeof n === "string" && n.trim().length > 0).slice(0, 3)
+    : [];
+  const summary = typeof o.summary === "string" && o.summary.trim() ? o.summary : undefined;
+  if (notes.length === 0 && !summary) return null;
+  return { ...(notes.length ? { notes } : {}), ...(summary ? { summary } : {}) };
+}
+
+/** Parse a `<planchange>` block into a CoachPlanChange, or null if absent/empty. */
+function parsePlanChange(raw: string): CoachPlanChange | null {
+  const m = raw.match(/<planchange>([\s\S]*?)<\/planchange>/);
+  if (!m?.[1]) return null;
+  let o: Record<string, unknown>;
+  try {
+    o = JSON.parse(extractJsonObject(m[1])) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const numOf = (v: unknown): number | undefined => {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const change: CoachPlanChange = {
+    summary: typeof o.summary === "string" && o.summary.trim() ? o.summary.trim().slice(0, 200) : "Updated your plan",
+  };
+  const gw = numOf(o.goalWeightKg);
+  if (gw != null) change.goalWeightKg = gw;
+  const cal = numOf(o.dailyCalories);
+  if (cal != null) change.dailyCalories = cal;
+  if (typeof o.endDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.endDate)) change.endDate = o.endDate;
+  if (change.goalWeightKg == null && change.dailyCalories == null && change.endDate == null) return null;
+  return change;
+}
 
 export interface CoachChatOptions {
   /** True when this turn is the user answering a pending proposal — only then
@@ -221,37 +271,62 @@ export async function coachChat(
   const raw = await complete({ system, messages: history.slice(-16), maxTokens: 1024, tier: "capable" });
   const reply = stripTags(raw);
 
+  // 0. Learn from the conversation: persist any durable notes/summary the coach
+  //    extracted (silent, best-effort) — this is what makes chat feedback shape
+  //    FUTURE workouts, not just the current reply.
+  const mem = parseRemember(raw);
+  if (mem) await remember(mem).catch(() => {});
+
   // 1. A proposal (the ask) takes precedence, unless the follow-up budget is spent.
   if (opts?.canPropose !== false) {
     const proposal = parseProposal(raw);
     if (proposal) return { reply: reply || proposal.question, proposal };
   }
 
-  // 2. An adjustment. Only apply when the user is answering a prior proposal;
-  //    otherwise convert it to a confirm proposal so nothing changes unasked.
-  const match = raw.match(/<adjust>([\s\S]*?)<\/adjust>/);
-  if (match?.[1]) {
-    const adj = parseAdjustment(match[1]);
-    if (adj && opts?.answering) {
-      const updated = await applyToPlan(ctx.plan, adj);
-      if (updated) {
+  // 2. Changes — program (<adjust>) and/or plan-level (<planchange>). Only apply
+  //    when the user is answering a prior proposal; otherwise convert to a
+  //    confirm proposal so nothing changes unasked.
+  const adjMatch = raw.match(/<adjust>([\s\S]*?)<\/adjust>/);
+  const adj = adjMatch?.[1] ? parseAdjustment(adjMatch[1]) : null;
+  const planChange = parsePlanChange(raw);
+
+  if (adj || planChange) {
+    if (opts?.answering) {
+      let plan = ctx.plan;
+      const summaries: string[] = [];
+      if (planChange) {
+        const res = await applyCoachPlanChange(plan, ctx.profile, ctx.goals, planChange).catch(() => null);
+        if (res) {
+          plan = res.plan;
+          summaries.push(planChange.summary);
+        }
+      }
+      if (adj) {
+        const updated = await applyToPlan(plan, adj);
+        if (updated) {
+          plan = updated;
+          summaries.push(adj.summary);
+        }
+      }
+      if (plan && plan !== ctx.plan && summaries.length) {
+        const summary = summaries.join("; ");
         await remember({
-          events: [{ at: new Date().toISOString(), kind: "plan_adjusted", text: adj.summary }],
-        });
+          events: [{ at: new Date().toISOString(), kind: "plan_adjusted", text: summary }],
+        }).catch(() => {});
         return {
-          reply: reply ? `${reply}\n\n✓ Plan updated: ${adj.summary}` : `✓ Plan updated: ${adj.summary}`,
-          planUpdate: { plan: updated, summary: adj.summary },
+          reply: reply ? `${reply}\n\n✓ Plan updated: ${summary}` : `✓ Plan updated: ${summary}`,
+          planUpdate: { plan, summary },
         };
       }
       return { reply: reply || "I couldn't apply that change safely, so I left your plan as-is." };
     }
-    if (adj && opts?.canPropose !== false) {
+    if (opts?.canPropose !== false) {
       // Coach jumped to a change without asking — turn it into a confirmation.
       return {
         reply,
         proposal: {
           question: "Want me to apply this change?",
-          rationale: adj.summary,
+          rationale: planChange?.summary ?? adj?.summary,
           type: "single",
           options: [{ label: "Yes, apply it" }],
         },

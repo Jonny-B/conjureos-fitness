@@ -57,6 +57,7 @@ Rules:
 - If sets were fast/easy or RPE was low and the benchmark is progressing, add a little (a rep, a small weight bump, or a modest benchmarkTargetDelta > 0).
 - If sets were slow, RPE was high, or the benchmark has stalled/regressed, ease off (fewer reps, less weight, more rest) or set "deload": true; you may lower the benchmark target (benchmarkTargetDelta < 0).
 - "exerciseKey" MUST be one of the keys listed in the data. Never invent an exercise. A "swap" keeps the same body area and stays equipment-light.
+- If the user's preferences/feedback are listed, HONOR them — e.g. swap away a movement they dislike, respect a niggle/constraint, ease off what they said felt brutal.
 - weightKg is in kilograms. Keep everything beginner-safe.
 - Output ONLY the JSON. No prose, no markdown fences.`;
 
@@ -70,6 +71,7 @@ Rules:
 - Scale the working sets to their measured level: training reps/weights that fit the capacity the benchmark just revealed (e.g. work sets well below a max-rep effort so they can complete the prescription).
 - Up to 4 changes — spend them on the exercises that most need calibrating. Use ONLY the exerciseKeys listed in the data; never invent one.
 - Only change the benchmark target (benchmarkTargetDelta) if the measured baseline makes the current target clearly wrong.
+- If the user's preferences/feedback are listed, honor them (swap disliked movements, respect constraints).
 - Keep everything safe and realistic. Output ONLY the JSON. No prose, no markdown fences.`;
 
 function extractJson(raw: string): string {
@@ -185,8 +187,17 @@ function fmtSet(s: { reps?: number; weightKg?: number; durationSec?: number; rpe
   return parts.join(", ");
 }
 
-/** Summarize the program + recent actuals + benchmark trend for the model. */
-export function buildAnalysisPrompt(program: WorkoutProgram, sessions: WorkoutSession[]): string {
+/**
+ * Summarize the program + recent actuals + benchmark trend for the model.
+ * `preferences` (optional) is the coach-memory feedback block — the user's
+ * stated dislikes/constraints and recent reflections — so progression/adaptation
+ * respects what they've told the coach, not just the raw numbers.
+ */
+export function buildAnalysisPrompt(
+  program: WorkoutProgram,
+  sessions: WorkoutSession[],
+  preferences?: string,
+): string {
   const lines: string[] = [];
 
   const keys = new Set<string>();
@@ -217,6 +228,10 @@ export function buildAnalysisPrompt(program: WorkoutProgram, sessions: WorkoutSe
     lines.push(...(exLines.length ? exLines : ["  · (no recorded sets)"]));
   }
 
+  if (preferences && preferences.trim()) {
+    lines.push(`\nUser preferences & recent feedback (HONOR these):\n${preferences.trim()}`);
+  }
+
   return lines.join("\n");
 }
 
@@ -232,7 +247,7 @@ export function shouldAnalyze(program: WorkoutProgram, sessionCount: number): bo
  * unparseable, or the result fails validation (strict no-op on the program).
  * The caller persists whatever comes back.
  */
-export async function analyzeAndAdapt(plan: Plan, sessions: WorkoutSession[]): Promise<Plan> {
+export async function analyzeAndAdapt(plan: Plan, sessions: WorkoutSession[], preferences?: string): Promise<Plan> {
   const program = plan.program;
   if (!program) return plan;
 
@@ -245,7 +260,7 @@ export async function analyzeAndAdapt(plan: Plan, sessions: WorkoutSession[]): P
   try {
     const raw = await complete({
       system: SYSTEM,
-      messages: [{ role: "user", content: buildAnalysisPrompt(program, sessions) }],
+      messages: [{ role: "user", content: buildAnalysisPrompt(program, sessions, preferences) }],
       maxTokens: 1024,
       tier: "capable",
     });
@@ -270,7 +285,7 @@ export async function analyzeAndAdapt(plan: Plan, sessions: WorkoutSession[]): P
  * the provisional program is never degraded. Does NOT advance the analysis
  * cursor (that's the periodic loop's concern).
  */
-export async function calibrateToBenchmark(plan: Plan, sessions: WorkoutSession[]): Promise<Plan> {
+export async function calibrateToBenchmark(plan: Plan, sessions: WorkoutSession[], preferences?: string): Promise<Plan> {
   const program = plan.program;
   if (!program) return plan;
 
@@ -281,7 +296,7 @@ export async function calibrateToBenchmark(plan: Plan, sessions: WorkoutSession[
       messages: [
         {
           role: "user",
-          content: `${buildAnalysisPrompt(program, sessions)}\n\nThe newest session above is the benchmark assessment they just completed. Calibrate the prescribed working sets to these measured numbers.`,
+          content: `${buildAnalysisPrompt(program, sessions, preferences)}\n\nThe newest session above is the benchmark assessment they just completed. Calibrate the prescribed working sets to these measured numbers.`,
         },
       ],
       maxTokens: 1024,
@@ -304,8 +319,8 @@ export async function calibrateToBenchmark(plan: Plan, sessions: WorkoutSession[
  * Trigger + run: if an adaptation is due, run it; otherwise return null (no
  * change). Keeps the "periodic" policy in one place for the caller.
  */
-export async function maybeAdapt(plan: Plan, sessions: WorkoutSession[]): Promise<Plan | null> {
+export async function maybeAdapt(plan: Plan, sessions: WorkoutSession[], preferences?: string): Promise<Plan | null> {
   if (!plan.program) return null;
   if (!shouldAnalyze(plan.program, sessions.length)) return null;
-  return analyzeAndAdapt(plan, sessions);
+  return analyzeAndAdapt(plan, sessions, preferences);
 }

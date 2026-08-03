@@ -50,6 +50,28 @@ export async function remember(patch: MemoryPatch): Promise<CoachMemory> {
   return m;
 }
 
+/**
+ * A compact preferences/feedback block for the PROGRAM engine (next-group
+ * progression + periodic adaptation + calibration). Surfaces what the user has
+ * TOLD the coach — durable notes, the running summary, recent post-workout
+ * reflections, and recent 1–5 metrics — so future workouts honor "I hate
+ * burpees" / "knee is cranky" / "these felt brutal", not just the raw set data.
+ * Empty string when there's nothing worth passing.
+ */
+export function summarizeMemoryForProgram(m: CoachMemory): string {
+  const lines: string[] = [];
+  if (m.summary) lines.push(`Summary: ${m.summary}`);
+  if (m.notes.length)
+    lines.push(`Preferences/constraints:\n${m.notes.slice(-12).map((n) => `  - ${n}`).join("\n")}`);
+  const reflects = m.events.filter((e) => e.kind === "workout_reflect").slice(0, 5);
+  if (reflects.length)
+    lines.push(`Recent workout feedback:\n${reflects.map((e) => `  ${e.at.slice(0, 10)}: ${e.text}`).join("\n")}`);
+  const met = m.metrics.slice(0, 8);
+  if (met.length)
+    lines.push(`Recent 1-5 check-in metrics:\n${met.map((v) => `  ${v.date} ${v.key}=${v.value}`).join("\n")}`);
+  return lines.join("\n");
+}
+
 const planLine = (p: Plan): string =>
   `${p.mode} plan ${p.startDate}→${p.endDate}: ${p.goals.slice(0, 3).map((g) => g.label).join("; ")}`;
 
