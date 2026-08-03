@@ -150,9 +150,22 @@ function CompletedToday({
                   {[fmtDur(it.durationSec), `${it.kcal} cal`].filter(Boolean).join(" · ")}
                 </div>
               </div>
-              <button className="link-btn" onClick={() => setEditing(it)}>
-                Edit
-              </button>
+              <div className="completed-actions">
+                <button className="link-btn" onClick={() => setEditing(it)}>
+                  Edit
+                </button>
+                <button
+                  className="icon-btn danger-text"
+                  aria-label={`${it.source === "app" ? "Delete" : "Remove"} ${it.name}`}
+                  onClick={async () => {
+                    if (it.source === "app") await removeSession(it.key);
+                    else await excludeWearable(date, it.key);
+                    refresh();
+                  }}
+                >
+                  <TrashIcon size={18} />
+                </button>
+              </div>
             </li>
           ))}
         </ul>

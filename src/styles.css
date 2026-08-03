@@ -1804,6 +1804,12 @@ body {
 }
 .completed-row.removed { opacity: 0.6; }
 .completed-main { flex: 1; min-width: 0; }
+.completed-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
 .completed-name {
   font-size: 14px;
   font-weight: 600;
