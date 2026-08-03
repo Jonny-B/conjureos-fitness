@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import type { Benchmark, Plan, ProgramWorkout, Profile, WeightEntry } from "../types";
+import type { Benchmark, Goals, Plan, ProgramWorkout, Profile, WeightEntry } from "../types";
+import { DEFAULT_GOALS } from "../types";
 import { getRepository } from "../data/repository";
 import { todayISO } from "../features/diary";
 import { bmi } from "../features/goals";
 import { benchmarkProgress } from "../features/plan/program";
+import { modeTracksFood } from "../features/plan/model";
 import {
   currentGroup,
   isEvaluationGroup,
@@ -11,13 +13,17 @@ import {
   workoutsInGroup,
 } from "../features/plan/groups";
 import {
+  goalsToTargets,
   recordManualBenchmarkEntry,
   startNextGroup,
+  targetsToGoals,
   toggleWorkoutDone,
+  updatePlan,
   type ManualBenchmarkEntry,
 } from "../features/plan/planService";
 import { fmtWeight, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { Sparkline } from "../components/Sparkline";
+import { NumberField } from "../components/NumberField";
 import { pickWeightKg } from "../components/WeightCard";
 import { CheckIcon, PlayIcon } from "../components/icons";
 import { useScrollLock } from "../hooks/useScrollLock";
@@ -36,6 +42,7 @@ import { WorkoutRunner, metaLine } from "./WorkoutRunner";
 export function PlanScreen({
   profile,
   plan,
+  goals,
   units,
   onPlanChange,
   onAskCoach,
@@ -45,6 +52,7 @@ export function PlanScreen({
 }: {
   profile: Profile | null;
   plan: Plan | null;
+  goals: Goals;
   units: Profile["units"];
   onPlanChange: (plan: Plan | null) => void;
   onAskCoach: (question: string) => void;
@@ -90,9 +98,117 @@ export function PlanScreen({
       ) : (
         <PlanCtaCard onStartPlan={onStartPlan} />
       )}
+      {plan && modeTracksFood(plan.mode) && (
+        <PlanTargetsSection plan={plan} goals={goals} onPlanChange={onPlanChange} />
+      )}
       <TrendsPanel profile={profile} />
       <CoachLauncher onAsk={onAskCoach} />
     </div>
+  );
+}
+
+// ── Daily targets (advanced manual override) ───────────────────────────
+
+type GoalsDraft = { calories?: number; protein?: number; carbs?: number; fat?: number };
+function clampNum(v: number | undefined, min: number, max: number, dflt: number): number {
+  if (v == null || !Number.isFinite(v)) return dflt;
+  return Math.min(max, Math.max(min, Math.round(v)));
+}
+function draftToGoals(d: GoalsDraft): Goals {
+  return {
+    calories: clampNum(d.calories, 0, 10000, DEFAULT_GOALS.calories),
+    protein: clampNum(d.protein, 0, 600, DEFAULT_GOALS.protein),
+    carbs: clampNum(d.carbs, 0, 900, DEFAULT_GOALS.carbs),
+    fat: clampNum(d.fat, 0, 400, DEFAULT_GOALS.fat),
+  };
+}
+
+/**
+ * Manual override of the plan's daily calorie/macro targets. Lives on the Plan
+ * tab (targets are a plan property); collapsed by default. Editing here writes
+ * straight to `plan.targets` so the diary ring updates — until the next plan
+ * edit recomputes them from your stats.
+ */
+function PlanTargetsSection({
+  plan,
+  goals,
+  onPlanChange,
+}: {
+  plan: Plan;
+  goals: Goals;
+  onPlanChange: (plan: Plan | null) => void;
+}) {
+  const current = targetsToGoals(plan, goals);
+  const [open, setOpen] = useState(false);
+  const [g, setG] = useState<GoalsDraft>(current);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const fg = draftToGoals(g);
+      const { plan: next } = await updatePlan(plan, { targets: goalsToTargets(fg) }, { currentGoals: fg });
+      onPlanChange(next);
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="plan-section">
+      <div className="section-label">
+        Daily targets
+        <button
+          className="link-btn section-action"
+          onClick={() => {
+            setG(current);
+            setOpen((o) => !o);
+          }}
+        >
+          {open ? "Cancel" : "Adjust"}
+        </button>
+      </div>
+
+      {!open ? (
+        <div className="summary-card targets-summary">
+          <span className="targets-cal">
+            <strong>{current.calories}</strong> cal
+          </span>
+          <span className="muted small">
+            P {current.protein} · C {current.carbs} · F {current.fat} g
+          </span>
+        </div>
+      ) : (
+        <div className="summary-card column">
+          <p className="muted small">
+            Set your own targets. This overrides what your plan computed, until your next plan edit
+            recalculates it.
+          </p>
+          <div className="form-grid">
+            <label className="field">
+              <span>Calories</span>
+              <NumberField value={g.calories} min={0} max={10000} onChange={(n) => setG({ ...g, calories: n })} aria-label="Calories" />
+            </label>
+            <label className="field">
+              <span>Protein (g)</span>
+              <NumberField value={g.protein} min={0} max={600} onChange={(n) => setG({ ...g, protein: n })} aria-label="Protein grams" />
+            </label>
+            <label className="field">
+              <span>Carbs (g)</span>
+              <NumberField value={g.carbs} min={0} max={900} onChange={(n) => setG({ ...g, carbs: n })} aria-label="Carbs grams" />
+            </label>
+            <label className="field">
+              <span>Fat (g)</span>
+              <NumberField value={g.fat} min={0} max={400} onChange={(n) => setG({ ...g, fat: n })} aria-label="Fat grams" />
+            </label>
+          </div>
+          <button className="btn primary block" disabled={busy} onClick={() => void save()}>
+            {busy ? "Saving…" : "Save targets"}
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 

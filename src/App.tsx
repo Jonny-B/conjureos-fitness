@@ -326,6 +326,7 @@ export function App() {
           <PlanScreen
             profile={profile}
             plan={plan}
+            goals={effectiveGoals}
             units={profile?.units ?? "metric"}
             onPlanChange={setPlan}
             onAskCoach={openCoach}
