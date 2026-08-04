@@ -33,6 +33,7 @@ import { advanceToNextGroup, setWorkoutDone } from "./groups";
 import { modeTracksFood } from "./model";
 import { deriveDirection, macrosForCalories, recommendGoals } from "../goals";
 import { loadMemory, summarizeMemoryForProgram } from "../coach/memory";
+import { clamp } from "../num";
 
 /** Body stats the wizard collects, reconciled into the Profile on commit. */
 export interface WizardBody {
@@ -91,6 +92,8 @@ export function goalsToTargets(goals: Goals): PlanTargets {
   };
 }
 
+/** What a plan commit produced. All three are already persisted; they're
+ *  returned so the caller can update React state without re-reading. */
 export interface CommitResult {
   plan: Plan;
   profile: Profile | null;
@@ -161,6 +164,8 @@ export async function saveProgram(plan: Plan, program: WorkoutProgram): Promise<
   return next;
 }
 
+/** The plan fields an edit may change. Deliberately excludes `program` and
+ *  `id`, so patching can never drop group progress or benchmark history. */
 export interface PlanPatch {
   mode?: Plan["mode"];
   goals?: PlanGoal[];
@@ -170,10 +175,16 @@ export interface PlanPatch {
   durationWeeks?: number;
 }
 
-/** Archive the outgoing plan so history/insight survives a "start a new plan"
- *  reset. Diary/weight/workout-session history live in separate stores and are
- *  never touched here. */
 const PLAN_ARCHIVE_PATH = "plan-archive.json";
+
+/**
+ * Archive the outgoing plan so history/insight survives a "start a new plan"
+ * reset. Keeps the 20 most recent, newest first.
+ *
+ * Diary, weight, and workout-session history live in separate stores and are
+ * never touched here. Best-effort: a failed write is swallowed rather than
+ * blocking the new plan.
+ */
 export async function archivePlan(plan: Plan): Promise<void> {
   try {
     const { readJson, writeJson } = await import("../../bridge/vfs");
@@ -213,6 +224,8 @@ export interface PlanEditAnswers {
   startDate: string;
 }
 
+/** What an edit does: fork a brand-new plan (archiving the old one) or patch
+ *  the existing one in place, keeping its id, groups, and benchmarks. */
 export type PlanEditDecision = "new" | "modify";
 
 const normGoal = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -382,7 +395,6 @@ export interface CoachPlanChange {
   endDate?: string;
 }
 
-const clampN = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const weeksBetweenIso = (start: string, end: string): number => {
   const ms = Date.parse(end) - Date.parse(start);
   return Number.isFinite(ms) ? Math.min(52, Math.max(1, Math.round(ms / (7 * 86400000)))) : 1;
@@ -406,13 +418,13 @@ export async function applyCoachPlanChange(
   const patch: PlanPatch = {};
 
   if (change.goalWeightKg != null && Number.isFinite(change.goalWeightKg) && profile) {
-    const gw = Math.round(clampN(change.goalWeightKg, 25, 400) * 10) / 10;
+    const gw = Math.round(clamp(change.goalWeightKg, 25, 400) * 10) / 10;
     nextProfile = { ...profile, goalWeightKg: gw, direction: deriveDirection(profile.weightKg, gw) };
     await repo.saveProfile(nextProfile).catch(() => {});
     if (modeTracksFood(plan.mode)) patch.targets = goalsToTargets(recommendGoals(nextProfile));
   }
   if (change.dailyCalories != null && Number.isFinite(change.dailyCalories) && modeTracksFood(plan.mode)) {
-    const cal = clampN(Math.round(change.dailyCalories), 800, 10000);
+    const cal = clamp(Math.round(change.dailyCalories), 800, 10000);
     const weightKg = nextProfile?.weightKg ?? 70;
     patch.targets = { dailyCalories: cal, ...macrosForCalories(cal, weightKg) };
   }

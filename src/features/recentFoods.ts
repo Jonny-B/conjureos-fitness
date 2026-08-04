@@ -18,6 +18,8 @@ import type { DiaryEntry, FoodItem, MealType } from "../types";
 import { getRepository } from "../data/repository";
 import { shiftDate, todayISO } from "./diary";
 
+/** A food the user logged recently, with the quantity they last used — so
+ *  re-logging it is one tap with their portion already filled in. */
 export interface RecentFood {
   food: FoodItem;
   quantity: number;

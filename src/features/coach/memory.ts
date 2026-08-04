@@ -15,12 +15,19 @@ const MAX_NOTES = 40;
 const MAX_EVENTS = 100;
 const MAX_METRICS = 200;
 
+/**
+ * Read the coach's durable memory of the user. Returns a fresh empty memory
+ * — never null and never throws — when the file is missing, corrupt, or
+ * written by an older schema version.
+ */
 export async function loadMemory(): Promise<CoachMemory> {
   const m = await readJson<CoachMemory>(MEMORY_PATH, EMPTY_MEMORY);
   if (!m || m.v !== 1 || !Array.isArray(m.notes)) return structuredClone(EMPTY_MEMORY);
   return m;
 }
 
+/** An incremental update to coach memory. Every field is merge-only: nothing
+ *  here deletes, and each list is capped after merging. */
 export interface MemoryPatch {
   /** New durable notes — deduped against existing, appended, capped. */
   notes?: string[];

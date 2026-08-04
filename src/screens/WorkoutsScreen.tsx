@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Plan, Profile, Workout } from "../types";
 import { BUILT_IN_WORKOUTS } from "../features/workouts";
 import { todayISO } from "../features/diary";
+import { fmtDuration } from "../features/units";
 import {
   listCompletedWorkouts,
   removeSession,
@@ -80,12 +81,6 @@ export function WorkoutsScreen({
   );
 }
 
-function fmtDur(sec?: number): string {
-  if (!sec || sec <= 0) return "";
-  const m = Math.round(sec / 60);
-  return m >= 1 ? `${m} min` : `${sec}s`;
-}
-
 function CompletedToday({
   date,
   nonce,
@@ -147,7 +142,7 @@ function CompletedToday({
                   <span className={`source-pill ${it.source}`}>{it.sourceLabel}</span>
                 </div>
                 <div className="completed-meta muted small">
-                  {[fmtDur(it.durationSec), `${it.kcal} cal`].filter(Boolean).join(" · ")}
+                  {[fmtDuration(it.durationSec), `${it.kcal} cal`].filter(Boolean).join(" · ")}
                 </div>
               </div>
               <div className="completed-actions">

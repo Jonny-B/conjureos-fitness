@@ -15,6 +15,8 @@ import { SEARCH_TIMEOUT_MS, withTimeout } from "./http";
 
 const BASE = "https://api.nal.usda.gov/fdc/v1";
 const KEY = import.meta.env.VITE_USDA_API_KEY ?? "DEMO_KEY";
+/** True when no VITE_USDA_API_KEY is configured and we're on USDA's shared
+ *  DEMO_KEY, which is heavily rate-limited. The UI notes the degraded search. */
 export const USING_DEMO_KEY = KEY === "DEMO_KEY";
 
 interface FdcNutrient {
@@ -113,6 +115,8 @@ function titleCase(s: string): string {
   return head.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** Search USDA FoodData Central. Strong on whole/generic foods, weak on
+ *  branded items (Open Food Facts covers those). Returns [] on any failure. */
 export async function searchText(
   query: string,
   limit: number,

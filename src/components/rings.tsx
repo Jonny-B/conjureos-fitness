@@ -7,6 +7,11 @@
 import type { Goals, Macros } from "../types";
 import { pctOf } from "../features/diary";
 
+/**
+ * The home screen's calorie ring. Exercise calories are added BACK to the
+ * budget, so the figure shown is `goal - consumed + exercise` — going over
+ * fills the ring past full rather than clamping, so the overage stays visible.
+ */
 export function CalorieRing({
   consumed,
   goal,
@@ -89,6 +94,7 @@ export function ProgressRing({
   );
 }
 
+/** Protein/carbs/fat progress bars against the day's targets. */
 export function MacroBars({ total, goals }: { total: Macros; goals: Goals }) {
   const rows: Array<{ key: keyof Macros; label: string; cls: string; goal: number }> = [
     { key: "protein", label: "Protein", cls: "protein", goal: goals.protein },

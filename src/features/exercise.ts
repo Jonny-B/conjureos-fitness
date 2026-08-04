@@ -16,8 +16,15 @@ import type { WorkoutSession } from "../types";
 import { getRepository } from "../data/repository";
 import { readWorkouts, type WorkoutBurn } from "../bridge/health";
 
+/** Where a completed workout came from: run inside this app, or synced from
+ *  Apple Health / another wearable. */
 export type CompletedSource = "app" | "wearable";
 
+/**
+ * One completed workout for a given day, normalized across both sources so
+ * the UI can list in-app and wearable workouts together. `kcal` is already
+ * the effective value — any user override has been applied.
+ */
 export interface CompletedWorkout {
   /** Stable key: the session id (app) or `${start}-${workoutType}` (wearable). */
   key: string;

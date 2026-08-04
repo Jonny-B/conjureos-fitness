@@ -22,6 +22,8 @@ function nativeLocation(): NativeLocation | undefined {
   return b?.native?.location;
 }
 
+/** Whether GPS can be read at all — via the native op or the browser's
+ *  geolocation API. Gate the cardio distance tracker on this. */
 export function isLocationAvailable(): boolean {
   if (nativeLocation()) return true;
   return typeof navigator !== "undefined" && "geolocation" in navigator;

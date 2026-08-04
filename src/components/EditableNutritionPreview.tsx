@@ -6,7 +6,7 @@
  * FoodItem to the parent so LogPanel routes serving + meal next.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FoodItem, Micros } from "../types";
 import { contribute } from "../features/foods/conjureHealthDb";
 import { AlertTriangle, CheckIcon, ChevronLeft, ChevronRight } from "./icons";
@@ -48,6 +48,14 @@ function deepEqualFood(a: FoodItem, b: FoodItem): boolean {
   return true;
 }
 
+/**
+ * The mandatory review screen for any AI-derived food. Every macro and micro
+ * is editable before it reaches the diary.
+ *
+ * On save it contributes the (possibly corrected) food back to the community
+ * DB, but that is strictly best-effort: a failed contribution still logs the
+ * food locally, since the user's own diary must never depend on our backend.
+ */
 export function EditableNutritionPreview({
   initial,
   source,
@@ -76,6 +84,12 @@ export function EditableNutritionPreview({
 
   const showAlcoholTop = isFront || (food.micros?.alcoholG ?? 0) > 0;
 
+  // The "couldn't share your edit" notice auto-advances after a beat. Track the
+  // timer so unmounting (the user hits Back first) cancels it — otherwise it
+  // fires onConfirm against a dead screen and logs the food anyway.
+  const advanceTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(advanceTimer.current), []);
+
   const onSave = async () => {
     setSave({ phase: "saving" });
     const res = await contribute({
@@ -93,7 +107,7 @@ export function EditableNutritionPreview({
       phase: "failed",
       message: "Logged to your diary. We couldn't share your edit with the community this time.",
     });
-    setTimeout(() => onConfirm(food), 900);
+    advanceTimer.current = window.setTimeout(() => onConfirm(food), 900);
   };
 
   const canSave =

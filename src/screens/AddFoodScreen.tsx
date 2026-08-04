@@ -58,6 +58,8 @@ const MODE_TABS: { mode: AddMode; label: string; Icon: typeof SearchIcon }[] = [
   { mode: "ai", label: "AI", Icon: DiamondIcon },
 ];
 
+/** The add-food surface, hosting all three entry paths — barcode Scan, text
+ *  Search, and AI (photo or description). `onLogged` fires once per save. */
 export function AddFoodScreen({
   date,
   defaultMeal,

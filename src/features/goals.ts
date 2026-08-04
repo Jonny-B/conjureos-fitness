@@ -17,6 +17,8 @@ const ACTIVITY_MULTIPLIER: Record<ActivityLevel, number> = {
   very_active: 1.9,
 };
 
+/** Human-readable descriptions for each activity level, shown in the picker
+ *  so the user can self-select without guessing what "moderate" means. */
 export const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
   sedentary: "Sedentary (little/no exercise)",
   light: "Light (1–3 days/week)",
@@ -77,6 +79,11 @@ const DIRECTION_DELTA: Record<GoalDirection, number> = {
   gain: 300,
 };
 
+/**
+ * Basal metabolic rate via Mifflin-St Jeor — calories burned at complete
+ * rest. The starting point for every calorie target; multiply by an activity
+ * factor (see {@link tdee}) before applying a deficit or surplus.
+ */
 export function bmrMifflin(p: Profile): number {
   const base = 10 * p.weightKg + 6.25 * p.heightCm - 5 * p.age;
   // Undisclosed sex uses the male constant (the higher, safer estimate),
@@ -84,6 +91,10 @@ export function bmrMifflin(p: Profile): number {
   return p.sex === "female" ? base - 161 : base + 5;
 }
 
+/**
+ * Total daily energy expenditure: BMR scaled by the profile's activity
+ * level. This is maintenance — the calories that hold weight steady.
+ */
 export function tdee(p: Profile): number {
   return bmrMifflin(p) * ACTIVITY_MULTIPLIER[p.activityLevel];
 }

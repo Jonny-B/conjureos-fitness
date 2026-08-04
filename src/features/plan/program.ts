@@ -22,6 +22,7 @@ import type {
 } from "../../types";
 import { newId } from "../../data/id";
 import { normalizeExerciseKey } from "../explainers/normalizeKey";
+import { toIntInRange, toNumInRange } from "../num";
 
 const MAX_WORKOUTS = 6;
 const MAX_EXERCISES = 10;
@@ -30,26 +31,15 @@ const MAX_SETS = 8;
 const KINDS = new Set<WorkoutKind>(["strength", "run", "bike"]);
 const METRICS = new Set<BenchmarkMetric>(["reps", "weightKg", "durationSec", "distanceKm"]);
 
-const clampInt = (v: unknown, min: number, max: number): number | null => {
-  const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n)) return null;
-  return Math.min(max, Math.max(min, Math.round(n)));
-};
-const clampNum = (v: unknown, min: number, max: number): number | null => {
-  const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n)) return null;
-  return Math.min(max, Math.max(min, n));
-};
-
 function parseSet(raw: unknown): ExerciseSet | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  const reps = clampInt(o.reps, 1, 100);
-  const durationSec = clampInt(o.durationSec, 1, 3600);
+  const reps = toIntInRange(o.reps, 1, 100);
+  const durationSec = toIntInRange(o.durationSec, 1, 3600);
   // A set is either rep-based or timed; require at least one.
   if (reps == null && durationSec == null) return null;
-  const restSec = clampInt(o.restSec, 0, 600) ?? 45;
-  const weightKg = clampNum(o.weightKg, 0, 500);
+  const restSec = toIntInRange(o.restSec, 0, 600) ?? 45;
+  const weightKg = toNumInRange(o.weightKg, 0, 500);
   return {
     reps: reps ?? null,
     durationSec: durationSec ?? null,
@@ -129,7 +119,7 @@ function parseBenchmark(raw: unknown): Benchmark | null {
   const name = typeof o.exercise === "string" ? o.exercise.trim().slice(0, 80) : "";
   if (!name) return null;
   const metric = METRICS.has(o.metric as BenchmarkMetric) ? (o.metric as BenchmarkMetric) : "reps";
-  const target = clampNum(o.target, 0.1, 100000);
+  const target = toNumInRange(o.target, 0.1, 100000);
   if (target == null) return null;
   const unit =
     typeof o.unit === "string" && o.unit.trim()
@@ -150,6 +140,8 @@ function parseBenchmark(raw: unknown): Benchmark | null {
   };
 }
 
+/** The display unit implied by a benchmark's metric — "reps", "kg", "sec",
+ *  "km" — used when the model didn't supply one. */
 export function defaultUnit(metric: BenchmarkMetric): string {
   switch (metric) {
     case "weightKg":

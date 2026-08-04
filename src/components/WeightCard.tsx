@@ -26,6 +26,8 @@ export function pickWeightKg(weights: WeightEntry[]): number | null {
   return weights[0]?.weightKg ?? null;
 }
 
+/** Home-screen weigh-in card: latest weight, trend, and a quick-add field.
+ *  Bump `nonce` to force a re-read after an external write (e.g. a reset). */
 export function WeightCard({ profile, nonce = 0 }: { profile: Profile | null; nonce?: number }) {
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [input, setInput] = useState("");

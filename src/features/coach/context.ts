@@ -21,6 +21,13 @@ const ARCHIVE_PATH = "plan-archive.json";
 const FOOD_DAYS = 7;
 const SESSION_WINDOW = 8;
 
+/**
+ * Assemble everything the coach is allowed to know: active plan, profile,
+ * goals, recent weigh-ins, recent sessions, its own memory, and archived
+ * plans. Every read is individually fault-tolerant — a missing or failing
+ * store degrades that slice to a default rather than failing the whole turn,
+ * so the coach still answers with partial context.
+ */
 export async function buildCoachContext(): Promise<CoachContext> {
   const repo = await getRepository();
   const today = todayISO();

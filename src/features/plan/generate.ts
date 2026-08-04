@@ -11,7 +11,7 @@
  */
 
 import type { LiabilityAck, Plan, PlanGoal, PlanTargets, WorkoutProgram } from "../../types";
-import { complete, isAiAvailable } from "../../bridge/ai";
+import { complete, extractJson, isAiAvailable } from "../../bridge/ai";
 import { newId } from "../../data/id";
 import { shiftDate, todayISO } from "../diary";
 import { macrosForCalories } from "../goals";
@@ -22,6 +22,7 @@ import { modeHasWorkouts, modeTracksFood } from "./model";
 import { parseProgram } from "./program";
 import { validatePlan, validateProgram } from "./validate";
 import { fallbackPlan, fallbackProgram } from "./fallbackTemplates";
+import { toIntInRange } from "../num";
 
 /**
  * Generation is split into TWO calls, not one, on purpose. A single call for
@@ -121,20 +122,12 @@ function buildUserPrompt(input: PlanInput, priorReasons?: string[]): string {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/** A daily calorie target from the model: null unless it's a positive, sane
+ *  number of kcal (0 and negatives mean "the model didn't give us one"). */
 const clampKcal = (v: unknown): number | null => {
-  const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.min(6000, Math.round(n));
+  const n = toIntInRange(v, 0, 6000);
+  return n === null || n <= 0 ? null : n;
 };
-
-function extractJson(raw: string): string {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]) return fenced[1].trim();
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start !== -1 && end > start) return raw.slice(start, end + 1);
-  return raw.trim();
-}
 
 const VALID_KINDS = new Set<GeneratedGoal["kind"]>(["nutrition", "workout", "habit"]);
 
@@ -386,11 +379,14 @@ export function buildPlan(gen: GeneratedPlan, input: PlanInput, liability: Liabi
 /** Coarse phase the wizard shows while a plan is being built. */
 export type PlanStage = "calories" | "workouts" | "checking";
 
+/** Optional hooks for a `createPlan` call. */
 export interface CreatePlanOptions {
   /** Fires as generation moves through its real phases (for the spinner). */
   onStage?: (stage: PlanStage) => void;
 }
 
+/** The outcome of plan generation, including whether either half fell back
+ *  to a template and why — the review screen surfaces both. */
 export interface CreatePlanResult {
   plan: Plan;
   gen: GeneratedPlan;

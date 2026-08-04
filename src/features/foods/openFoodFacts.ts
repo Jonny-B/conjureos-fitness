@@ -131,6 +131,8 @@ const round1 = (v: unknown): number | undefined =>
 const mg = (v: unknown): number | undefined =>
   typeof v === "number" && Number.isFinite(v) ? Math.round(v * 1000) : undefined;
 
+/** Look up a barcode directly in Open Food Facts. Returns null for a miss,
+ *  a non-OK response, or a network failure — never throws. */
 export async function lookupBarcode(
   barcode: string,
   signal?: AbortSignal,
@@ -150,6 +152,8 @@ export async function lookupBarcode(
   return toFoodItem({ ...json.product, code });
 }
 
+/** Search Open Food Facts by name. Strong on branded/packaged items, weak on
+ *  whole foods (USDA covers those). Returns [] on any failure. */
 export async function searchText(
   query: string,
   limit: number,

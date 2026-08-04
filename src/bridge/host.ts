@@ -82,6 +82,11 @@ export function isSignedIn(): boolean {
   return window.__conjureos?.signedIn === true;
 }
 
+/**
+ * The signed-in ConjureOS user, or null when the host predates the auth
+ * bridge, nobody is signed in, or the call failed. Never throws — a missing
+ * identity is an ordinary state here, not an error.
+ */
 export async function getHostUser(): Promise<HostUser | null> {
   const fn = authBridge()?.getUser;
   if (!fn) return null;
@@ -92,6 +97,11 @@ export async function getHostUser(): Promise<HostUser | null> {
   }
 }
 
+/**
+ * The host session's raw access token for authenticating a backend call, or
+ * null when unavailable. Present on desktop; absent in the mobile WebView by
+ * design, where `mintIdentityToken()` is the supported path instead.
+ */
 export async function getAccessToken(): Promise<string | null> {
   const fn = authBridge()?.getAccessToken;
   if (!fn) return null;

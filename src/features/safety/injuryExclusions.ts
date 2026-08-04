@@ -22,6 +22,8 @@ export interface InjuryRegion {
   label: string;
 }
 
+/** The body regions a user can flag as injured during intake. Each maps to a
+ *  set of movement patterns the plan generator and validators exclude. */
 export const INJURY_REGIONS: readonly InjuryRegion[] = [
   { id: "knee", label: "Knee" },
   { id: "lower_back", label: "Lower back" },

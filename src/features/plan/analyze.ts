@@ -14,9 +14,10 @@
  */
 
 import type { Plan, WorkoutProgram, WorkoutSession } from "../../types";
-import { complete } from "../../bridge/ai";
+import { complete, extractJson } from "../../bridge/ai";
 import { normalizeExerciseKey } from "../explainers/normalizeKey";
 import { validateProgram } from "./validate";
+import { clamp } from "../num";
 
 /** How many new sessions between adaptation passes. */
 export const ANALYSIS_INTERVAL = 3;
@@ -36,6 +37,8 @@ interface ProgramChange {
   toName?: string;
 }
 
+/** A bounded, validated change to an existing program — the only shape the
+ *  adaptation loop will apply. Capped at 4 changes by the parser. */
 export interface PlanAdjustment {
   /** One-line human summary of what changed and why. */
   summary: string;
@@ -74,21 +77,18 @@ Rules:
 - If the user's preferences/feedback are listed, honor them (swap disliked movements, respect constraints).
 - Keep everything safe and realistic. Output ONLY the JSON. No prose, no markdown fences.`;
 
-function extractJson(raw: string): string {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]) return fenced[1].trim();
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start !== -1 && end > start) return raw.slice(start, end + 1);
-  return raw.trim();
-}
-
 const OPS = new Set<ChangeOp>(["setReps", "setWeight", "setRest", "swap"]);
 const num = (v: unknown): number | undefined => {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : undefined;
 };
 
+/**
+ * Parse + validate a model reply into a {@link PlanAdjustment}, or null when
+ * it isn't usable. Fails CLOSED: unknown ops and unparseable numbers are
+ * dropped, the change list is capped, and a null return leaves the program
+ * untouched — a bad generation must never silently rewrite someone's plan.
+ */
 export function parseAdjustment(raw: string): PlanAdjustment | null {
   let json: unknown;
   try {
@@ -122,7 +122,6 @@ export function parseAdjustment(raw: string): PlanAdjustment | null {
   };
 }
 
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
 /**
  * Apply a parsed adjustment to a COPY of the program. Pure — never mutates the

@@ -10,6 +10,7 @@ import type { Goals, Plan, Profile } from "../../types";
 
 // ── Memory ───────────────────────────────────────────────────────────
 
+/** The kinds of notable moment the coach records in its memory timeline. */
 export type CoachEventKind =
   | "workout_reflect"
   | "day_checkin"
@@ -52,10 +53,14 @@ export interface CoachMemory {
   metrics: CoachMetric[];
 }
 
+/** A blank coach memory. Clone before mutating — this is a shared module
+ *  constant, not a fresh object per read. */
 export const EMPTY_MEMORY: CoachMemory = { v: 1, notes: [], events: [], metrics: [] };
 
 // ── Check-ins ────────────────────────────────────────────────────────
 
+/** Which check-in a question bank is being drawn for: right after a workout,
+ *  or at the end of a day. */
 export type CheckinKind = "workout" | "day";
 
 /** One question from the hardcoded bank. `scale` renders 1–5 chips. */

@@ -5,7 +5,9 @@ import type { PlanInput } from "./model";
 // Control the AI bridge: `complete` is routed per-test by which system prompt
 // (core vs program) it receives; the plan generator always thinks AI is present.
 const { complete } = vi.hoisted(() => ({ complete: vi.fn<(req: { system: string }) => Promise<string>>() }));
-vi.mock("../../bridge/ai", () => ({
+// Stub only the host-dependent surface; pure helpers (extractJson) stay real.
+vi.mock("../../bridge/ai", async (orig) => ({
+  ...(await orig<typeof import("../../bridge/ai")>()),
   complete,
   isAiAvailable: () => true,
 }));

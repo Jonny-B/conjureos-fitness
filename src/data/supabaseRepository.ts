@@ -55,6 +55,15 @@ interface WeightRow {
   weight_kg: number;
 }
 
+/**
+ * Postgres-backed {@link Repository}, selected when VITE_SUPABASE_URL and
+ * VITE_SUPABASE_ANON_KEY are set. Rows are scoped to the signed-in user by
+ * RLS; `init()` performs an anonymous sign-in when no session exists.
+ *
+ * Covers the v1 surface (profile, goals, diary, weights) only — every v2 plan
+ * and session method throws {@link PLAN_REQUIRES_V2_BACKEND}, which callers
+ * catch to fall back to the mock layer (DECISIONS 2026-06-24).
+ */
 export class SupabaseRepository implements Repository {
   readonly kind = "supabase" as const;
   private client: SupabaseRestClient;

@@ -24,6 +24,8 @@ function ctor(): BarcodeDetectorCtor | null {
   return typeof c === "function" ? c : null;
 }
 
+/** Whether the platform can decode barcodes natively. False on older
+ *  browsers, where the UI offers manual entry instead of the scanner. */
 export function isScanSupported(): boolean {
   return ctor() !== null;
 }

@@ -24,6 +24,8 @@ function ex(name: string, sets: Exercise["sets"], notes?: string): Exercise {
   return { id: id(), name, sets, ...(notes ? { notes } : {}) };
 }
 
+/** The seed workout library every user starts with, so the Workouts tab is
+ *  useful before any plan exists. Static data — never mutated at runtime. */
 export const BUILT_IN_WORKOUTS: Workout[] = [
   {
     id: "full-body-no-equipment",
@@ -87,6 +89,11 @@ export const BUILT_IN_WORKOUTS: Workout[] = [
   },
 ];
 
+/**
+ * One screen of the guided workout player. `buildSteps` flattens a workout's
+ * exercises and sets into this linear sequence — a work step per set, with
+ * rest steps interleaved — so the player is a simple index into an array.
+ */
 export type PlayerStep =
   | {
       kind: "work";

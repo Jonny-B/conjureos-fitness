@@ -16,6 +16,8 @@ import { AlertTriangle } from "./icons";
 /** Single source of truth for disclaimer copy across all three surfaces. */
 export const DISCLAIMER_HEADLINE = "Read this before we build your plan";
 
+/** The full disclaimer, one paragraph per entry. Legal copy — change it in
+ *  one place and every surface follows. */
 export const DISCLAIMER_BODY = [
   "Conjure Health creates general fitness and nutrition suggestions. It is not medical advice, diagnosis, or treatment, and it does not replace a doctor, dietitian, or physical therapist.",
   "Talk to a healthcare professional before starting a new exercise or eating plan, especially if you have a health condition, an injury, are pregnant, or take medication.",
@@ -33,6 +35,10 @@ interface Props {
   onDecline?: () => void;
 }
 
+/**
+ * The blocking liability gate shown before a plan is generated. The parent
+ * stamps a `LiabilityAck` on accept — the plan must not be built until it does.
+ */
 export function DisclaimerCard({ onAccept, onDecline }: Props) {
   return (
     <div className="mode-body disclaimer-card">

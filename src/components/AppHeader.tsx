@@ -7,6 +7,8 @@
 
 import { AppleIcon, ChevronLeft, SettingsIcon } from "./icons";
 
+/** The app's single top bar. Pass `onBack` on sub-pages to swap the brand
+ *  mark for a back chevron. */
 export function AppHeader({
   title,
   onBack,

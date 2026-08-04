@@ -221,6 +221,13 @@ async function logRecipeMeal(raw?: unknown): Promise<{ id: string; logged: boole
   return { id: entry.id, logged: true };
 }
 
+/**
+ * Publish this app's actions (logFood, todayTotals, logRecipeMeal,
+ * logWorkout) to ConjureOS so the assistant and other apps can call them.
+ * Call once at startup; a no-op outside ConjureOS or on a host too old to
+ * support registration. Keep the handler set in sync with the `conjureos.actions`
+ * block in package.json — that's the schema the host validates against.
+ */
 export async function registerActions(): Promise<void> {
   const bridge = window.__conjureos?.actions;
   if (!bridge?.register) return; // not inside ConjureOS, or host too old

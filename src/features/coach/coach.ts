@@ -7,7 +7,7 @@
  */
 
 import type { Plan } from "../../types";
-import { complete, isAiAvailable, type ChatMessage } from "../../bridge/ai";
+import { complete, extractJson, isAiAvailable, type ChatMessage } from "../../bridge/ai";
 import { todayISO } from "../diary";
 import { applyAdjustment, parseAdjustment, type PlanAdjustment } from "../plan/analyze";
 import { validateProgram } from "../plan/validate";
@@ -56,15 +56,6 @@ The app validates + applies whichever block(s) you include. If they decline, lea
 
 MEMORY — when the user shares something durable worth remembering (a preference, dislike, constraint, injury, schedule, or goal — e.g. "I hate burpees", "I train early", "my knee is cranky"), silently record it by including ONE block: <remember>{ "notes": string[], "summary"?: string }</remember> — 0-3 short notes, optionally an updated one-paragraph running summary. This shapes their FUTURE workouts too. Never mention this tag.
 Keep replies short (2-5 sentences) unless they ask for detail.`;
-
-function extractJsonObject(raw: string): string {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]) return fenced[1].trim();
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start !== -1 && end > start) return raw.slice(start, end + 1);
-  return raw.trim();
-}
 
 /**
  * Apply a coach-proposed adjustment through the same rails as the adaptation
@@ -123,7 +114,7 @@ export async function evaluateCheckin(
       maxTokens: 1024,
       tier: "capable",
     });
-    const o = JSON.parse(extractJsonObject(raw)) as Record<string, unknown>;
+    const o = JSON.parse(extractJson(raw)) as Record<string, unknown>;
     const reply =
       typeof o.reply === "string" && o.reply.trim() ? o.reply.trim() : "Logged — thanks for checking in.";
     const notes = Array.isArray(o.notes) ? o.notes.filter((n): n is string => typeof n === "string") : [];
@@ -160,7 +151,7 @@ function parseProposal(raw: string): CoachProposal | null {
   if (!m?.[1]) return null;
   let o: Record<string, unknown>;
   try {
-    o = JSON.parse(extractJsonObject(m[1])) as Record<string, unknown>;
+    o = JSON.parse(extractJson(m[1])) as Record<string, unknown>;
   } catch {
     return null;
   }
@@ -201,7 +192,7 @@ function parseRemember(raw: string): { notes?: string[]; summary?: string } | nu
   if (!m?.[1]) return null;
   let o: Record<string, unknown>;
   try {
-    o = JSON.parse(extractJsonObject(m[1])) as Record<string, unknown>;
+    o = JSON.parse(extractJson(m[1])) as Record<string, unknown>;
   } catch {
     return null;
   }
@@ -219,7 +210,7 @@ function parsePlanChange(raw: string): CoachPlanChange | null {
   if (!m?.[1]) return null;
   let o: Record<string, unknown>;
   try {
-    o = JSON.parse(extractJsonObject(m[1])) as Record<string, unknown>;
+    o = JSON.parse(extractJson(m[1])) as Record<string, unknown>;
   } catch {
     return null;
   }
@@ -239,6 +230,8 @@ function parsePlanChange(raw: string): CoachPlanChange | null {
   return change;
 }
 
+/** Per-turn switches that govern how much authority the coach has to change
+ *  things. Both default to the safest reading when omitted. */
 export interface CoachChatOptions {
   /** True when this turn is the user answering a pending proposal — only then
    *  may a returned <adjust> actually apply. */

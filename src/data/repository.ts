@@ -40,6 +40,13 @@ export type DayLogPatch = Partial<Omit<DailyCheckoff, "date">>;
  */
 export const PLAN_REQUIRES_V2_BACKEND = "PLAN_REQUIRES_V2_BACKEND";
 
+/**
+ * The persistence contract every screen and feature codes against.
+ *
+ * Implementations must be behaviourally identical: same ordering, same
+ * idempotency, same null-vs-empty semantics. Anything that differs belongs in
+ * the doc of the specific method, not in a caller's `if (repo.kind === ...)`.
+ */
 export interface Repository {
   /** Which backend is live — for diagnostics + a dev badge in the UI. */
   readonly kind: "mock" | "supabase";
@@ -47,19 +54,26 @@ export interface Repository {
   /** Establish a session (anonymous sign-in for Supabase) and warm caches. */
   init(): Promise<void>;
 
+  /** The user's body + activity inputs, or null before onboarding. */
   getProfile(): Promise<Profile | null>;
+  /** Replace the stored profile wholesale. */
   saveProfile(profile: Profile): Promise<void>;
 
+  /** The active daily targets. Falls back to DEFAULT_GOALS, never null. */
   getGoals(): Promise<Goals>;
+  /** Replace the stored daily targets wholesale. */
   saveGoals(goals: Goals): Promise<void>;
 
   /** Diary entries for one calendar date (YYYY-MM-DD). */
   listDiary(date: string): Promise<DiaryEntry[]>;
+  /** Log a food; returns the stored entry with its assigned id + loggedAt. */
   addDiaryEntry(entry: NewDiaryEntry): Promise<DiaryEntry>;
+  /** Patch a logged entry in place. No-op for an unknown id. */
   updateDiaryEntry(
     id: string,
     patch: Partial<Pick<DiaryEntry, "quantity" | "meal" | "food">>,
   ): Promise<void>;
+  /** Delete one logged entry. Idempotent. */
   removeDiaryEntry(id: string): Promise<void>;
 
   /** Weight history, newest first. (Scaffold slice — fully wired in mock.) */

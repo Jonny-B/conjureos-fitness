@@ -52,6 +52,7 @@ export function overloadSuggestion(
   return undefined;
 }
 
+/** Headline totals for one finished session, shown on the summary screen. */
 export interface SessionStats {
   totalSets: number;
   totalReps: number;
@@ -80,6 +81,8 @@ export function summarize(byExercise: ExerciseActual[]): SessionStats {
   return { totalSets, totalReps, totalVolumeKg, totalWorkSec };
 }
 
+/** A personal record beaten in the session just finished: the heaviest
+ *  weight, most reps, or longest hold yet recorded for that movement. */
 export interface PR {
   exerciseKey: string;
   name: string;

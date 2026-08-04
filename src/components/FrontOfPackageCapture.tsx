@@ -20,6 +20,12 @@ interface Props {
 
 type Phase = "capture" | "preview" | "parsing" | "failed";
 
+/**
+ * Capture → estimate flow for foods with no readable nutrition panel. Walks
+ * capture, preview, and parse, then hands a {@link FrontEstimate} to the
+ * parent, which MUST route it through the editable review screen — these
+ * numbers are a model guess, never a label read.
+ */
 export function FrontOfPackageCapture({ barcode, onParsed, onCancel }: Props) {
   const [phase, setPhase] = useState<Phase>("capture");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);

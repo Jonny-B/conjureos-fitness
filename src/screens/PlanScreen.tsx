@@ -21,13 +21,14 @@ import {
   updatePlan,
   type ManualBenchmarkEntry,
 } from "../features/plan/planService";
-import { fmtWeight, weightToDisplay, weightToKg, weightUnit } from "../features/units";
+import { fmtClock, fmtWeight, kgToLb, kmToMi, weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { Sparkline } from "../components/Sparkline";
 import { NumberField } from "../components/NumberField";
 import { pickWeightKg } from "../components/WeightCard";
 import { CheckIcon, PlayIcon } from "../components/icons";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { WorkoutRunner, metaLine } from "./WorkoutRunner";
+import { toIntInRange } from "../features/num";
 
 /**
  * Plan hub — the home for the user's plan, tracking + coaching, condensing what
@@ -110,9 +111,9 @@ export function PlanScreen({
 // ── Daily targets (advanced manual override) ───────────────────────────
 
 type GoalsDraft = { calories?: number; protein?: number; carbs?: number; fat?: number };
+/** A draft field the user may have blanked out: fall back to `dflt`. */
 function clampNum(v: number | undefined, min: number, max: number, dflt: number): number {
-  if (v == null || !Number.isFinite(v)) return dflt;
-  return Math.min(max, Math.max(min, Math.round(v)));
+  return toIntInRange(v, min, max) ?? dflt;
 }
 function draftToGoals(d: GoalsDraft): Goals {
   return {
@@ -651,13 +652,9 @@ function BenchmarkCard({ benchmark: b, units }: { benchmark: Benchmark; units: P
 
 /** Format a benchmark value with its unit; weight/distance respect display units. */
 function formatBenchmarkValue(v: number, b: Benchmark, units: Profile["units"]): string {
-  if (b.metric === "durationSec") {
-    const m = Math.floor(v / 60);
-    const s = Math.round(v % 60);
-    return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `${s}s`;
-  }
-  if (b.metric === "weightKg" && units === "imperial") return `${Math.round(v * 2.2046226218)} lb`;
-  if (b.metric === "distanceKm" && units === "imperial") return `${(v * 0.621371).toFixed(2)} mi`;
+  if (b.metric === "durationSec") return v >= 60 ? fmtClock(v) : `${Math.round(v)}s`;
+  if (b.metric === "weightKg" && units === "imperial") return `${Math.round(kgToLb(v))} lb`;
+  if (b.metric === "distanceKm" && units === "imperial") return `${kmToMi(v).toFixed(2)} mi`;
   return `${Math.round(v * 10) / 10} ${b.unit}`;
 }
 

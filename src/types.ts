@@ -52,10 +52,13 @@ export interface FoodProvenance {
   warningNote?: string;
 }
 
+/** The additive identity for macro sums — a fresh accumulator. */
 export const ZERO_MACROS: Macros = { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
 // ── Foods ────────────────────────────────────────────────────────────
 
+/** Where a food's numbers came from. Drives attribution and how much the UI
+ *  trusts them: `custom` includes unreviewed AI estimates. */
 export type FoodSource = "openfoodfacts" | "usda" | "custom" | "recipe" | "conjure_health";
 
 /**
@@ -85,10 +88,13 @@ export interface FoodItem {
 
 // ── Diary ────────────────────────────────────────────────────────────
 
+/** The four diary buckets a food can be logged into. */
 export type MealType = "breakfast" | "lunch" | "dinner" | "snacks";
 
+/** Meals in the order the diary lists them. */
 export const MEAL_TYPES: MealType[] = ["breakfast", "lunch", "dinner", "snacks"];
 
+/** Display names for each meal slot. */
 export const MEAL_LABELS: Record<MealType, string> = {
   breakfast: "Breakfast",
   lunch: "Lunch",
@@ -118,6 +124,8 @@ export interface DiaryEntry {
  *  it's treated like the safe (higher) default floor and the male BMR constant. */
 export type Sex = "male" | "female" | "not_shared";
 
+/** Day-to-day activity outside deliberate training. Scales BMR into TDEE
+ *  (see `tdee`) and seeds the wizard's suggested training days per week. */
 export type ActivityLevel =
   | "sedentary"
   | "light"
@@ -125,6 +133,8 @@ export type ActivityLevel =
   | "active"
   | "very_active";
 
+/** Which way the user wants their weight to move. Derived from goal weight
+ *  vs current weight, and sets the calorie deficit/surplus. */
 export type GoalDirection = "lose" | "maintain" | "gain";
 
 /** How much training background the user has — tunes workout difficulty. */
@@ -173,6 +183,8 @@ export interface Goals {
   fat: number;
 }
 
+/** Fallback daily targets before a plan exists (or for a workouts-only plan
+ *  that tracks no food). Deliberately middle-of-the-road, not personalized. */
 export const DEFAULT_GOALS: Goals = {
   calories: 2000,
   protein: 120,
@@ -194,6 +206,8 @@ export const DEFAULT_PROFILE: Profile = {
 
 // ── Weight (scaffolded slice) ────────────────────────────────────────
 
+/** One weigh-in. At most one per calendar day — a second write for the same
+ *  date replaces the first rather than appending. */
 export interface WeightEntry {
   /** YYYY-MM-DD. One canonical entry per day (last write wins). */
   date: string;
@@ -232,6 +246,8 @@ export interface CoachProfile {
 /** Where a workout came from. Treated as "built-in" when omitted. */
 export type WorkoutOrigin = "built-in" | "coach" | "user";
 
+/** One prescribed set. Exactly one of `reps`/`durationSec` is non-null:
+ *  reps for countable work, durationSec for holds and timed intervals. */
 export interface ExerciseSet {
   /** Target reps, or null for a timed set. */
   reps: number | null;
@@ -243,6 +259,7 @@ export interface ExerciseSet {
   weightKg?: number;
 }
 
+/** One movement within a workout, plus its prescribed sets. */
 export interface Exercise {
   id: string;
   name: string;
@@ -277,6 +294,7 @@ export interface ExerciseExplainer {
  *  kinds route to the distance tracker instead of buildSteps. */
 export type WorkoutKind = "strength" | "run" | "bike";
 
+/** A complete workout: a named, ordered list of exercises the player runs. */
 export interface Workout {
   id: string;
   name: string;

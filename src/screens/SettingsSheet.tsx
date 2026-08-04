@@ -176,10 +176,14 @@ function ResetRow({
 }) {
   const [state, setState] = useState<"idle" | "armed" | "busy" | "done">("idle");
 
+  // Both transient states fall back to idle on their own: "armed" disarms if the
+  // user walks away without confirming, "done" clears the confirmation tick.
+  // Driving them from one effect means the timer is always cleaned up on
+  // unmount, and re-clicking mid-countdown restarts it rather than stacking.
   useEffect(() => {
-    if (state !== "armed") return;
-    const t = setTimeout(() => setState("idle"), 3500);
-    return () => clearTimeout(t);
+    if (state !== "armed" && state !== "done") return;
+    const t = window.setTimeout(() => setState("idle"), state === "armed" ? 3500 : 2000);
+    return () => window.clearTimeout(t);
   }, [state]);
 
   const click = async () => {
@@ -191,8 +195,7 @@ function ResetRow({
     setState("busy");
     try {
       await onClear();
-      setState("done");
-      setTimeout(() => setState("idle"), 2000);
+      setState("done"); // the effect above returns it to idle
     } catch {
       setState("idle");
     }

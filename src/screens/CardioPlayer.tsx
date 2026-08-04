@@ -1,19 +1,9 @@
 import { useState } from "react";
 import type { CardioActual, Profile, Workout } from "../types";
 import { useGpsTracker } from "../features/cardio/tracker";
-import { distanceUnit, fmtPace, kmToMi, paceUnit } from "../features/units";
+import { distanceUnit, fmtClock, fmtPace, kmToMi, paceUnit } from "../features/units";
 import { ManualCardioEntry } from "../components/ManualCardioEntry";
 import { ChevronLeft } from "../components/icons";
-
-function fmtTime(total: number): string {
-  const s = Math.max(0, Math.round(total));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const r = s % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`
-    : `${m}:${String(r).padStart(2, "0")}`;
-}
 
 interface Props {
   workout: Workout;
@@ -63,7 +53,7 @@ export function CardioPlayer({ workout, units, onFinish, onCancel }: Props) {
         </div>
         <div className="cardio-sub">
           <div className="cardio-metric">
-            <span className="cardio-val">{fmtTime(state.elapsedSec)}</span>
+            <span className="cardio-val">{fmtClock(state.elapsedSec)}</span>
             <span className="cardio-lbl">time</span>
           </div>
           <div className="cardio-metric">

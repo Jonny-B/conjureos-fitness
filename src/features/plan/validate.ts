@@ -74,17 +74,28 @@ export function validateProgram(
   return reasons;
 }
 
+/** What a generated plan must be checked against: the plan's mode plus the
+ *  user's safety intake (age band, flags, injuries). */
 export interface ValidationContext {
   mode: PlanMode;
   sex?: Sex;
   safety: SafetyIntake;
 }
 
+/** Outcome of a safety check. `reasons` is empty when `ok`, and otherwise
+ *  lists every violation — it feeds the AI re-prompt, so it stays specific. */
 export interface ValidationResult {
   ok: boolean;
   reasons: string[];
 }
 
+/**
+ * Safety-check an AI-generated plan before it can be shown or stored.
+ *
+ * This is the gate, not a warning: a plan that fails here is regenerated or
+ * replaced by the fallback template, never surfaced. Checks the calorie floor
+ * for food-tracking modes, injury-excluded movements, and per-session volume.
+ */
 export function validatePlan(gen: GeneratedPlan, ctx: ValidationContext): ValidationResult {
   const reasons: string[] = [];
 

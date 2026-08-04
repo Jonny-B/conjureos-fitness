@@ -14,8 +14,11 @@
 import { getRepository } from "../data/repository";
 import { vfs } from "../bridge/vfs";
 
+/** One independently clearable slice of the user's history. */
 export type HistoryKind = "diary" | "weights" | "workouts" | "coach" | "planHistory";
 
+/** The clearable history slices with their user-facing copy, in the order
+ *  Settings lists them. Drives the reset UI so labels live beside the logic. */
 export const HISTORY_ITEMS: { kind: HistoryKind; label: string; desc: string }[] = [
   { kind: "diary", label: "Food diary", desc: "Every logged meal and snack" },
   { kind: "weights", label: "Weight history", desc: "All weigh-ins and the trend graph" },
@@ -26,6 +29,13 @@ export const HISTORY_ITEMS: { kind: HistoryKind; label: string; desc: string }[]
 
 const rm = (path: string) => vfs.rm(path).catch(() => {});
 
+/**
+ * Permanently delete one slice of the user's history. DESTRUCTIVE and not
+ * undoable — callers must confirm first.
+ *
+ * Never rejects: each underlying delete is best-effort, so one unavailable
+ * store can't leave the rest of a "clear all" half-applied.
+ */
 export async function clearHistory(kind: HistoryKind): Promise<void> {
   const repo = await getRepository();
   switch (kind) {

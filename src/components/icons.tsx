@@ -55,6 +55,7 @@ export const AppleIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Tab icon: the food diary (an open notebook). */
 export const DiaryIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H19a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 18.5z" />
@@ -63,12 +64,14 @@ export const DiaryIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Primary action: add / log something new. */
 export const AddIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 5v14M5 12h14" />
   </Svg>
 );
 
+/** Tab icon: trends and charts over time. */
 export const TrendsIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 17l5-5 3.5 3.5L21 7" />
@@ -76,12 +79,14 @@ export const TrendsIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Tab icon: workouts (a dumbbell). */
 export const WorkoutsIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M6.5 6.5v11M17.5 6.5v11M4 9v6M20 9v6M6.5 12h11" />
   </Svg>
 );
 
+/** The settings cog. */
 export const SettingsIcon = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="3" />
@@ -89,6 +94,7 @@ export const SettingsIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Search affordance — a magnifier. */
 export const SearchIcon = (p: IconProps) => (
   <Svg {...p}>
     <circle cx="11" cy="11" r="7" />
@@ -96,30 +102,35 @@ export const SearchIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Start a workout or a timed step. */
 export const PlayIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M7 5.5v13a1 1 0 0 0 1.5.87l11-6.5a1 1 0 0 0 0-1.74l-11-6.5A1 1 0 0 0 7 5.5z" fill="currentColor" stroke="none" />
   </Svg>
 );
 
+/** Back / previous affordance. */
 export const ChevronLeft = (p: IconProps) => (
   <Svg {...p}>
     <path d="M15 5l-7 7 7 7" />
   </Svg>
 );
 
+/** Forward / next / drill-in affordance. */
 export const ChevronRight = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9 5l7 7-7 7" />
   </Svg>
 );
 
+/** Dismiss a sheet, modal, or full-screen flow. */
 export const CloseIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M6 6l12 12M18 6L6 18" />
   </Svg>
 );
 
+/** Edit the adjacent item in place. */
 export const EditIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 20h9" />
@@ -127,12 +138,14 @@ export const EditIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Delete the adjacent item. */
 export const TrashIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12" />
   </Svg>
 );
 
+/** Capture entry point: snap a Nutrition Facts panel. */
 export const NutritionPanelIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="4" y="3" width="16" height="18" rx="2" />
@@ -140,6 +153,7 @@ export const NutritionPanelIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Capture entry point: snap the front of a package. */
 export const PackageIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 7l9-4 9 4-9 4-9-4z" />
@@ -148,6 +162,7 @@ export const PackageIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Capture entry point: scan a product barcode. */
 export const BarcodeIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 7V5.5A1.5 1.5 0 0 1 5.5 4H7M17 4h1.5A1.5 1.5 0 0 1 20 5.5V7M20 17v1.5a1.5 1.5 0 0 1-1.5 1.5H17M7 20H5.5A1.5 1.5 0 0 1 4 18.5V17" />
@@ -155,6 +170,7 @@ export const BarcodeIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Toggle the camera torch while scanning. */
 export const FlashlightIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M9 3h6l-.3 3.5a2 2 0 0 1-.5 1.2L13 9v9a1 1 0 0 1-1 1 1 1 0 0 1-1-1V9L9.8 7.7a2 2 0 0 1-.5-1.2L9 3z" />
@@ -162,6 +178,7 @@ export const FlashlightIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Fall back to typing a barcode/food by hand. */
 export const KeyboardIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="2.5" y="6" width="19" height="12" rx="2" />
@@ -169,6 +186,7 @@ export const KeyboardIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Open the camera / take a photo. */
 export const CameraIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 8a2 2 0 0 1 2-2h1.5l1-1.5A1 1 0 0 1 8.3 4h7.4a1 1 0 0 1 .8.5L17.5 6H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z" />
@@ -176,6 +194,7 @@ export const CameraIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** The AI coach — a speech bubble with a spark. */
 export const CoachIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.1 0-2.15-.2-3.1-.58L4 21l1.62-4.86A8.5 8.5 0 1 1 21 11.5z" />
@@ -190,12 +209,14 @@ export const DiamondIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Confirmation: saved, completed, or selected. */
 export const CheckIcon = (p: IconProps) => (
   <Svg {...p}>
     <polyline points="20 6 9 17 4 12" />
   </Svg>
 );
 
+/** Warning or estimate caveat. */
 export const AlertTriangle = (p: IconProps) => (
   <Svg {...p}>
     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />

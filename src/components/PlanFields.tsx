@@ -28,6 +28,7 @@ const DIRECTION_LABELS: Record<GoalDirection, string> = {
   gain: "Gain weight",
 };
 
+/** Metric/imperial switch. Changes DISPLAY only — storage stays metric. */
 export function UnitsToggle({
   units,
   onChange,
@@ -247,6 +248,7 @@ export function GoalWeightField({
   );
 }
 
+/** Age input, bounded to the range the calorie math is valid over. */
 export function AgeField({ age, onChange }: { age: number | undefined; onChange: (n: number | undefined) => void }) {
   return (
     <label className="field">
@@ -256,6 +258,7 @@ export function AgeField({ age, onChange }: { age: number | undefined; onChange:
   );
 }
 
+/** Biological-sex picker for the BMR estimate, including "prefer not to say". */
 export function SexField({ sex, onChange }: { sex: Sex; onChange: (s: Sex) => void }) {
   return (
     <label className="field">
@@ -271,6 +274,7 @@ export function SexField({ sex, onChange }: { sex: Sex; onChange: (s: Sex) => vo
   );
 }
 
+/** Training-experience picker — scales generated workout difficulty. */
 export function ExperienceField({
   value,
   onChange,
@@ -292,6 +296,7 @@ export function ExperienceField({
   );
 }
 
+/** Day-to-day activity picker — the multiplier that turns BMR into TDEE. */
 export function ActivityField({
   value,
   onChange,
@@ -313,6 +318,8 @@ export function ActivityField({
   );
 }
 
+/** Lose/maintain/gain picker. Usually derived from goal weight; this is the
+ *  explicit override for plans that don't collect one. */
 export function DirectionField({
   value,
   onChange,

@@ -4,7 +4,12 @@ import { DEFAULT_GOALS } from "../../types";
 import { EMPTY_MEMORY, type CoachContext } from "./model";
 
 const { complete } = vi.hoisted(() => ({ complete: vi.fn<() => Promise<string>>() }));
-vi.mock("../../bridge/ai", () => ({ complete, isAiAvailable: () => true }));
+// Stub only the host-dependent surface; pure helpers (extractJson) stay real.
+vi.mock("../../bridge/ai", async (orig) => ({
+  ...(await orig<typeof import("../../bridge/ai")>()),
+  complete,
+  isAiAvailable: () => true,
+}));
 
 import { coachChat } from "./coach";
 

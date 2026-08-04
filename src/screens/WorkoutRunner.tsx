@@ -15,11 +15,18 @@ import { CoachReflect } from "./CoachReflect";
 import { BurnEstimate } from "./BurnEstimate";
 import { HoldButton } from "../components/HoldButton";
 import { ChevronLeft } from "../components/icons";
+import { fmtClock } from "../features/units";
 
 // Shared workout helpers — used by both the Workouts library and the Plan tab's
 // program section, so they live with the runner that all workouts flow through.
+
+/** Whether a workout routes to the GPS distance tracker rather than the
+ *  guided step player. */
 export const isCardio = (w: Workout) => w.kind === "run" || w.kind === "bike";
+/** Total prescribed sets across every exercise in a workout. */
 export const setCount = (w: Workout) => w.exercises.reduce((s, e) => s + e.sets.length, 0);
+/** One-line workout subtitle for cards and lists: modality for cardio,
+ *  exercise + set counts for strength. */
 export function metaLine(w: Workout): string {
   if (isCardio(w)) return w.kind === "run" ? "Run · track distance" : "Bike · track distance";
   return `${w.exercises.length} exercises · ${setCount(w)} sets`;
@@ -339,7 +346,7 @@ function StrengthPlayer({
 
           {step.durationSec != null ? (
             <ProgressRing pct={ringPct} tone="accent">
-              <div className="timer big">{fmt(secondsLeft ?? step.durationSec)}</div>
+              <div className="timer big">{fmtClock(secondsLeft ?? step.durationSec)}</div>
             </ProgressRing>
           ) : (
             <SetRecorder
@@ -357,7 +364,7 @@ function StrengthPlayer({
         <div className="player-body">
           <div className="player-phase">REST</div>
           <ProgressRing pct={ringPct} tone="rest">
-            <div className="timer big rest">{fmt(secondsLeft ?? step.durationSec)}</div>
+            <div className="timer big rest">{fmtClock(secondsLeft ?? step.durationSec)}</div>
           </ProgressRing>
           <div className="player-next">Next: {step.nextExerciseName}</div>
         </div>
@@ -381,13 +388,6 @@ function StrengthPlayer({
       </div>
     </div>
   );
-}
-
-function fmt(total: number): string {
-  const s = Math.max(0, Math.round(total));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return m > 0 ? `${m}:${String(r).padStart(2, "0")}` : `0:${String(r).padStart(2, "0")}`;
 }
 
 /** WebAudio cue generator — short beeps for ticks + phase transitions. No

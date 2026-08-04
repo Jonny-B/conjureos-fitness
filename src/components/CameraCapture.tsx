@@ -30,6 +30,14 @@ async function blobToChatImage(blob: Blob): Promise<ChatImage> {
   return { mediaType, data: btoa(binary) };
 }
 
+/**
+ * Live camera viewfinder with a file-picker fallback. Emits the captured
+ * frame as a base64 {@link ChatImage} ready for a vision call.
+ *
+ * Crops to exactly the region the user framed, not the raw sensor frame —
+ * otherwise the model sees background outside the viewfinder and invents items
+ * from it. Falls back to the file picker on desktop or when access is denied.
+ */
 export function CameraCapture({
   guide,
   onCapture,

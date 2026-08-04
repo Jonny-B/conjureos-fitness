@@ -22,6 +22,7 @@ export function shiftDate(dateISO: string, deltaDays: number): string {
   return todayISO(dt);
 }
 
+/** Sum two macro totals field by field. Pure; neither input is mutated. */
 export function addMacros(a: Macros, b: Macros): Macros {
   return {
     calories: a.calories + b.calories,
@@ -52,6 +53,11 @@ export function entryMacros(entry: DiaryEntry): Macros {
   };
 }
 
+/**
+ * Group one day's entries into the shape the diary renders: entries bucketed
+ * by meal, per-meal macro subtotals, and the day's grand total. Meals with no
+ * entries are present but empty, so the UI can render every slot unconditionally.
+ */
 export function buildDayView(date: string, entries: DiaryEntry[]): DayView {
   const meals = emptyMealMap<DiaryEntry[]>(() => []);
   const perMeal = emptyMealMap<Macros>(() => ({ ...ZERO_MACROS }));

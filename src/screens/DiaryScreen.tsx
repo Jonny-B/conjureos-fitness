@@ -23,6 +23,8 @@ interface Props {
   onOpenWorkouts: () => void;
 }
 
+/** The home tab: calorie ring, macro bars, weight card, plan card, and the
+ *  day's meals. Re-reads whenever `date` or `nonce` changes. */
 export function DiaryScreen({
   date,
   goals,

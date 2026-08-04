@@ -148,6 +148,15 @@ function migrate(loaded: unknown): StoreShape {
   return structuredClone(EMPTY);
 }
 
+/**
+ * The default {@link Repository}: everything lives in one JSON blob held in
+ * memory and mirrored to the app's VFS (plus localStorage in the browser), so
+ * a fresh checkout runs end-to-end with zero configuration and no network.
+ *
+ * Unlike {@link SupabaseRepository} this implements the v2 plan surface too,
+ * which is why it stays the authoritative store for plans and sessions.
+ * Reads are served from the in-memory copy; every mutation persists eagerly.
+ */
 export class MockRepository implements Repository {
   readonly kind = "mock" as const;
   private store: StoreShape = structuredClone(EMPTY);

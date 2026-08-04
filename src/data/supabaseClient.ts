@@ -15,8 +15,15 @@
 
 const SCHEMA = "fitness";
 
+/** Supplies the bearer token for each request; re-invoked per call so a
+ *  refreshed session is picked up without rebuilding the client. */
 export type TokenProvider = () => Promise<string | null>;
 
+/**
+ * Minimal PostgREST client — just the verbs this app needs, so the full
+ * supabase-js dependency stays out of the bundle. Auth is a bearer token from
+ * the injected {@link TokenProvider}; RLS does the authorization server-side.
+ */
 export class SupabaseRestClient {
   constructor(
     private readonly url: string,

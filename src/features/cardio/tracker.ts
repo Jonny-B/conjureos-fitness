@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CardioActual } from "../../types";
 import { haversineMeters, isLocationAvailable, watchLocation, type LocationSample } from "../../bridge/location";
 
+/** Live state of a GPS-tracked cardio session, recomputed on every fix. */
 export interface CardioTrackState {
   distanceKm: number;
   elapsedSec: number;

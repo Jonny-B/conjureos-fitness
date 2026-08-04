@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { SetActual } from "../types";
 import { formatSet, overloadSuggestion } from "../features/workoutHistory";
 
+/** What the user actually did on a set, as typed into the recorder — all
+ *  fields optional because a set can be logged before every box is filled. */
 export interface SetEntry {
   reps?: number;
   weightKg?: number;

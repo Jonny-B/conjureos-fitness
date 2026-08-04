@@ -8,7 +8,9 @@ const completeMock = vi.fn(async (_req?: unknown) =>
     changes: [{ op: "setReps", exerciseKey: "push-up", reps: 9 }],
   }),
 );
-vi.mock("../../bridge/ai", () => ({
+// Stub only the host-dependent surface; pure helpers (extractJson) stay real.
+vi.mock("../../bridge/ai", async (orig) => ({
+  ...(await orig<typeof import("../../bridge/ai")>()),
   complete: (req: unknown) => completeMock(req),
   isAiAvailable: () => true,
 }));

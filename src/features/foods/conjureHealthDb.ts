@@ -137,6 +137,12 @@ function toFoodItem(row: HealthFoodApi): FoodItem {
   return item;
 }
 
+/**
+ * Look up a barcode in the community food DB. The Edge Function itself falls
+ * through to Open Food Facts and backfills our DB on a hit, so a miss here
+ * means neither source knew it. Returns null on any failure — callers treat an
+ * unreachable DB the same as a miss and continue to the next provider.
+ */
 export async function lookupBarcode(
   barcode: string,
   signal?: AbortSignal,
@@ -152,6 +158,7 @@ export async function lookupBarcode(
   return toFoodItem(res.food);
 }
 
+/** Free-text search of the community food DB. Returns [] on any failure. */
 export async function searchText(
   query: string,
   limit = 20,
@@ -165,6 +172,8 @@ export async function searchText(
   return (res?.foods ?? []).map(toFoodItem);
 }
 
+/** A food being submitted back to the community DB, tagged with how it was
+ *  derived and whether the user corrected it before saving. */
 export interface ContributePayload {
   food: FoodItem;
   source: "ai_label" | "ai_front" | "user_manual";
@@ -172,6 +181,8 @@ export interface ContributePayload {
   userEdited?: boolean;
 }
 
+/** Outcome of a contribution. `acceptedAs` distinguishes a canonical row
+ *  from a queued suggestion; `ok: false` means the submit never landed. */
 export interface ContributeResult {
   ok: boolean;
   acceptedAs: "row" | "suggestion" | null;
@@ -208,6 +219,11 @@ function foodItemToPayload(f: FoodItem): Record<string, unknown> {
   };
 }
 
+/**
+ * Submit a food (usually an AI parse the user reviewed) to the community DB.
+ * Best-effort and never throws: contributing is a side benefit, so a failure
+ * must not block the user's own diary entry.
+ */
 export async function contribute(p: ContributePayload): Promise<ContributeResult> {
   const body = {
     food: foodItemToPayload(p.food),
@@ -227,6 +243,8 @@ export async function contribute(p: ContributePayload): Promise<ContributeResult
   };
 }
 
+/** Telemetry for one lookup: what was scanned or searched, which provider
+ *  ultimately answered, and how long it took. */
 export interface ScanAttempt {
   barcode?: string;
   query?: string;
@@ -234,6 +252,8 @@ export interface ScanAttempt {
   durationMs?: number;
 }
 
+/** Record a lookup outcome so provider hit-rates can be tuned. Fire-and-
+ *  forget: never throws and is not awaited on the user's critical path. */
 export async function logScanAttempt(a: ScanAttempt): Promise<void> {
   await call("logScanAttempt", {
     barcode: a.barcode,
@@ -246,6 +266,8 @@ export async function logScanAttempt(a: ScanAttempt): Promise<void> {
   });
 }
 
+/** Report a bad entry in the community DB for review. Resolves false when
+ *  the report couldn't be filed. */
 export async function flagFood(id: string, reason?: string): Promise<boolean> {
   const res = await call<{ ok: boolean }>("flag", { id, reason });
   return res?.ok === true;

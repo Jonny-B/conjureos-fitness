@@ -40,6 +40,8 @@ export function currentGroup(program: WorkoutProgram): number {
   return program.benchmarks.some((b) => b.baseline == null) ? 1 : 2;
 }
 
+/** Groups in one cycle (1 evaluation + N training). Falls back to
+ *  {@link DEFAULT_GROUPS_PER_CYCLE} for plans created before the field. */
 export function groupsPerCycle(program: WorkoutProgram): number {
   return program.groupsPerCycle ?? DEFAULT_GROUPS_PER_CYCLE;
 }
@@ -49,6 +51,7 @@ export function isEvaluationGroup(program: WorkoutProgram, n: number): boolean {
   return (n - 1) % groupsPerCycle(program) === 0;
 }
 
+/** Every workout belonging to group `n`, in program order. */
 export function workoutsInGroup(program: WorkoutProgram, n: number): ProgramWorkout[] {
   return program.workouts.filter((pw) => groupOf(pw) === n);
 }

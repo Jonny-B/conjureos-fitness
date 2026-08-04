@@ -13,9 +13,10 @@
  */
 
 import type { ChatImage } from "../bridge/ai";
-import { complete } from "../bridge/ai";
+import { complete, extractJson } from "../bridge/ai";
 import type { FoodItem } from "../types";
 import { newId } from "../data/id";
+import { toIntInRange } from "./num";
 
 const SYSTEM = `You are a nutrition-estimation assistant for a calorie-tracking app.
 The user describes food they ate (as text, and/or a photo). Return a JSON object
@@ -33,6 +34,14 @@ Rules:
 
 const MAX_ITEMS = 20;
 
+/**
+ * Turn a described meal ("two eggs and a coffee") or a photo of one into
+ * individual foods with estimated macros. Returns [] when nothing usable came
+ * back — an empty result is normal, not an error.
+ *
+ * Every item is an unreviewed estimate: the caller tags it so the diary can
+ * badge it and the user can correct the numbers.
+ */
 export async function parseMeal(input: {
   text?: string;
   image?: ChatImage;
@@ -71,21 +80,9 @@ function parseItems(raw: string): FoodItem[] {
   return out;
 }
 
-/** Tolerate the model wrapping JSON in prose or ```fences``` despite the prompt. */
-function extractJson(raw: string): string {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]) return fenced[1].trim();
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start !== -1 && end > start) return raw.slice(start, end + 1);
-  return raw.trim();
-}
-
-const clampInt = (v: unknown, max: number): number => {
-  const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.min(max, Math.round(n));
-};
+/** A macro/calorie field from the model: a non-negative whole number capped at
+ *  `max`; anything unparseable reads as 0 rather than poisoning the totals. */
+const macro = (v: unknown, max: number): number => toIntInRange(v, 0, max) ?? 0;
 
 function toFoodItem(v: unknown): FoodItem | null {
   if (!v || typeof v !== "object") return null;
@@ -101,10 +98,10 @@ function toFoodItem(v: unknown): FoodItem | null {
     source: "custom",
     name,
     perServing: {
-      calories: clampInt(o.calories, 5000),
-      protein: clampInt(o.protein, 500),
-      carbs: clampInt(o.carbs, 800),
-      fat: clampInt(o.fat, 500),
+      calories: macro(o.calories, 5000),
+      protein: macro(o.protein, 500),
+      carbs: macro(o.carbs, 800),
+      fat: macro(o.fat, 500),
     },
     servingSize,
     // Flag the numbers as an unreviewed AI estimate so the diary can warn the

@@ -69,6 +69,8 @@ export interface RecipeNutrition {
   carbs: number;
 }
 
+/** A saved recipe as returned by the provider app, with per-serving
+ *  nutrition when it has any (`null` when the provider couldn't estimate). */
 export interface ListedRecipe {
   slug: string;
   title: string;
@@ -112,6 +114,8 @@ function actions() {
   return window.__conjureos?.actions;
 }
 
+/** Whether cross-app invocation exists at all. False outside ConjureOS —
+ *  the read helpers then serve mock recipes so the flow stays walkable. */
 export function isRecipeBridgeAvailable(): boolean {
   return typeof actions()?.invoke === "function";
 }
@@ -226,6 +230,11 @@ async function providerHasAction(appPath: string, name: string): Promise<boolean
 
 // ── Reads ────────────────────────────────────────────────────────────────
 
+/**
+ * Every saved recipe from the provider app, optionally filtered by title.
+ * Returns [] when no provider is reachable — outside ConjureOS this serves
+ * mock recipes so the log-a-recipe flow stays walkable.
+ */
 export async function listRecipes(filter?: string): Promise<ListedRecipe[]> {
   const provider = await resolveProvider();
   if (provider.kind === "mock") return mockRecipes(filter);
@@ -251,6 +260,14 @@ export async function listRecipes(filter?: string): Promise<ListedRecipe[]> {
   }
 }
 
+/**
+ * Fetch one saved recipe by slug, or null when the provider has no such
+ * recipe (or no provider is reachable).
+ *
+ * Throws {@link RecipesAppClosedError} when a provider IS configured but its
+ * app isn't running — the caller turns that into the shell's open-and-retry
+ * marker rather than reporting a missing recipe.
+ */
 export async function getRecipe(slug: string): Promise<ListedRecipe | null> {
   const provider = await resolveProvider();
   if (provider.kind === "mock") return mockRecipes().find((r) => r.slug === slug) ?? null;

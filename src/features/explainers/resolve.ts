@@ -11,7 +11,7 @@
 
 import type { ExerciseExplainer } from "../../types";
 import { readJson, writeJson } from "../../bridge/vfs";
-import { complete } from "../../bridge/ai";
+import { complete, extractJson } from "../../bridge/ai";
 
 const userPath = (key: string) => `explainers/user/${key}.json`;
 const aiPath = (key: string) => `explainers/ai/${key}.json`;
@@ -23,14 +23,6 @@ Return ONLY a JSON object:
 - worksMuscles: the primary muscles worked (2-5 short names).
 - usefulData: one line of tips, typical rep range, or a common mistake to avoid.
 Output ONLY the JSON. No prose, no markdown fences.`;
-
-function extractJson(raw: string): string {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]) return fenced[1].trim();
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  return start !== -1 && end > start ? raw.slice(start, end + 1) : raw.trim();
-}
 
 function parseExplainer(raw: string, exerciseKey: string): ExerciseExplainer | null {
   let json: unknown;

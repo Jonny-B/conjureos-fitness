@@ -44,6 +44,8 @@ function estimateMinutes(w: Workout): number {
   return Math.max(1, Math.round(sec / 60));
 }
 
+/** Pre-workout splash: what the session trains, its exercises, and an
+ *  estimated duration, gating the actual start behind an explicit tap. */
 export function WorkoutOverview({
   workout,
   isBenchmark,

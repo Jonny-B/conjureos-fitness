@@ -102,6 +102,15 @@ const EATER_ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
   { value: "active", label: "Very active" },
 ];
 
+/**
+ * The plan questionnaire — used both to CREATE a plan and to EDIT one.
+ *
+ * Passing `editPlan` switches to edit mode: answers are prefilled, the
+ * disclaimer is skipped (already acked), and the start date becomes editable.
+ * On commit, `decidePlanEdit` decides whether the change forks a brand-new
+ * plan or patches the existing one — which is why edit mode needs `onModify`
+ * alongside `onComplete`.
+ */
 export function WizardScreen({ onComplete, onClose, units = "metric", profile, editPlan, onModify }: Props) {
   const editMode = !!editPlan;
   // In edit mode the liability was already acked on the original plan, so skip

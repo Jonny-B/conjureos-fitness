@@ -40,6 +40,8 @@ const DAY_CLOSER: CoachQuestion = { id: "d_free", text: "Anything else on your m
 
 // ── Stat gathering ───────────────────────────────────────────────────
 
+/** Signals derived from a finished session that the question bank filters on
+ *  — so the coach asks about what actually happened, not a generic prompt. */
 export interface WorkoutStats {
   cardio: boolean;
   avgRpe: number | null;
@@ -49,6 +51,11 @@ export interface WorkoutStats {
   totalSets: number;
 }
 
+/**
+ * Reduce a finished session (and the sessions before it) into the signals the
+ * question bank filters on: effort, grinding, PRs, volume. Pure — takes
+ * history explicitly rather than reading it, so it's directly testable.
+ */
 export function workoutStatsFrom(session: WorkoutSession, prior: WorkoutSession[]): WorkoutStats {
   const sets = (session.byExercise ?? []).flatMap((e) => e.sets);
   const rpes = sets.map((s) => s.rpe).filter((v): v is number => v != null);
@@ -65,6 +72,7 @@ export function workoutStatsFrom(session: WorkoutSession, prior: WorkoutSession[
   };
 }
 
+/** End-of-day signals the check-in question bank filters on. */
 export interface DayStats {
   calories: number;
   goal: number;

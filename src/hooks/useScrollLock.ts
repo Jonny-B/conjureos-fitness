@@ -12,6 +12,7 @@ import { useEffect } from "react";
  */
 let openCount = 0;
 
+/** Freeze background scroll for as long as the calling component is mounted. */
 export function useScrollLock(): void {
   useEffect(() => {
     openCount += 1;

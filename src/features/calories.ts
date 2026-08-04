@@ -11,7 +11,14 @@
 import type { Profile, Workout, WorkoutSession } from "../types";
 import { complete, isAiAvailable } from "../bridge/ai";
 
+/**
+ * How a burn figure was arrived at. Surfaced in the UI so an estimate is
+ * never mistaken for a measurement: `formula` is the MET calculation,
+ * `ai` a model guess when the formula lacked inputs, `default` a flat fallback.
+ */
 export type BurnMethod = "formula" | "ai" | "default";
+/** An estimated calorie burn plus its provenance. The user can always
+ *  override `kcal` before it reaches the diary. */
 export interface BurnEstimateResult {
   kcal: number;
   method: BurnMethod;

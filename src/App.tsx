@@ -45,6 +45,14 @@ function mealForNow(): MealType {
   return "snacks";
 }
 
+/**
+ * Root component and the app's single source of navigation + shared state.
+ *
+ * Owns the active tab, the selected date, and the cached profile/goals/plan
+ * that most screens read, passing them down rather than letting screens hit the
+ * repository independently. A `nonce` counter is bumped after any write so
+ * mounted children re-read; that's the app-wide invalidation signal.
+ */
 export function App() {
   const [tab, setTab] = useState<Tab>("diary");
   const [date, setDate] = useState<string>(todayISO());

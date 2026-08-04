@@ -38,6 +38,13 @@ async function loadCache(): Promise<BarcodeCache> {
   return cache;
 }
 
+/**
+ * Resolve a barcode to a food across every provider, newest cache first.
+ *
+ * Order: the VFS cache (including remembered misses, so a repeat scan of an
+ * unknown item doesn't re-roundtrip), then the Conjure Health DB, then Open
+ * Food Facts directly. Returns null when nobody knows it; never throws.
+ */
 export async function lookupBarcode(
   barcode: string,
   signal?: AbortSignal,

@@ -25,12 +25,23 @@ declare global {
 
 const real = (): VFSBridge | undefined => window.__vfs;
 
+/** Whether a real host filesystem is mounted. False under `npm run dev` and
+ *  in tests, where `vfs` transparently falls back to an in-memory store. */
 export function isVfsAvailable(): boolean {
   return real() !== undefined;
 }
 
 const memStore = new Map<string, string>();
 
+/**
+ * The app's private file store, as provided by ConjureOS.
+ *
+ * Falls back to a process-local in-memory map when no host is mounted, so
+ * every persistence path stays exercisable outside ConjureOS — but note that
+ * fallback does NOT survive a reload. Paths are app-relative; `read` rejects
+ * with an ENOENT-style error for a missing file, so prefer `readJson`, which
+ * takes an explicit default.
+ */
 export const vfs: VFSBridge = {
   async read(path) {
     const r = real();

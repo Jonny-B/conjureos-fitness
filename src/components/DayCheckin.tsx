@@ -20,6 +20,8 @@ import { CloseIcon } from "./icons";
 /** Evening = 5pm onward; before that the banner stays out of the way. */
 export const isEvening = (d = new Date()): boolean => d.getHours() >= 17;
 
+/** Evening prompt above the Today tracker inviting an end-of-day check-in.
+ *  Dismissible for the session; render only when {@link isEvening}. */
 export function DayCheckinBanner({ onOpen, onDismiss }: { onOpen: () => void; onDismiss: () => void }) {
   return (
     <div className="setup-banner checkin-banner">
@@ -34,6 +36,11 @@ export function DayCheckinBanner({ onOpen, onDismiss }: { onOpen: () => void; on
   );
 }
 
+/**
+ * The end-of-day check-in sheet: 3-4 questions the coach picks from the day's
+ * own data. Submitting writes the check-in to the day log, feeds coach memory,
+ * and may apply a small plan tweak — which is why it takes `onPlanChange`.
+ */
 export function DayCheckinSheet({
   date,
   onClose,

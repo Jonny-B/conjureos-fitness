@@ -18,6 +18,8 @@ const MODE_LABEL: Record<string, string> = {
   logging_only: "Logging",
 };
 
+/** Home-screen card summarizing the active plan, or the create-a-plan prompt
+ *  when there isn't one. Tapping it opens the coach. */
 export function CoachPlanCard({
   plan,
   goals,
