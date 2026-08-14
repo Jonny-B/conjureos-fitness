@@ -21,6 +21,7 @@ import { recordPlanStarted } from "./features/coach/memory";
 import { AddFoodScreen, type AddMode } from "./screens/AddFoodScreen";
 import { PlanScreen } from "./screens/PlanScreen";
 import { WorkoutsScreen } from "./screens/WorkoutsScreen";
+import { COACH_AND_WORKOUTS_ENABLED } from "./features/flags";
 import { CoachScreen } from "./screens/CoachScreen";
 import { SettingsSheet, type SettingsView } from "./screens/SettingsSheet";
 import { AppHeader } from "./components/AppHeader";
@@ -253,9 +254,9 @@ export function App() {
     ) : null;
 
   // Evening-only, banner-only (no notifications by design): nudge a coach
-  // check-in until today has one.
+  // check-in until today has one. Paused with the coach.
   const checkinBanner =
-    ready && !checkinDone && !checkinDismissed && isEvening() ? (
+    COACH_AND_WORKOUTS_ENABLED && ready && !checkinDone && !checkinDismissed && isEvening() ? (
       <DayCheckinBanner onOpen={() => setCheckinOpen(true)} onDismiss={() => setCheckinDismissed(true)} />
     ) : null;
 
@@ -294,7 +295,9 @@ export function App() {
         : tab === "plan"
           ? { title: "Plan" }
           : tab === "workouts"
-            ? { title: "Workouts" }
+            ? COACH_AND_WORKOUTS_ENABLED
+              ? { title: "Workouts" }
+              : { title: "Exercise", onBack: () => setTab("diary") }
             : tab === "coach"
               ? { title: "Coach", onBack: () => setTab("plan") }
               : { title: "Conjure Health" };
@@ -344,6 +347,7 @@ export function App() {
           />
         ) : tab === "workouts" && !loggingOnly ? (
           <WorkoutsScreen
+            exerciseOnly={!COACH_AND_WORKOUTS_ENABLED}
             units={profile?.units ?? "metric"}
             plan={plan}
             onPlanChange={setPlan}
@@ -351,7 +355,7 @@ export function App() {
             nonce={nonce}
             onMutated={() => setNonce((n) => n + 1)}
           />
-        ) : tab === "coach" ? (
+        ) : tab === "coach" && COACH_AND_WORKOUTS_ENABLED ? (
           <CoachScreen onPlanChange={setPlan} initialPrompt={coachInitialPrompt} />
         ) : (
           diaryScreen
@@ -362,14 +366,14 @@ export function App() {
         <TabButton label="Diary" Icon={DiaryIcon} active={tab === "diary" || tab === "meal"} onClick={() => setTab("diary")} />
         <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(mealForNow())} />
         <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan" || tab === "coach"} onClick={() => setTab("plan")} />
-        {!loggingOnly && (
+        {!loggingOnly && COACH_AND_WORKOUTS_ENABLED && (
           <TabButton label="Workouts" Icon={WorkoutsIcon} active={tab === "workouts"} onClick={() => setTab("workouts")} />
         )}
       </nav>
 
       <div className="app-version">v{__APP_VERSION__}</div>
 
-      {checkinOpen && (
+      {checkinOpen && COACH_AND_WORKOUTS_ENABLED && (
         <DayCheckinSheet
           date={todayISO()}
           onClose={() => setCheckinOpen(false)}

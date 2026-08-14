@@ -13,6 +13,7 @@
 
 import { getRepository } from "../data/repository";
 import { vfs } from "../bridge/vfs";
+import { COACH_AND_WORKOUTS_ENABLED } from "./flags";
 
 /** One independently clearable slice of the user's history. */
 export type HistoryKind = "diary" | "weights" | "workouts" | "coach" | "planHistory";
@@ -66,4 +67,19 @@ export async function clearAllHistories(): Promise<void> {
     await clearHistory(item.kind);
   }
   await rm("food-cache.json");
+}
+
+/** Slices belonging to the paused coach + workout features (see features/flags). */
+const PAUSED_KINDS: ReadonlySet<HistoryKind> = new Set<HistoryKind>(["workouts", "coach"]);
+
+/**
+ * The history rows Settings should actually offer. While the coach and workout
+ * program are paused there is no visible feature producing that data, so
+ * offering to clear it just raises questions — the rows are hidden and the data
+ * is left intact for revival. "Clear all history" still wipes everything,
+ * including the hidden slices, so it keeps meaning all.
+ */
+export function visibleHistoryItems(): typeof HISTORY_ITEMS {
+  if (COACH_AND_WORKOUTS_ENABLED) return HISTORY_ITEMS;
+  return HISTORY_ITEMS.filter((i) => !PAUSED_KINDS.has(i.kind));
 }

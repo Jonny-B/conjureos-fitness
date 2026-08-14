@@ -21,6 +21,12 @@ import { WorkoutRunner, metaLine } from "./WorkoutRunner";
  * list that combines in-app sessions and wearable/Apple-Health workouts. From
  * there the user can adjust a workout's burned calories or remove it from the
  * day's total (wearable removals are local + reversible; see features/exercise).
+ *
+ * In `exerciseOnly` mode (the coach/workout pause — see features/flags) the
+ * library and the runner are gone and only the completed list renders. Apple
+ * Health calories still feed the calorie ring while the coach is paused, so the
+ * user must keep a way to see and correct the numbers moving their budget; this
+ * screen is that surface, reached from the ring's Exercise row.
  */
 export function WorkoutsScreen({
   units,
@@ -29,6 +35,7 @@ export function WorkoutsScreen({
   date = todayISO(),
   nonce = 0,
   onMutated,
+  exerciseOnly = false,
 }: {
   units: Profile["units"];
   plan: Plan | null;
@@ -36,8 +43,23 @@ export function WorkoutsScreen({
   date?: string;
   nonce?: number;
   onMutated?: () => void;
+  /** Render only the completed-workouts list — no library, no runner. */
+  exerciseOnly?: boolean;
 }) {
   const [running, setRunning] = useState<Workout | null>(null);
+
+  if (exerciseOnly) {
+    return (
+      <div className="workouts">
+        <h1 className="screen-title">Exercise</h1>
+        <p className="muted small">
+          Workouts synced from Apple Health and other wearables. Calories burned are added back
+          to your daily budget — edit or remove anything that looks wrong.
+        </p>
+        <CompletedToday date={date} nonce={nonce} onMutated={onMutated} />
+      </div>
+    );
+  }
 
   if (running) {
     return (

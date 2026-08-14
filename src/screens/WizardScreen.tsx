@@ -33,6 +33,7 @@ import { modeHasWorkouts, modeTracksFood } from "../features/plan/model";
 import type { WizardBody } from "../features/plan/planService";
 import { decidePlanEdit } from "../features/plan/planService";
 import type { ExerciseSet, ProgramWorkout } from "../types";
+import { COACH_AND_WORKOUTS_ENABLED } from "../features/flags";
 
 type Step = "disclaimer" | "mode" | "safety" | "inputs" | "review";
 
@@ -118,7 +119,9 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
   const [step, setStep] = useState<Step>(editMode ? "mode" : "disclaimer");
 
   // Step 1 — mode + free-text goal prefill from the plan being edited.
-  const [mode, setMode] = useState<PlanMode>(editPlan?.mode ?? "both");
+  const [mode, setMode] = useState<PlanMode>(
+    editPlan?.mode ?? (COACH_AND_WORKOUTS_ENABLED ? "both" : "eat_better"),
+  );
   // Step 2 (safety intake) — age is a number now; the band is derived.
   // Prefill every body-stat field from the existing profile so nothing entered
   // in the cog is lost or re-typed; fall back to the same defaults as before
@@ -336,22 +339,27 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
 
       {step === "mode" && (
         <div className="mode-body wizard-step">
-          <WizardHead n={1} title="What do you want to focus on?" />
-          <div className="mode-cards">
-            {MODE_CARDS.map((c) => (
-              <button
-                key={c.mode}
-                className={`mode-card${mode === c.mode ? " active" : ""}`}
-                onClick={() => setMode(c.mode)}
-              >
-                <span className="mode-card-title">
-                  {c.title}
-                  {c.recommended && <span className="mode-card-badge">Recommended</span>}
-                </span>
-                <span className="mode-card-blurb">{c.blurb}</span>
-              </button>
-            ))}
-          </div>
+          <WizardHead
+            n={1}
+            title={COACH_AND_WORKOUTS_ENABLED ? "What do you want to focus on?" : "What's your goal?"}
+          />
+          {COACH_AND_WORKOUTS_ENABLED && (
+            <div className="mode-cards">
+              {MODE_CARDS.map((c) => (
+                <button
+                  key={c.mode}
+                  className={`mode-card${mode === c.mode ? " active" : ""}`}
+                  onClick={() => setMode(c.mode)}
+                >
+                  <span className="mode-card-title">
+                    {c.title}
+                    {c.recommended && <span className="mode-card-badge">Recommended</span>}
+                  </span>
+                  <span className="mode-card-blurb">{c.blurb}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <label className="field goal-describe">
             <span className="field-label">Describe it in your own words (optional)</span>
@@ -363,7 +371,9 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
               onChange={(e) => setGoalText(e.target.value)}
             />
             <span className="muted small field-hint">
-              The more specific you are, the better your plan and benchmark fit.
+              {COACH_AND_WORKOUTS_ENABLED
+                ? "The more specific you are, the better your plan and benchmark fit."
+                : "The more specific you are, the better your plan fits."}
             </span>
           </label>
 
@@ -452,7 +462,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
 
       {step === "inputs" && (
         <div className="mode-body wizard-step">
-          <WizardHead n={3} title="Your training" />
+          <WizardHead n={3} title={hasWorkouts ? "Your training" : "Your plan"} />
 
           {/* Start date is only editable when editing a plan — moving it forks a
               new plan. On first creation it's simply "today". */}

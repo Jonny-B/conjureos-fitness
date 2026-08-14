@@ -5,7 +5,7 @@ import { saveProgram } from "../features/plan/planService";
 import { ProgramEditor } from "../components/ProgramEditor";
 import { CloseIcon } from "../components/icons";
 import { useScrollLock } from "../hooks/useScrollLock";
-import { clearAllHistories, clearHistory, HISTORY_ITEMS } from "../features/resetData";
+import { clearAllHistories, clearHistory, visibleHistoryItems } from "../features/resetData";
 
 /** Which surface the settings sheet opens on. "program" deep-links straight to
  *  the workout-program editor (e.g. from the Plan tab's "Edit workouts"). */
@@ -115,7 +115,7 @@ export function SettingsSheet({
             <p className="muted small reset-warning">
               Clearing is permanent. Your profile, units, and current plan are kept.
             </p>
-            {HISTORY_ITEMS.map((item) => (
+            {visibleHistoryItems().map((item) => (
               <ResetRow
                 key={item.kind}
                 label={item.label}

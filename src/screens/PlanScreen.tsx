@@ -29,6 +29,7 @@ import { CheckIcon, PlayIcon } from "../components/icons";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { WorkoutRunner, metaLine } from "./WorkoutRunner";
 import { toIntInRange } from "../features/num";
+import { COACH_AND_WORKOUTS_ENABLED } from "../features/flags";
 
 /**
  * Plan hub — the home for the user's plan, tracking + coaching, condensing what
@@ -85,9 +86,16 @@ export function PlanScreen({
     );
   }
 
+  // ProgramSection carries its own "Your plan / Edit plan" header, but renders
+  // nothing without a workout program — so a food-only plan needs its own
+  // header or there is no way to reach the plan editor at all.
+  const showProgram = COACH_AND_WORKOUTS_ENABLED && !!plan?.program;
+
   return (
     <div className="plan-screen">
-      {plan ? (
+      {!plan && <PlanCtaCard onStartPlan={onStartPlan} />}
+      {plan && !showProgram && <PlanHeaderSection plan={plan} onEditPlan={onEditPlan} />}
+      {plan && showProgram && (
         <ProgramSection
           plan={plan}
           units={units}
@@ -96,15 +104,40 @@ export function PlanScreen({
           onStart={setRunning}
           onPlanChange={onPlanChange}
         />
-      ) : (
-        <PlanCtaCard onStartPlan={onStartPlan} />
       )}
       {plan && modeTracksFood(plan.mode) && (
         <PlanTargetsSection plan={plan} goals={goals} onPlanChange={onPlanChange} />
       )}
       <TrendsPanel profile={profile} />
-      <CoachLauncher onAsk={onAskCoach} />
+      {COACH_AND_WORKOUTS_ENABLED && <CoachLauncher onAsk={onAskCoach} />}
     </div>
+  );
+}
+
+/**
+ * The plan's headline + the "Edit plan" entry point, for plans that render no
+ * program section (any food-only plan, and every plan while the coach and
+ * workout program are paused — see features/flags).
+ */
+function PlanHeaderSection({ plan, onEditPlan }: { plan: Plan; onEditPlan: () => void }) {
+  return (
+    <section className="plan-section">
+      <div className="section-label">
+        Your plan
+        <span className="section-actions">
+          <button className="link-btn section-action" onClick={onEditPlan}>
+            Edit plan
+          </button>
+        </span>
+      </div>
+      {plan.goalText && <p className="plan-goal-text">{plan.goalText}</p>}
+      <p className="muted small">
+        {plan.targets?.dailyCalories != null
+          ? `${plan.targets.dailyCalories.toLocaleString()} cal a day`
+          : "Daily targets below"}
+        {plan.endDate ? ` · until ${plan.endDate}` : ""}
+      </p>
+    </section>
   );
 }
 
