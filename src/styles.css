@@ -1052,6 +1052,34 @@ body {
   50% { top: 92%; }
   100% { top: 4%; }
 }
+/* Captured state: the feed is replaced by the still grabbed at detection and
+   the camera is already released, so the whole surface should read as "photo
+   taken", not "still scanning". */
+.scanner-still {
+  display: block;
+  object-fit: cover;
+}
+.scanner.captured .scanner-reticle {
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.58);
+  transition: box-shadow 160ms ease-out;
+}
+.scanner.captured .reticle-corner {
+  border-color: var(--cui-success, #22c55e);
+  transition: border-color 160ms ease-out;
+}
+/* A single quick shutter flash on capture. */
+.scanner-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  pointer-events: none;
+  animation: scanner-flash 320ms ease-out forwards;
+}
+@keyframes scanner-flash {
+  0% { opacity: 0.75; }
+  100% { opacity: 0; }
+}
+
 .scanner-guide {
   position: absolute;
   left: 12px;
@@ -3242,6 +3270,7 @@ input[type="date"].text-input {
 @media (prefers-reduced-motion: reduce) {
   .snap-cta-card, .snap-spinner, .disclosure-chevron { transition: none; animation: none; }
   .scanner-line { animation: none; top: 50%; }
+  .scanner-flash { animation: none; opacity: 0; }
 }
 
 /* ── Coach (Phase 2): check-ins + trainer chat ─────────────────────── */

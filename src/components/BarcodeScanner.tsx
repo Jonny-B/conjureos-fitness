@@ -39,11 +39,45 @@ export function BarcodeScanner({
   );
   const [hasTorch, setHasTorch] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+  // The frozen frame from the instant of detection. Set BEFORE the parent is
+  // told, so the camera visibly stops the moment the code is read rather than
+  // when the (network) lookup finishes.
+  const [snapshot, setSnapshot] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isScanSupported()) return;
     const controller = new AbortController();
     let stream: MediaStream | null = null;
+
+    /**
+     * Turn the live feed into a still, the instant a code is read: grab the
+     * current frame to a data URL, swap it in for the <video>, and release the
+     * camera. Releasing matters — it drops the capture indicator and the torch
+     * right away instead of holding the camera open for the whole lookup.
+     *
+     * Best-effort: if the frame can't be grabbed (zero-sized video, a tainted
+     * canvas) we still pause and stop the stream, so the feed never keeps
+     * running after a detection.
+     */
+    const freeze = (video: HTMLVideoElement) => {
+      try {
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+        if (w > 0 && h > 0) {
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d")?.drawImage(video, 0, 0, w, h);
+          setSnapshot(canvas.toDataURL("image/jpeg", 0.85));
+        }
+      } catch {
+        /* no still — the pause + stopped stream below still freeze the view */
+      }
+      video.pause();
+      stream?.getTracks().forEach((t) => t.stop());
+      trackRef.current = null;
+      setHasTorch(false);
+    };
 
     // Warm the WASM engine in parallel with getUserMedia. On WebKit the
     // polyfill lazy-fetches a ~1 MiB wasm blob on first detect(); kicking it
@@ -82,7 +116,14 @@ export function BarcodeScanner({
         }
 
         const code = await scanFromVideo(video, { signal: controller.signal, timeoutMs: 60_000 });
-        if (code && !controller.signal.aborted) onDetected(code);
+        if (code && !controller.signal.aborted) {
+          // Freeze FIRST. The parent's onDetected kicks off a barcode lookup
+          // that can take seconds over the network; leaving the feed live and
+          // the scan line sweeping through it reads as "still scanning" and
+          // invites the user to re-aim at a code we already have.
+          freeze(video);
+          onDetected(code);
+        }
       } catch (err) {
         if (!controller.signal.aborted) {
           setStatus("error");
@@ -137,45 +178,59 @@ export function BarcodeScanner({
     );
   }
 
+  const captured = snapshot !== null;
+
   return (
-    <div className="scanner">
-      <video ref={videoRef} className="scanner-video" muted playsInline />
+    <div className={`scanner${captured ? " captured" : ""}`}>
+      {captured ? (
+        <img className="scanner-video scanner-still" src={snapshot} alt="" aria-hidden />
+      ) : (
+        <video ref={videoRef} className="scanner-video" muted playsInline />
+      )}
+      {captured && <div className="scanner-flash" aria-hidden />}
       <div className="scanner-overlay" aria-hidden>
         <div className="scanner-reticle">
           <span className="reticle-corner tl" />
           <span className="reticle-corner tr" />
           <span className="reticle-corner bl" />
           <span className="reticle-corner br" />
-          <span className="scanner-line" />
+          {/* The sweeping line means "still looking" — drop it the moment we
+              have a code, even though the parent's lookup is still running. */}
+          {!captured && <span className="scanner-line" />}
         </div>
       </div>
       <div className="scanner-guide">
-        {status === "starting"
-          ? "Starting camera…"
-          : "Line up the barcode. Hold ~6″ away, avoid glare and shadows."}
+        {captured
+          ? "Barcode captured"
+          : status === "starting"
+            ? "Starting camera…"
+            : "Line up the barcode. Hold ~6″ away, avoid glare and shadows."}
       </div>
-      <div className="scanner-controls">
-        {onEnterBarcode && (
-          <button className="scanner-ctl" aria-label="Enter barcode by hand" onClick={onEnterBarcode}>
-            <KeyboardIcon size={20} />
-          </button>
-        )}
-        {hasTorch && (
-          <button
-            className={`scanner-ctl${torchOn ? " on" : ""}`}
-            aria-label={torchOn ? "Turn flashlight off" : "Turn flashlight on"}
-            aria-pressed={torchOn}
-            onClick={toggleTorch}
-          >
-            <FlashlightIcon size={20} />
-          </button>
-        )}
-        {onSnapPhoto && (
-          <button className="scanner-ctl" aria-label="Snap a photo instead" onClick={onSnapPhoto}>
-            <CameraIcon size={20} />
-          </button>
-        )}
-      </div>
+      {/* Once captured the camera is released, so its controls are meaningless. */}
+      {!captured && (
+        <div className="scanner-controls">
+          {onEnterBarcode && (
+            <button className="scanner-ctl" aria-label="Enter barcode by hand" onClick={onEnterBarcode}>
+              <KeyboardIcon size={20} />
+            </button>
+          )}
+          {hasTorch && (
+            <button
+              className={`scanner-ctl${torchOn ? " on" : ""}`}
+              aria-label={torchOn ? "Turn flashlight off" : "Turn flashlight on"}
+              aria-pressed={torchOn}
+              onClick={toggleTorch}
+            >
+              <FlashlightIcon size={20} />
+            </button>
+          )}
+          {onSnapPhoto && (
+            <button className="scanner-ctl" aria-label="Snap a photo instead" onClick={onSnapPhoto}>
+              <CameraIcon size={20} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
