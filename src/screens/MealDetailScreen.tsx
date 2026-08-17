@@ -6,6 +6,7 @@ import { entryMacros, isAiEstimate } from "../features/diary";
 import { BarcodeIcon, DiamondIcon, EditIcon, SearchIcon, TrashIcon } from "../components/icons";
 import { AiEstimateBadge } from "../components/AiEstimateBadge";
 import { useScrollLock } from "../hooks/useScrollLock";
+import { NumberField } from "../components/NumberField";
 
 interface Props {
   date: string;
@@ -27,6 +28,9 @@ interface Props {
  * This sits between the Diary and the Add screen so tapping "Lunch" shows what
  * you've eaten first, instead of dropping straight into a blank search.
  */
+/** Smallest loggable portion. Also the floor the +/- steppers stop at. */
+export const MIN_QTY = 0.1;
+
 export function MealDetailScreen({
   date,
   meal,
@@ -162,7 +166,7 @@ function EntryEditModal({
   const [name, setName] = useState(entry.food.name);
   const [serving, setServing] = useState(entry.food.servingSize);
   const [meal, setMeal] = useState<MealType>(entry.meal);
-  const [qty, setQty] = useState(entry.quantity);
+  const [qty, setQty] = useState<number | undefined>(entry.quantity);
   const [cal, setCal] = useState(entry.food.perServing.calories);
   const [protein, setProtein] = useState(entry.food.perServing.protein);
   const [carbs, setCarbs] = useState(entry.food.perServing.carbs);
@@ -189,7 +193,9 @@ function EntryEditModal({
     await repo.updateDiaryEntry(entry.id, {
       food,
       meal,
-      quantity: Math.max(0.25, Math.round(qty * 4) / 4),
+      // 2dp, not quarters: the steppers move in 0.25s but a TYPED 0.3 or 1.75
+      // should survive the save rather than snapping to the nearest quarter.
+      quantity: Math.max(MIN_QTY, Math.round((qty ?? MIN_QTY) * 100) / 100),
     });
     onSaved();
   };
@@ -231,12 +237,16 @@ function EntryEditModal({
             </label>
             <label className="field">
               <span>Quantity (servings)</span>
-              <input
-                className="text-input"
-                inputMode="decimal"
-                type="text"
-                value={String(qty)}
-                onChange={(e) => setQty(Number(e.target.value.replace(/[^0-9.]/g, "")) || 0)}
+              {/* NumberField, not a raw input: a controlled `String(Number(v))`
+                  field erases the trailing dot the instant you type "0.", so a
+                  decimal quantity could never be entered. */}
+              <NumberField
+                value={qty}
+                onChange={setQty}
+                min={MIN_QTY}
+                max={99}
+                decimals={2}
+                aria-label="Quantity (servings)"
               />
             </label>
           </div>

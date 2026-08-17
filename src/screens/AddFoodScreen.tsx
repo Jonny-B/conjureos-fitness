@@ -15,6 +15,8 @@ import {
   type ListedRecipe,
 } from "../bridge/recipeBridge";
 import { BarcodeScanner } from "../components/BarcodeScanner";
+import { NumberField } from "../components/NumberField";
+import { MIN_QTY } from "./MealDetailScreen";
 import { CameraCapture } from "../components/CameraCapture";
 import { NutritionLabelCapture } from "../components/NutritionLabelCapture";
 import { FrontOfPackageCapture } from "../components/FrontOfPackageCapture";
@@ -840,17 +842,26 @@ function LogPanel({
   onLogged: () => void;
   onBack: () => void;
 }) {
-  const [qty, setQty] = useState(initialQty);
+  const [qty, setQty] = useState<number | undefined>(initialQty);
   const [meal, setMeal] = useState<MealType>(defaultMeal);
   const [busy, setBusy] = useState(false);
 
-  const cal = Math.round(food.perServing.calories * qty);
+  // A cleared field reads as 0 here (honest preview) and blocks Add below,
+  // rather than silently substituting the minimum.
+  const q = qty ?? 0;
+  const cal = Math.round(food.perServing.calories * q);
 
   const log = async () => {
+    if (!qty || qty <= 0) return;
     setBusy(true);
     try {
       const repo = await getRepository();
-      await repo.addDiaryEntry({ date, meal, quantity: qty, food });
+      await repo.addDiaryEntry({
+        date,
+        meal,
+        quantity: Math.max(MIN_QTY, Math.round(qty * 100) / 100),
+        food,
+      });
       if (recipeSlug) await markCooked(recipeSlug);
       onLogged();
     } finally {
@@ -868,26 +879,29 @@ function LogPanel({
 
       <div className="log-macros">
         <Macro label="Cal" value={cal} />
-        <Macro label="P" value={Math.round(food.perServing.protein * qty)} unit="g" />
-        <Macro label="C" value={Math.round(food.perServing.carbs * qty)} unit="g" />
-        <Macro label="F" value={Math.round(food.perServing.fat * qty)} unit="g" />
+        <Macro label="P" value={Math.round(food.perServing.protein * q)} unit="g" />
+        <Macro label="C" value={Math.round(food.perServing.carbs * q)} unit="g" />
+        <Macro label="F" value={Math.round(food.perServing.fat * q)} unit="g" />
       </div>
 
       <label className="field">
         <span>Servings ({food.servingSize})</span>
         <div className="qty-stepper">
-          <button className="step" onClick={() => setQty((q) => Math.max(0.25, Math.round((q - 0.25) * 4) / 4))}>
+          <button className="step" onClick={() => setQty((v) => Math.max(MIN_QTY, Math.round(((v ?? 0) - 0.25) * 4) / 4))}>
             −
           </button>
-          <input
+          {/* Same reason as the edit modal: clamping to the min on every
+              keystroke made a typed "0.5" collapse to the floor mid-entry. */}
+          <NumberField
             className="qty-input"
-            type="number"
-            step="0.25"
-            min="0.25"
             value={qty}
-            onChange={(e) => setQty(Math.max(0.25, Number(e.target.value) || 0.25))}
+            onChange={setQty}
+            min={MIN_QTY}
+            max={99}
+            decimals={2}
+            aria-label="Servings"
           />
-          <button className="step" onClick={() => setQty((q) => Math.round((q + 0.25) * 4) / 4)}>
+          <button className="step" onClick={() => setQty((v) => Math.round(((v ?? 0) + 0.25) * 4) / 4)}>
             +
           </button>
         </div>
@@ -898,7 +912,7 @@ function LogPanel({
         <MealPicker meal={meal} onChange={setMeal} />
       </label>
 
-      <button className="btn primary block" disabled={busy} onClick={log}>
+      <button className="btn primary block" disabled={busy || !qty || qty <= 0} onClick={log}>
         {busy ? "Adding…" : `Add to ${MEAL_LABELS[meal]}`}
       </button>
     </div>
