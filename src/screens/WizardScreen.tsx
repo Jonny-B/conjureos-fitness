@@ -60,7 +60,10 @@ interface Props {
    */
   editPlan?: Plan | null;
   /** Commit an in-place modification (edit mode, non-forking change). */
-  onModify?: (body: WizardBody, patch: { endDate?: string; durationWeeks?: number }) => void;
+  onModify?: (
+    body: WizardBody,
+    patch: { endDate?: string; durationWeeks?: number; weeklyExerciseDays?: number },
+  ) => void;
 }
 
 const MODE_CARDS: { mode: PlanMode; title: string; blurb: string; recommended?: boolean }[] = [
@@ -96,6 +99,7 @@ const EXPERIENCE_OPTIONS: { value: ExperienceLevel; label: string }[] = [
   { value: "intermediate", label: "Intermediate" },
   { value: "advanced", label: "Advanced" },
 ];
+const EXERCISE_DAY_OPTIONS = [0, 2, 3, 4, 5, 6] as const;
 const EATER_ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
   { value: "sedentary", label: "Mostly sitting" },
   { value: "light", label: "Lightly active" },
@@ -119,6 +123,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
   const [step, setStep] = useState<Step>(editMode ? "mode" : "disclaimer");
 
   // Step 1 — mode + free-text goal prefill from the plan being edited.
+  const [weeklyExerciseDays, setWeeklyExerciseDays] = useState<number>(editPlan?.weeklyExerciseDays ?? 0);
   const [mode, setMode] = useState<PlanMode>(
     editPlan?.mode ?? (COACH_AND_WORKOUTS_ENABLED ? "both" : "eat_better"),
   );
@@ -317,13 +322,19 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
     const plan: Plan = {
       ...preview.plan,
       liability: { acknowledged: true, acceptedAt: new Date().toISOString(), appVersion: APP_VERSION },
+      // 0 means "not tracking" — store it as absent rather than a zero target.
+      ...(weeklyExerciseDays > 0 ? { weeklyExerciseDays } : {}),
     };
     onComplete(plan, buildBody());
   };
 
   /** Commit an in-place plan modification (edit mode, non-forking change). */
   const commitModify = () => {
-    onModify?.(buildBody(), { endDate, durationWeeks: weeksBetween(startDate, endDate) });
+    onModify?.(buildBody(), {
+      endDate,
+      durationWeeks: weeksBetween(startDate, endDate),
+      weeklyExerciseDays,
+    });
   };
 
   return (
@@ -366,7 +377,11 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
             <textarea
               className="text-area"
               rows={2}
-              placeholder="e.g. lose a few pounds and get better at the Murph"
+              placeholder={
+                COACH_AND_WORKOUTS_ENABLED
+                  ? "e.g. lose a few pounds and get better at the Murph"
+                  : "e.g. lose 15 lb by Christmas, and eat more protein"
+              }
               value={goalText}
               onChange={(e) => setGoalText(e.target.value)}
             />
@@ -447,7 +462,11 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
           {gated && (
             <div className="notice notice-soft">
               <AlertTriangle />
-              <span>Based on your answers we'll keep this to food &amp; habit tracking, with no workout prescriptions. You can always talk to your doctor about adding exercise.</span>
+              <span>
+                {COACH_AND_WORKOUTS_ENABLED
+                  ? "Based on your answers we'll keep this to food & habit tracking, with no workout prescriptions. You can always talk to your doctor about adding exercise."
+                  : "Based on your answers we'll keep this to food & habit tracking. Talk to your doctor before adding exercise."}
+              </span>
             </div>
           )}
 
@@ -534,6 +553,27 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
                 ))}
               </div>
               <span className="muted small field-hint">Used only to estimate your daily calories.</span>
+            </div>
+          )}
+
+          {!hasWorkouts && (
+            <div className="field">
+              <span className="field-label">Want to move most days?</span>
+              <div className="chip-row">
+                {EXERCISE_DAY_OPTIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={`chip${weeklyExerciseDays === d ? " active" : ""}`}
+                    onClick={() => setWeeklyExerciseDays(d)}
+                  >
+                    {d === 0 ? "Not tracking" : `${d}× a week`}
+                  </button>
+                ))}
+              </div>
+              <span className="muted small field-hint">
+                We just count the days you record any exercise — nothing is prescribed.
+              </span>
             </div>
           )}
 

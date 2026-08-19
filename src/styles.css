@@ -3451,3 +3451,32 @@ input[type="date"].text-input {
   background: linear-gradient(to top, var(--bg) 70%, transparent);
 }
 .overview-actions .overview-start { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+
+/* ── Weekly movement goal (Plan tab) ─────────────────────────────────── */
+.exercise-goal-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 1.05rem;
+}
+.exercise-goal-hit {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--cui-success, #22c55e);
+}
+.exercise-goal-dots {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 8px;
+}
+.exercise-dot {
+  width: 22px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--cui-border, rgba(255, 255, 255, 0.14));
+}
+.exercise-dot.on {
+  background: var(--cui-accent, #7c6cf5);
+}

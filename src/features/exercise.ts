@@ -15,6 +15,7 @@
 import type { WorkoutSession } from "../types";
 import { getRepository } from "../data/repository";
 import { readWorkouts, type WorkoutBurn } from "../bridge/health";
+import { shiftDate, todayISO } from "./diary";
 
 /** Where a completed workout came from: run inside this app, or synced from
  *  Apple Health / another wearable. */
@@ -183,4 +184,49 @@ export async function setWearableKcal(date: string, key: string, kcal: number): 
   await patchDay(date, (dl) => ({
     wearableKcalOverrides: { ...(dl?.wearableKcalOverrides ?? {}), [key]: Math.max(0, Math.round(kcal)) },
   }));
+}
+
+// ── weekly movement goal ────────────────────────────────────────────────
+
+/** Progress against a plan's weekly exercise-days target. */
+export interface WeekExerciseProgress {
+  /** Distinct days so far this week with any exercise. */
+  days: number;
+  /** The plan's target days per week. */
+  target: number;
+  /** Which of the week's dates had exercise, oldest first (YYYY-MM-DD). */
+  activeDates: string[];
+  /** The week's dates, Monday first, up to and including today. */
+  weekDates: string[];
+}
+
+/** Monday-start week containing `date`, truncated at `date` itself — we only
+ *  ever count days that have actually happened. */
+export function weekToDate(date: string): string[] {
+  const d = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return [date];
+  // getDay(): 0=Sun. Shift so Monday is the first day of the week.
+  const back = (d.getDay() + 6) % 7;
+  const out: string[] = [];
+  for (let i = back; i >= 0; i--) out.push(shiftDate(date, -i));
+  return out;
+}
+
+/**
+ * How many days this week the user has moved, against their plan's target.
+ *
+ * Counts a day when ANY exercise reached the calorie budget that day — wearable
+ * or logged in-app — so it stays consistent with the ring rather than inventing
+ * a second definition of "did I exercise".
+ */
+export async function weekExerciseProgress(
+  target: number,
+  date = todayISO(),
+): Promise<WeekExerciseProgress> {
+  const weekDates = weekToDate(date);
+  const results = await Promise.all(
+    weekDates.map(async (d) => ({ d, kcal: await exerciseCaloriesForDate(d).catch(() => 0) })),
+  );
+  const activeDates = results.filter((r) => r.kcal > 0).map((r) => r.d);
+  return { days: activeDates.length, target, activeDates, weekDates };
 }

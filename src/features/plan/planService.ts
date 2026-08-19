@@ -168,6 +168,8 @@ export async function saveProgram(plan: Plan, program: WorkoutProgram): Promise<
  *  `id`, so patching can never drop group progress or benchmark history. */
 export interface PlanPatch {
   mode?: Plan["mode"];
+  /** Weekly exercise-days target; 0 clears it (see Plan.weeklyExerciseDays). */
+  weeklyExerciseDays?: number;
   goals?: PlanGoal[];
   targets?: PlanTargets;
   startDate?: string;
@@ -263,7 +265,7 @@ export function decidePlanEdit(plan: Plan, next: PlanEditAnswers): PlanEditDecis
 export async function modifyPlanInPlace(
   plan: Plan,
   body: WizardBody,
-  patch: { endDate?: string; durationWeeks?: number },
+  patch: { endDate?: string; durationWeeks?: number; weeklyExerciseDays?: number },
   ctx: { currentProfile: Profile | null; currentGoals: Goals },
 ): Promise<CommitResult> {
   const profile = mergeBodyIntoProfile(ctx.currentProfile ?? DEFAULT_PROFILE, body);

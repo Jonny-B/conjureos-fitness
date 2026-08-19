@@ -29,6 +29,7 @@ import { CheckIcon, PlayIcon } from "../components/icons";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { WorkoutRunner, metaLine } from "./WorkoutRunner";
 import { toIntInRange } from "../features/num";
+import { weekExerciseProgress, type WeekExerciseProgress } from "../features/exercise";
 import { COACH_AND_WORKOUTS_ENABLED } from "../features/flags";
 
 /**
@@ -51,6 +52,7 @@ export function PlanScreen({
   onEditPlan,
   onEditWorkouts,
   onStartPlan,
+  nonce = 0,
 }: {
   profile: Profile | null;
   plan: Plan | null;
@@ -64,6 +66,8 @@ export function PlanScreen({
   onEditWorkouts: () => void;
   /** Open the plan wizard — the Plan tab's own entry point when no plan exists. */
   onStartPlan: () => void;
+  /** Bumped by the app after any write, so derived views re-read. */
+  nonce?: number;
 }) {
   // A plan workout mid-run: overview → player → summary → reflect via the runner.
   const [running, setRunning] = useState<ProgramWorkout | null>(null);
@@ -107,6 +111,9 @@ export function PlanScreen({
       )}
       {plan && modeTracksFood(plan.mode) && (
         <PlanTargetsSection plan={plan} goals={goals} onPlanChange={onPlanChange} />
+      )}
+      {plan && (plan.weeklyExerciseDays ?? 0) > 0 && (
+        <ExerciseGoalSection target={plan.weeklyExerciseDays!} nonce={nonce} />
       )}
       <TrendsPanel profile={profile} />
       {COACH_AND_WORKOUTS_ENABLED && <CoachLauncher onAsk={onAskCoach} />}
@@ -259,9 +266,9 @@ function PlanCtaCard({ onStartPlan }: { onStartPlan: () => void }) {
       <div className="summary-card column plan-cta-card">
         <div className="plan-cta-title">Build your plan</div>
         <p className="muted small plan-cta-blurb">
-          A personalized plan sets your daily targets and, if you want, your workouts and
-          benchmarks. It takes a minute, and anything you've already entered — your stats and
-          weigh-ins — is carried straight in.
+          {COACH_AND_WORKOUTS_ENABLED
+            ? "A personalized plan sets your daily targets and, if you want, your workouts and benchmarks. It takes a minute, and anything you've already entered — your stats and weigh-ins — is carried straight in."
+            : "A plan sets your daily calorie and macro targets from your goal, and tracks your weight against it. It takes a minute, and your stats and weigh-ins carry straight in."}
         </p>
         <button className="btn primary block" onClick={onStartPlan}>
           Build your plan
@@ -689,6 +696,54 @@ function formatBenchmarkValue(v: number, b: Benchmark, units: Profile["units"]):
   if (b.metric === "weightKg" && units === "imperial") return `${Math.round(kgToLb(v))} lb`;
   if (b.metric === "distanceKm" && units === "imperial") return `${kmToMi(v).toFixed(2)} mi`;
   return `${Math.round(v * 10) / 10} ${b.unit}`;
+}
+
+/**
+ * Weekly movement goal: how many days this week the user recorded any exercise,
+ * against their plan's target. Read-only — nothing is prescribed; it just
+ * reflects what already reached the calorie ring, so the two can never disagree.
+ */
+function ExerciseGoalSection({ target, nonce = 0 }: { target: number; nonce?: number }) {
+  const [prog, setProg] = useState<WeekExerciseProgress | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    weekExerciseProgress(target)
+      .then((r) => alive && setProg(r))
+      .catch(() => alive && setProg(null));
+    return () => {
+      alive = false;
+    };
+  }, [target, nonce]);
+
+  const done = prog?.days ?? 0;
+  const hit = done >= target;
+  return (
+    <section className="plan-section">
+      <div className="section-label">Movement</div>
+      <div className="summary-card column">
+        <div className="exercise-goal-head">
+          <strong>
+            {done} of {target}
+          </strong>{" "}
+          <span className="muted">days this week</span>
+          {hit && <span className="exercise-goal-hit">✓ goal met</span>}
+        </div>
+        <div className="exercise-goal-dots" aria-hidden>
+          {(prog?.weekDates ?? []).map((d) => (
+            <span
+              key={d}
+              className={`exercise-dot${prog?.activeDates.includes(d) ? " on" : ""}`}
+              title={d}
+            />
+          ))}
+        </div>
+        <p className="muted small">
+          Counts any day with exercise — logged here or synced from Apple Health.
+        </p>
+      </div>
+    </section>
+  );
 }
 
 // ── Trends ─────────────────────────────────────────────────────────────

@@ -93,6 +93,20 @@ export function App() {
   const [checkinDismissed, setCheckinDismissed] = useState(false);
   const [checkinOpen, setCheckinOpen] = useState(false);
 
+  /**
+   * Re-read everything a reset can have changed. Bumping `nonce` alone only
+   * makes mounted screens refetch THEIR data — the plan lives in App state, so
+   * clearing it left the Plan tab rendering a plan that no longer existed.
+   */
+  const onDataCleared = useCallback(async () => {
+    const repo = await getRepository();
+    const [g, p, existingPlan] = await Promise.all([repo.getGoals(), repo.getProfile(), loadPlan()]);
+    setGoals(g);
+    setProfile(p);
+    setPlan(existingPlan);
+    setNonce((n) => n + 1);
+  }, []);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -335,6 +349,7 @@ export function App() {
           />
         ) : tab === "plan" ? (
           <PlanScreen
+            nonce={nonce}
             profile={profile}
             plan={plan}
             goals={effectiveGoals}
@@ -394,7 +409,7 @@ export function App() {
           onClose={() => setSettingsOpen(false)}
           onSave={onSaveGoals}
           onPlanChange={setPlan}
-          onDataCleared={() => setNonce((n) => n + 1)}
+          onDataCleared={onDataCleared}
         />
       )}
     </div>

@@ -16,7 +16,7 @@ import { vfs } from "../bridge/vfs";
 import { COACH_AND_WORKOUTS_ENABLED } from "./flags";
 
 /** One independently clearable slice of the user's history. */
-export type HistoryKind = "diary" | "weights" | "workouts" | "coach" | "planHistory";
+export type HistoryKind = "diary" | "weights" | "workouts" | "coach" | "planHistory" | "plan";
 
 /** The clearable history slices with their user-facing copy, in the order
  *  Settings lists them. Drives the reset UI so labels live beside the logic. */
@@ -25,7 +25,12 @@ export const HISTORY_ITEMS: { kind: HistoryKind; label: string; desc: string }[]
   { kind: "weights", label: "Weight history", desc: "All weigh-ins and the trend graph" },
   { kind: "workouts", label: "Workout history", desc: "Completed sessions and daily check-offs" },
   { kind: "coach", label: "Coach conversations", desc: "Chat history and the coach's memory of you" },
-  { kind: "planHistory", label: "Past plans", desc: "Archived plans from previous resets" },
+  {
+    kind: "plan",
+    label: "Current plan",
+    desc: "Your goal, dates and daily targets. Weigh-ins and diary are kept.",
+  },
+  { kind: "planHistory", label: "Past plans", desc: "Only the archive of previous plans" },
 ];
 
 const rm = (path: string) => vfs.rm(path).catch(() => {});
@@ -56,6 +61,12 @@ export async function clearHistory(kind: HistoryKind): Promise<void> {
       return;
     case "planHistory":
       await rm("plan-archive.json");
+      return;
+    case "plan":
+      // The ACTIVE plan. Nothing here used to clear it — "Past plans" only ever
+      // removed the archive — so a user who cleared everything still landed on
+      // the Plan tab with their old plan intact.
+      await repo.clearPlan().catch(() => {});
       return;
   }
 }

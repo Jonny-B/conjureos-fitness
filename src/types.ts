@@ -506,6 +506,16 @@ export interface Plan {
    *  Murph"). Additive — absent on pre-1.17 plans; the plan-edit diff then can't
    *  compare goal text for those and only mode/start-date fork a new plan. */
   goalText?: string;
+  /**
+   * How many DAYS a week the user wants to move, or absent/0 for "don't track
+   * it". Deliberately days rather than sessions: "three times a week" is how
+   * people say it, and counting sessions would double-count the same effort
+   * when a wearable and a manual entry both land (which they do — see
+   * features/exercise, where the two ADD together on purpose).
+   *
+   * Additive; absent on every plan before this shipped.
+   */
+  weeklyExerciseDays?: number;
   /** Structured, adaptive workout program (W4). Additive — absent on food-only
    *  and all pre-W4 plans. */
   program?: WorkoutProgram;
