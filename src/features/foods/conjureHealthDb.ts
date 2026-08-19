@@ -61,7 +61,7 @@ interface HealthFoodApi {
  *  mobile the raw session token isn't in the WebView, so we mint a first-party
  *  ConjureOS token (which prompts a one-time consent) rather than falling back
  *  to the anon key (which the server rejects). Reads stay anon. */
-const WRITE_ACTIONS = new Set(["submit", "flag"]);
+const WRITE_ACTIONS = new Set(["submit"]);
 
 async function call<T>(
   action: string,
@@ -264,11 +264,4 @@ export async function logScanAttempt(a: ScanAttempt): Promise<void> {
     platform: navigator.platform,
     client_tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
-}
-
-/** Report a bad entry in the community DB for review. Resolves false when
- *  the report couldn't be filed. */
-export async function flagFood(id: string, reason?: string): Promise<boolean> {
-  const res = await call<{ ok: boolean }>("flag", { id, reason });
-  return res?.ok === true;
 }

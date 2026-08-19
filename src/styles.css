@@ -3481,44 +3481,12 @@ input[type="date"].text-input {
   background: var(--cui-accent, #7c6cf5);
 }
 
-/* "These numbers look wrong" — the plausibility warning on the log panel, and
-   the quieter always-there escape hatch under the Add button. Amber rather
-   than the AI notice's violet: this is a problem with the data, not a
-   disclosure about how it was produced. */
-.notice.notice-suspect {
-  position: relative;
-  background: rgba(245, 158, 11, 0.10);
-  border: 1px solid rgba(245, 158, 11, 0.38);
-  padding: 14px 14px 14px 22px;
-  border-radius: 12px;
-  margin-bottom: 14px;
-}
-.notice.notice-suspect::before {
-  content: ""; position: absolute;
-  left: 6px; top: 10px; bottom: 10px; width: 4px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, #f59e0b, #fbbf24);
-}
-.notice-suspect-headline {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 14px; font-weight: 600;
-  color: #fcd34d;
-  margin: 0 0 4px 0;
-}
-.notice-suspect-body {
-  font-size: 13px; line-height: 1.5; opacity: 0.9;
-  margin-bottom: 10px;
-}
-.notice.notice-suspect .btn.small {
-  padding: 7px 14px;
-  font-size: 13px;
-  width: auto;
-}
-
+/* "Looks wrong?" — the always-present escape hatch under the Add button.
+   Quiet by default: it is an offer, not a warning. */
 .log-report {
   display: block;
-  margin: 14px auto 0;
+  width: auto;
+  margin: 12px auto 0;
+  padding: 9px 18px;
   font-size: 13px;
-  opacity: 0.65;
 }
-.log-report:hover { opacity: 1; }

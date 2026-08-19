@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FoodItem, Micros } from "../types";
-import { contribute, flagFood } from "../features/foods/conjureHealthDb";
+import { contribute } from "../features/foods/conjureHealthDb";
 import { AlertTriangle, CheckIcon, ChevronLeft, ChevronRight } from "./icons";
 
 /** How the numbers on screen were arrived at. "user_fix" is the user
@@ -25,13 +25,6 @@ interface Props {
   /** Only meaningful for the AI sources. */
   aiConfidence?: number;
   warningNote?: string;
-  /** For "user_fix": why we (or the user) think the current numbers are wrong.
-   *  Shown so the person knows what they are being asked to check. */
-  problemNote?: string;
-  /** For "user_fix": community-DB id of the entry being corrected. Reporting it
-   *  is what eventually hides a bad row for everyone (3 flags), so a correction
-   *  fixes the shared copy and not just this diary. */
-  flagFoodId?: string;
   onConfirm: (food: FoodItem) => void;
   onCancel: () => void;
 }
@@ -75,8 +68,6 @@ export function EditableNutritionPreview({
   source,
   aiConfidence = 0,
   warningNote,
-  problemNote,
-  flagFoodId,
   onConfirm,
   onCancel,
 }: Props) {
@@ -109,10 +100,6 @@ export function EditableNutritionPreview({
 
   const onSave = async () => {
     setSave({ phase: "saving" });
-    // A correction is also a report: flagging is the crowd signal that pulls a
-    // bad row out of everyone's lookups once enough people hit it. Fire and
-    // forget — it must never delay or block the user's own log.
-    if (isFix && flagFoodId) void flagFood(flagFoodId, problemNote).catch(() => false);
     const res = await contribute({
       food,
       // The server only distinguishes the two AI parses; everything a human
@@ -171,9 +158,7 @@ export function EditableNutritionPreview({
             ? "Copy the numbers off the nutrition label for one serving. We'll log your version from now on, and send it in so the next person who scans this gets it right."
             : "Double-check the numbers before you save, especially the serving size (that is where vision models trip up most often). Anything you fix here teaches Conjure, so the next person who scans this gets it right."}
         </div>
-        {(problemNote ?? warningNote) && (
-          <div className="notice-ai-note muted small">{problemNote ?? warningNote}</div>
-        )}
+        {warningNote && <div className="notice-ai-note muted small">{warningNote}</div>}
       </div>
 
       <div className={`calories-card${lowConfidence ? " low-confidence" : ""}`}>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatImage } from "../bridge/ai";
 import type { FoodItem, MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
@@ -7,7 +7,6 @@ import { searchFoods, lookupBarcode, rememberCorrection } from "../features/food
 import { parseMeal } from "../features/naturalLanguage";
 import { recentFoodsForMeal, type RecentFood } from "../features/recentFoods";
 import { isValidBarcode } from "../features/barcode";
-import { checkPlausibility, type Implausibility } from "../features/foods/plausibility";
 import { useScrollLock } from "../hooks/useScrollLock";
 import {
   listRecipes,
@@ -23,7 +22,6 @@ import { NutritionLabelCapture } from "../components/NutritionLabelCapture";
 import { FrontOfPackageCapture } from "../components/FrontOfPackageCapture";
 import { EditableNutritionPreview } from "../components/EditableNutritionPreview";
 import {
-  AlertTriangle,
   BarcodeIcon,
   ChevronLeft,
   ChevronRight,
@@ -81,10 +79,8 @@ export function AddFoodScreen({
   // change either without backing out.
   const [mode, setMode] = useState<AddMode>(defaultMode);
   const [meal, setMeal] = useState<MealType>(defaultMeal);
-  // A food the user has told us is wrong, and how far into fixing it they are.
-  const [fixing, setFixing] = useState<{ food: FoodItem; problem: Implausibility | null } | null>(
-    null,
-  );
+  // A food the user has told us is wrong.
+  const [fixing, setFixing] = useState<{ food: FoodItem } | null>(null);
 
   const changeMode = (m: AddMode) => {
     setMode(m);
@@ -98,7 +94,6 @@ export function AddFoodScreen({
     return (
       <FixFlow
         food={fixing.food}
-        problem={fixing.problem}
         onFixed={async (food) => {
           // Local first: the user's numbers win on their own device whatever
           // the community DB decides to do with the submission.
@@ -121,9 +116,9 @@ export function AddFoodScreen({
         defaultMeal={meal}
         onLogged={onLogged}
         onBack={() => setSelected(null)}
-        onFix={(problem) => {
+        onFix={() => {
           setSelected(null);
-          setFixing({ food: selected.food, problem });
+          setFixing({ food: selected.food });
         }}
       />
     );
@@ -869,9 +864,8 @@ function LogPanel({
   defaultMeal: MealType;
   onLogged: () => void;
   onBack: () => void;
-  /** The user says these numbers are wrong. `problem` is our own read on what
-   *  is wrong with them, when we spotted something. */
-  onFix: (problem: Implausibility | null) => void;
+  /** The user says these numbers are wrong. */
+  onFix: () => void;
 }) {
   const [qty, setQty] = useState<number | undefined>(initialQty);
   const [meal, setMeal] = useState<MealType>(defaultMeal);
@@ -881,11 +875,6 @@ function LogPanel({
   // rather than silently substituting the minimum.
   const q = qty ?? 0;
   const cal = Math.round(food.perServing.calories * q);
-
-  // Third-party nutrition data is wrong often enough that it is worth saying so
-  // before it lands in the diary — an absurd figure blows the whole day's
-  // budget and is tedious to unpick afterwards.
-  const problem = useMemo(() => checkPlausibility(food), [food]);
 
   const log = async () => {
     if (!qty || qty <= 0) return;
@@ -912,18 +901,6 @@ function LogPanel({
       </button>
       <h2 className="log-title">{food.name}</h2>
       {food.brand && <div className="muted">{food.brand}</div>}
-
-      {problem && (
-        <div className="notice notice-suspect" role="note">
-          <div className="notice-suspect-headline">
-            <AlertTriangle size={16} /> These numbers look wrong
-          </div>
-          <div className="notice-suspect-body">{problem.message}</div>
-          <button className="btn small" onClick={() => onFix(problem)}>
-            Fix it
-          </button>
-        </div>
-      )}
 
       <div className="log-macros">
         <Macro label="Cal" value={cal} />
@@ -964,13 +941,11 @@ function LogPanel({
         {busy ? "Adding…" : `Add to ${MEAL_LABELS[meal]}`}
       </button>
 
-      {/* Always reachable, not just when our own check fires — we catch the
-          impossible numbers, the user catches the merely wrong ones. */}
-      {!problem && (
-        <button className="link-btn log-report" onClick={() => onFix(null)}>
-          Looks wrong?
-        </button>
-      )}
+      {/* Always here, in the same spot. We do not judge the numbers ourselves
+          — the person holding the package is the one who can tell. */}
+      <button className="btn log-report" onClick={onFix}>
+        Looks wrong?
+      </button>
     </div>
   );
 }
@@ -987,22 +962,15 @@ function LogPanel({
  */
 function FixFlow({
   food,
-  problem,
   onFixed,
   onCancel,
 }: {
   food: FoodItem;
-  problem: Implausibility | null;
   onFixed: (food: FoodItem) => void;
   onCancel: () => void;
 }) {
   const [stage, setStage] = useState<"choose" | "manual" | "label" | "front">("choose");
   const [parsed, setParsed] = useState<PendingPreview | null>(null);
-
-  // The id worth reporting is the community DB's own row. Foods from other
-  // providers carry their id, which our flag endpoint would not recognise.
-  const flagId = food.source === "conjure_health" ? food.id : undefined;
-  const note = problem?.message;
 
   if (parsed) {
     return (
@@ -1011,7 +979,6 @@ function FixFlow({
         source={parsed.source}
         aiConfidence={parsed.confidence}
         warningNote={parsed.warningNote}
-        flagFoodId={flagId}
         onConfirm={onFixed}
         onCancel={() => setParsed(null)}
       />
@@ -1023,8 +990,6 @@ function FixFlow({
       <EditableNutritionPreview
         initial={food}
         source="user_fix"
-        problemNote={note}
-        flagFoodId={flagId}
         onConfirm={onFixed}
         onCancel={() => setStage("choose")}
       />
@@ -1059,7 +1024,7 @@ function FixFlow({
       <div className="snap-miss-copy">
         <div>What's wrong with {food.name}?</div>
         <div className="muted small">
-          {note ?? "Tell us the right numbers and we'll use yours from now on."}
+          Tell us the right numbers and we'll use yours from now on.
         </div>
       </div>
 
