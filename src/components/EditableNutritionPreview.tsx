@@ -1,23 +1,37 @@
 /**
- * Polished editable review screen shown after EITHER a label snap OR a
- * front-of-package snap. Every macro and micro is correctable before
- * submission. A friendly AI-mistakes notice rides along until save. On Save,
- * fires contribute() (best-effort) and hands the (possibly corrected)
- * FoodItem to the parent so LogPanel routes serving + meal next.
+ * Polished editable review screen shown after a label snap, a front-of-package
+ * snap, OR a "Looks wrong" correction of a food some provider already gave us.
+ * Every macro and micro is correctable before submission. On Save, fires
+ * contribute() (best-effort) and hands the (possibly corrected) FoodItem to the
+ * parent so LogPanel routes serving + meal next.
+ *
+ * The three sources differ only in framing: an AI parse needs a "we guessed,
+ * check it" warning, a correction needs to say what looked wrong and where the
+ * fix goes. The form underneath is identical, so they share one screen.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FoodItem, Micros } from "../types";
-import { contribute } from "../features/foods/conjureHealthDb";
+import { contribute, flagFood } from "../features/foods/conjureHealthDb";
 import { AlertTriangle, CheckIcon, ChevronLeft, ChevronRight } from "./icons";
 
-type ParseSource = "ai_label" | "ai_front";
+/** How the numbers on screen were arrived at. "user_fix" is the user
+ *  correcting an existing entry by hand, not an AI parse. */
+type ParseSource = "ai_label" | "ai_front" | "user_fix";
 
 interface Props {
   initial: FoodItem;
   source: ParseSource;
-  aiConfidence: number;
+  /** Only meaningful for the AI sources. */
+  aiConfidence?: number;
   warningNote?: string;
+  /** For "user_fix": why we (or the user) think the current numbers are wrong.
+   *  Shown so the person knows what they are being asked to check. */
+  problemNote?: string;
+  /** For "user_fix": community-DB id of the entry being corrected. Reporting it
+   *  is what eventually hides a bad row for everyone (3 flags), so a correction
+   *  fixes the shared copy and not just this diary. */
+  flagFoodId?: string;
   onConfirm: (food: FoodItem) => void;
   onCancel: () => void;
 }
@@ -49,8 +63,8 @@ function deepEqualFood(a: FoodItem, b: FoodItem): boolean {
 }
 
 /**
- * The mandatory review screen for any AI-derived food. Every macro and micro
- * is editable before it reaches the diary.
+ * The review screen for any food whose numbers need a human before they reach
+ * the diary — an AI parse, or an existing entry the user says is wrong.
  *
  * On save it contributes the (possibly corrected) food back to the community
  * DB, but that is strictly best-effort: a failed contribution still logs the
@@ -59,8 +73,10 @@ function deepEqualFood(a: FoodItem, b: FoodItem): boolean {
 export function EditableNutritionPreview({
   initial,
   source,
-  aiConfidence,
+  aiConfidence = 0,
   warningNote,
+  problemNote,
+  flagFoodId,
   onConfirm,
   onCancel,
 }: Props) {
@@ -71,7 +87,8 @@ export function EditableNutritionPreview({
   const [moreOpen, setMoreOpen] = useState(false);
   const [save, setSave] = useState<SaveState>({ phase: "idle" });
   const isFront = source === "ai_front";
-  const lowConfidence = aiConfidence < 0.4;
+  const isFix = source === "user_fix";
+  const lowConfidence = !isFix && aiConfidence < 0.4;
 
   const userEdited = useMemo(() => !deepEqualFood(food, initial), [food, initial]);
 
@@ -92,10 +109,16 @@ export function EditableNutritionPreview({
 
   const onSave = async () => {
     setSave({ phase: "saving" });
+    // A correction is also a report: flagging is the crowd signal that pulls a
+    // bad row out of everyone's lookups once enough people hit it. Fire and
+    // forget — it must never delay or block the user's own log.
+    if (isFix && flagFoodId) void flagFood(flagFoodId, problemNote).catch(() => false);
     const res = await contribute({
       food,
-      source,
-      aiConfidence,
+      // The server only distinguishes the two AI parses; everything a human
+      // typed lands as user_manual either way.
+      source: isFix ? "user_manual" : source,
+      aiConfidence: isFix ? undefined : aiConfidence,
       userEdited,
     });
     if (res.ok) {
@@ -105,7 +128,9 @@ export function EditableNutritionPreview({
     }
     setSave({
       phase: "failed",
-      message: "Logged to your diary. We couldn't share your edit with the community this time.",
+      message: isFix
+        ? "Saved on your device. We couldn't send your correction in this time."
+        : "Logged to your diary. We couldn't share your edit with the community this time.",
     });
     advanceTimer.current = window.setTimeout(() => onConfirm(food), 900);
   };
@@ -138,14 +163,17 @@ export function EditableNutritionPreview({
 
       <div className="notice notice-ai" role="note">
         <div className="notice-ai-headline">
-          <AlertTriangle size={16} /> Heads up: AI made this guess.
+          <AlertTriangle size={16} />{" "}
+          {isFix ? "Put in what the package says." : "Heads up: AI made this guess."}
         </div>
         <div className="notice-ai-body">
-          Double-check the numbers before you save, especially the serving size (that is where vision
-          models trip up most often). Anything you fix here teaches Conjure, so the next person who
-          scans this gets it right.
+          {isFix
+            ? "Copy the numbers off the nutrition label for one serving. We'll log your version from now on, and send it in so the next person who scans this gets it right."
+            : "Double-check the numbers before you save, especially the serving size (that is where vision models trip up most often). Anything you fix here teaches Conjure, so the next person who scans this gets it right."}
         </div>
-        {warningNote && <div className="notice-ai-note muted small">{warningNote}</div>}
+        {(problemNote ?? warningNote) && (
+          <div className="notice-ai-note muted small">{problemNote ?? warningNote}</div>
+        )}
       </div>
 
       <div className={`calories-card${lowConfidence ? " low-confidence" : ""}`}>
@@ -262,9 +290,11 @@ export function EditableNutritionPreview({
       )}
 
       <div className="estimate-source muted small">
-        {isFront
-          ? `Estimated from a front-of-package photo (confidence ${aiConfidence.toFixed(1)}).`
-          : `Read from a nutrition-label photo (confidence ${aiConfidence.toFixed(1)}).`}
+        {isFix
+          ? "Your correction. It replaces this item on your device straight away; sharing it with everyone else takes a review first."
+          : isFront
+            ? `Estimated from a front-of-package photo (confidence ${aiConfidence.toFixed(1)}).`
+            : `Read from a nutrition-label photo (confidence ${aiConfidence.toFixed(1)}).`}
       </div>
 
       {save.phase === "failed" && (
@@ -275,11 +305,11 @@ export function EditableNutritionPreview({
 
       <div className="estimate-actions">
         <button className="btn primary block" disabled={!canSave} onClick={onSave}>
-          {save.phase === "saving" ? "Saving…" : "Looks good, log it"}
+          {save.phase === "saving" ? "Saving…" : isFix ? "Save my correction" : "Looks good, log it"}
         </button>
         {save.phase !== "saving" && (
           <button className="link-btn estimate-discard" onClick={onCancel}>
-            Discard this AI estimate
+            {isFix ? "Never mind, keep the original" : "Discard this AI estimate"}
           </button>
         )}
       </div>

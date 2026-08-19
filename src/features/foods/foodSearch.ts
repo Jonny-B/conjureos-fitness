@@ -23,6 +23,18 @@ interface BarcodeCache {
   v: typeof CACHE_VERSION;
   // barcode -> FoodItem, or null when a prior lookup found nothing.
   entries: Record<string, FoodItem | null>;
+  /**
+   * barcode -> the user's own corrected food, from the "Looks wrong" flow.
+   *
+   * Kept apart from `entries` and consulted ahead of it because these are the
+   * only numbers in the cache the user vouched for personally. They must
+   * outlive any provider refresh: today a correction we push to the community
+   * DB stops being served (a user_manual row isn't public until promoted) and
+   * the next lookup re-backfills the bad upstream figures straight over it. So
+   * the local copy is what actually makes a fix stick for the person who made
+   * it, whatever the server decides to do with it.
+   */
+  corrections?: Record<string, FoodItem>;
 }
 
 let cache: BarcodeCache | null = null;
@@ -53,6 +65,8 @@ export async function lookupBarcode(
   if (!code) return null;
 
   const c = await loadCache();
+  const fixed = c.corrections?.[code];
+  if (fixed) return fixed;
   if (Object.prototype.hasOwnProperty.call(c.entries, code)) {
     return c.entries[code] ?? null;
   }
@@ -94,6 +108,24 @@ export async function lookupBarcode(
   c.entries[code] = null;
   await writeJson(CACHE_PATH, c);
   return null;
+}
+
+/**
+ * Remember the user's correction for a barcode so their next scan of the same
+ * item returns the fixed numbers instead of the provider's.
+ *
+ * This is local and unconditional — separate from `contribute()`, which offers
+ * the same correction to everyone else and may be queued for moderation or
+ * refused outright. One person fixing their own pantry must not depend on that.
+ */
+export async function rememberCorrection(barcode: string, food: FoodItem): Promise<void> {
+  const code = barcode.replace(/\D/g, "");
+  if (!code) return;
+  const c = await loadCache();
+  c.corrections = { ...(c.corrections ?? {}), [code]: food };
+  // Drop any stale provider answer for the same code so there is one truth.
+  delete c.entries[code];
+  await writeJson(CACHE_PATH, c);
 }
 
 /**

@@ -3480,3 +3480,45 @@ input[type="date"].text-input {
 .exercise-dot.on {
   background: var(--cui-accent, #7c6cf5);
 }
+
+/* "These numbers look wrong" — the plausibility warning on the log panel, and
+   the quieter always-there escape hatch under the Add button. Amber rather
+   than the AI notice's violet: this is a problem with the data, not a
+   disclosure about how it was produced. */
+.notice.notice-suspect {
+  position: relative;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  padding: 14px 14px 14px 22px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+.notice.notice-suspect::before {
+  content: ""; position: absolute;
+  left: 6px; top: 10px; bottom: 10px; width: 4px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #f59e0b, #fbbf24);
+}
+.notice-suspect-headline {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 14px; font-weight: 600;
+  color: #fcd34d;
+  margin: 0 0 4px 0;
+}
+.notice-suspect-body {
+  font-size: 13px; line-height: 1.5; opacity: 0.9;
+  margin-bottom: 10px;
+}
+.notice.notice-suspect .btn.small {
+  padding: 7px 14px;
+  font-size: 13px;
+  width: auto;
+}
+
+.log-report {
+  display: block;
+  margin: 14px auto 0;
+  font-size: 13px;
+  opacity: 0.65;
+}
+.log-report:hover { opacity: 1; }

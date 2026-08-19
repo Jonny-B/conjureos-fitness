@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatImage } from "../bridge/ai";
 import type { FoodItem, MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
-import { searchFoods, lookupBarcode } from "../features/foods/foodSearch";
+import { searchFoods, lookupBarcode, rememberCorrection } from "../features/foods/foodSearch";
 import { parseMeal } from "../features/naturalLanguage";
 import { recentFoodsForMeal, type RecentFood } from "../features/recentFoods";
 import { isValidBarcode } from "../features/barcode";
+import { checkPlausibility, type Implausibility } from "../features/foods/plausibility";
 import { useScrollLock } from "../hooks/useScrollLock";
 import {
   listRecipes,
@@ -22,6 +23,7 @@ import { NutritionLabelCapture } from "../components/NutritionLabelCapture";
 import { FrontOfPackageCapture } from "../components/FrontOfPackageCapture";
 import { EditableNutritionPreview } from "../components/EditableNutritionPreview";
 import {
+  AlertTriangle,
   BarcodeIcon,
   ChevronLeft,
   ChevronRight,
@@ -79,6 +81,10 @@ export function AddFoodScreen({
   // change either without backing out.
   const [mode, setMode] = useState<AddMode>(defaultMode);
   const [meal, setMeal] = useState<MealType>(defaultMeal);
+  // A food the user has told us is wrong, and how far into fixing it they are.
+  const [fixing, setFixing] = useState<{ food: FoodItem; problem: Implausibility | null } | null>(
+    null,
+  );
 
   const changeMode = (m: AddMode) => {
     setMode(m);
@@ -87,6 +93,23 @@ export function AddFoodScreen({
 
   const pick = (food: FoodItem, opts?: PickOpts) =>
     setSelected({ food, recipeSlug: opts?.recipeSlug, initialQty: opts?.initialQty });
+
+  if (fixing) {
+    return (
+      <FixFlow
+        food={fixing.food}
+        problem={fixing.problem}
+        onFixed={async (food) => {
+          // Local first: the user's numbers win on their own device whatever
+          // the community DB decides to do with the submission.
+          if (food.barcode) await rememberCorrection(food.barcode, food);
+          setFixing(null);
+          setSelected({ food });
+        }}
+        onCancel={() => setFixing(null)}
+      />
+    );
+  }
 
   if (selected) {
     return (
@@ -98,6 +121,10 @@ export function AddFoodScreen({
         defaultMeal={meal}
         onLogged={onLogged}
         onBack={() => setSelected(null)}
+        onFix={(problem) => {
+          setSelected(null);
+          setFixing({ food: selected.food, problem });
+        }}
       />
     );
   }
@@ -833,6 +860,7 @@ function LogPanel({
   defaultMeal,
   onLogged,
   onBack,
+  onFix,
 }: {
   food: FoodItem;
   recipeSlug?: string;
@@ -841,6 +869,9 @@ function LogPanel({
   defaultMeal: MealType;
   onLogged: () => void;
   onBack: () => void;
+  /** The user says these numbers are wrong. `problem` is our own read on what
+   *  is wrong with them, when we spotted something. */
+  onFix: (problem: Implausibility | null) => void;
 }) {
   const [qty, setQty] = useState<number | undefined>(initialQty);
   const [meal, setMeal] = useState<MealType>(defaultMeal);
@@ -850,6 +881,11 @@ function LogPanel({
   // rather than silently substituting the minimum.
   const q = qty ?? 0;
   const cal = Math.round(food.perServing.calories * q);
+
+  // Third-party nutrition data is wrong often enough that it is worth saying so
+  // before it lands in the diary — an absurd figure blows the whole day's
+  // budget and is tedious to unpick afterwards.
+  const problem = useMemo(() => checkPlausibility(food), [food]);
 
   const log = async () => {
     if (!qty || qty <= 0) return;
@@ -876,6 +912,18 @@ function LogPanel({
       </button>
       <h2 className="log-title">{food.name}</h2>
       {food.brand && <div className="muted">{food.brand}</div>}
+
+      {problem && (
+        <div className="notice notice-suspect" role="note">
+          <div className="notice-suspect-headline">
+            <AlertTriangle size={16} /> These numbers look wrong
+          </div>
+          <div className="notice-suspect-body">{problem.message}</div>
+          <button className="btn small" onClick={() => onFix(problem)}>
+            Fix it
+          </button>
+        </div>
+      )}
 
       <div className="log-macros">
         <Macro label="Cal" value={cal} />
@@ -914,6 +962,122 @@ function LogPanel({
 
       <button className="btn primary block" disabled={busy || !qty || qty <= 0} onClick={log}>
         {busy ? "Adding…" : `Add to ${MEAL_LABELS[meal]}`}
+      </button>
+
+      {/* Always reachable, not just when our own check fires — we catch the
+          impossible numbers, the user catches the merely wrong ones. */}
+      {!problem && (
+        <button className="link-btn log-report" onClick={() => onFix(null)}>
+          Looks wrong?
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── "Looks wrong" correction flow ────────────────────────────────────────
+
+/**
+ * What to do about a food whose numbers are wrong: type the label in, or snap
+ * a photo and let the parser do it.
+ *
+ * Both paths end at the same review screen the AI parses use, and both end with
+ * the corrected food handed back to `onFixed` — which stores it locally and
+ * submits it to the community DB. The user's diary never waits on that submit.
+ */
+function FixFlow({
+  food,
+  problem,
+  onFixed,
+  onCancel,
+}: {
+  food: FoodItem;
+  problem: Implausibility | null;
+  onFixed: (food: FoodItem) => void;
+  onCancel: () => void;
+}) {
+  const [stage, setStage] = useState<"choose" | "manual" | "label" | "front">("choose");
+  const [parsed, setParsed] = useState<PendingPreview | null>(null);
+
+  // The id worth reporting is the community DB's own row. Foods from other
+  // providers carry their id, which our flag endpoint would not recognise.
+  const flagId = food.source === "conjure_health" ? food.id : undefined;
+  const note = problem?.message;
+
+  if (parsed) {
+    return (
+      <EditableNutritionPreview
+        initial={{ ...parsed.food, barcode: parsed.food.barcode ?? food.barcode }}
+        source={parsed.source}
+        aiConfidence={parsed.confidence}
+        warningNote={parsed.warningNote}
+        flagFoodId={flagId}
+        onConfirm={onFixed}
+        onCancel={() => setParsed(null)}
+      />
+    );
+  }
+
+  if (stage === "manual") {
+    return (
+      <EditableNutritionPreview
+        initial={food}
+        source="user_fix"
+        problemNote={note}
+        flagFoodId={flagId}
+        onConfirm={onFixed}
+        onCancel={() => setStage("choose")}
+      />
+    );
+  }
+
+  if (stage === "label" || stage === "front") {
+    const onParsed = (f: FoodItem, confidence: number, warningNote?: string) =>
+      setParsed({
+        food: f,
+        source: stage === "label" ? "ai_label" : "ai_front",
+        confidence,
+        ...(warningNote ? { warningNote } : {}),
+      });
+    return stage === "label" ? (
+      <NutritionLabelCapture
+        barcode={food.barcode}
+        onParsed={(f, c) => onParsed(f, c)}
+        onCancel={() => setStage("choose")}
+      />
+    ) : (
+      <FrontOfPackageCapture
+        barcode={food.barcode}
+        onParsed={(est) => onParsed(est.food, est.confidence, est.warningNote)}
+        onCancel={() => setStage("choose")}
+      />
+    );
+  }
+
+  return (
+    <div className="mode-body snap-miss">
+      <div className="snap-miss-copy">
+        <div>What's wrong with {food.name}?</div>
+        <div className="muted small">
+          {note ?? "Tell us the right numbers and we'll use yours from now on."}
+        </div>
+      </div>
+
+      <PhotoChoiceCards onLabel={() => setStage("label")} onFront={() => setStage("front")} />
+
+      <button className="snap-cta-card secondary" onClick={() => setStage("manual")}>
+        <span className="snap-cta-icon">
+          <EditIcon size={26} />
+        </span>
+        <span className="snap-cta-text">
+          <span className="snap-cta-title">Type in the right numbers</span>
+          <span className="snap-cta-sub">Straight off the nutrition label, no photo needed.</span>
+        </span>
+        <ChevronRight size={20} />
+      </button>
+
+      <button className="link-btn" onClick={onCancel}>
+        Never mind
       </button>
     </div>
   );
