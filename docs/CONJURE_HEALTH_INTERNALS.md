@@ -57,7 +57,9 @@ for a repo called "conjureos-health", you will not find one.
 a ConjureOS anchor app. Log food by search / barcode / photo / plain language,
 see calories and macros against a daily target, weigh in, and follow a simple
 food-focused plan. Apple Health / wearable workout calories are read in and added
-back to the day's budget.
+back to the day's budget — **but only on a mobile build compiled with
+`EXPO_PUBLIC_CONJUREOS_HEALTH=1`, which today means TestFlight/prod only**; see
+`health-mobile-healthkit`.
 
 **What it is *not* today:** a workout app. The AI coach, the adaptive workout
 program, the built-in workout library and the evening check-in were all switched
@@ -132,7 +134,7 @@ cross-app integration is explicitly non-fatal (`App.tsx:121`).
 
 - `vite.config.ts` — React plugin, `target: es2022`, `minify: false`
   (deliberate: ConjureOS lets users and the in-OS AI read installed app source,
-  so the published build must stay readable — `vite.config.ts:36`).
+  so the published build must stay readable — `vite.config.ts:29-31`).
 - Two outputs from the same source:
   - `npm run build` → `dist/index.html` + separate JS/CSS.
   - `npm run build:inline` → `dist/index.html` with everything inlined
@@ -151,11 +153,15 @@ a different pipeline.
    That is not true today: `.github/workflows/` contains exactly one file,
    `publish-store.yml`, and it only builds — there is no PR/push CI that runs
    typecheck or tests. Those gates are local-only.
-2. ConjureOS `STATUS.md:34` says anchor apps are "mostly de-Vited … CI builds
-   with ConjureOS `@bundle` (`source-path` mode)". That is true for Recipes.
-   Conjure Health's workflow passes `html-path: dist/index.html`, i.e. the
-   prebuilt Vite single-file. The shared publish action supports both
-   (`ConjureOS/.github/actions/publish-anchor-app/action.yml:22`).
+2. ConjureOS `STATUS.md:34` describes the CI build path as `@bundle`
+   (`source-path` mode) — but the **same sentence already exempts this app**
+   ("Recipes on `@conjureos/pack`; *Fitness/Health + Finance still on Vite for
+   now*"), so it is not wrong about the build path. Conjure Health's workflow
+   passes `html-path: dist/index.html`, the prebuilt Vite single-file; the
+   shared publish action supports both modes (`source-path` at
+   `ConjureOS/.github/actions/publish-anchor-app/action.yml:23`, `html-path` at
+   `:30`). What `STATUS.md:34` *is* stale about is the product description —
+   see `health-status`.
 
 Re-Vite-ing (moving to `@conjureos/pack`) was explicitly deferred and is *not* a
 v2 prerequisite (DECISIONS 2026-06-24; PHASE_12_DESIGN 12b "Build path").
@@ -566,8 +572,41 @@ scan attempts and history are scoped to owner + `public.is_admin(auth.uid())`.
 
 ### The function's auth model
 
-`verify_jwt` is intentionally **OFF** at the platform layer so anon lookups can
-be served. The function self-checks writes. `currentUserId()`
+The function's own header comment (`index.ts:7-11`) states that
+`verify_jwt` is "intentionally OFF at the platform layer" so the function can
+serve anon lookups, and self-checks writes instead.
+
+> ⚠️ **The repo does not encode that, and this needs verifying against the
+> deployed function.** `ConjureOS/supabase/config.toml` lists exactly seven
+> functions with `verify_jwt = false` (`stripe-webhook`, `usda-proxy`,
+> `recipes-db`, `mint-app-token`, `cleanup-issue-attachments`, `submit-report`,
+> `send-email`) and **`health-foods-db` is not one of them**. The file's own
+> header (`config.toml:1-3`) says "Functions not listed here keep CLI defaults
+> (`verify_jwt = true`)", and `supabase-functions.yml:77` deploys with a plain
+> `supabase functions deploy "$fn" --project-ref …` — no `--no-verify-jwt`. The
+> directly comparable function, `recipes-db`, uses the *same* minted-token
+> pattern and **is** declared at `config.toml:20-26`, with a comment explaining
+> that "the gateway JWT check would be wrong here". Filed as **ConjureOS#573**
+> (2026-08-21).
+>
+> **Second-order consequence, if the gateway check is in fact on.** A minted
+> ConjureOS ES256 token is *not* a Supabase JWT, so it would be rejected at the
+> gateway before `currentUserId()` ever runs — meaning the 1.5.1 "mobile
+> contributions now land" fix (see `health-decisions-other`, 2026-07-16) could
+> still be dead, **invisibly**, because `conjureHealthDb.call()` fails open and
+> returns `null` on any non-`ok` response (`conjureHealthDb.ts:90`). Anon
+> *reads* would keep working either way, because the client sends
+> `authorization: Bearer <ANON>` (`conjureHealthDb.ts:86`) and the anon key *is*
+> a valid Supabase JWT — which is exactly why nothing looks broken.
+>
+> **What decides it:** whether the client actually presents the minted token or
+> the anon key in `Authorization` for a given call, and what the deployed
+> function's gateway setting is. `call()` escalates to a minted token only for
+> actions in `WRITE_ACTIONS` (`conjureHealthDb.ts:64`) *and* only when
+> `getAccessToken()` returned null. Do not treat mobile contributions as working
+> until someone checks a real `submit` against the deployed dev function.
+
+Whatever the gateway does, the function self-checks writes. `currentUserId()`
 (`index.ts:125`) tries two paths in order:
 
 1. **A minted ConjureOS identity token** — ES256, verified locally against
@@ -940,7 +979,19 @@ keyed `${start}-${workoutType}` because HealthKit gives no stable id
   an app can decide whether to show wearable UI before asking for anything.
 - **Gate 1** — the manifest must declare `native.health`.
 - **Gate 2** — per-(app, permission) user grant, the same Allow-once / Always /
-  Block trichotomy as the other `native.*` ops.
+  Block trichotomy as the other `native.*` ops. **This gate is conditional and
+  fails OPEN:** the whole check is wrapped in `if (ctx.grants)`
+  (`handlers.ts:318`) and `grants` is optional on `HandlerContext`
+  (`handlers.ts:114`). A host that constructed a handler context without a
+  grants store would skip consent entirely and fall through to `healthOps`,
+  leaving only Gate 1 and the OS sheet. **Mitigation, stated for accuracy:**
+  today's shipped Runner always supplies it (`Runner.tsx:412` and `:420`), so
+  the gate holds on the current build — this is latent, not live. Tracked as
+  **conjureos-mobile#7** (2026-08-21). Note the cross-app action gate in the
+  same file was already hardened the other way: `handlers.ts:542` fails
+  **closed** with an explicit comment that "a consent gate must FAIL CLOSED".
+  Do not construct a handler context without grants, and do not describe this
+  gate as unconditional.
 - **Gate 3** — the OS HealthKit / Health Connect authorization, requested lazily
   inside `conjureos-mobile/src/native/healthOps.ts`.
 
@@ -1148,12 +1199,19 @@ nothing else. `vite.config.ts:8` reads it at build time and injects it as
 `__APP_VERSION__`; `App.tsx:389` renders it as `v{__APP_VERSION__}` in the
 footer.
 
-The "bump it in two places" rule belongs to the **Recipes** app
-(`conjureos-app-recipes/CLAUDE.md`), and ConjureOS `STATUS.md:103` repeats it for
-"Recipes/Fitness/Finance" — for Fitness that line is wrong. The CI guard is
-conditional: `ConjureOS/.github/actions/publish-anchor-app/action.yml:155` only
+The "bump it in two places" rule comes from
+`ConjureOS/ANCHOR_APP_CI_SETUP.md:231-236` — *"Bump the app's version on **every**
+publish — `package.json` **and** `src/version.ts` together"* — which is written
+unscoped and therefore reads as applying here. It does not: the CI guard is
+conditional. `ConjureOS/.github/actions/publish-anchor-app/action.yml:155` only
 compares `package.json` against `src/version.ts` **if that file exists**, and
-skips the check otherwise. So there is nothing here to get out of sync.
+skips the check otherwise, so there is nothing here to get out of sync. The
+same repo already documents the carve-out at
+`ConjureOS/docs/internal/ONBOARDING.md:993`: *"Fitness and Finance do not
+currently carry a `src/version.ts`; guard 1 is skipped."* The two-place
+convention is real for **Recipes** (`conjureos-app-recipes/CLAUDE.md`), which
+does carry the file. Guards 2 and 3 (byte-identical and semver checks in the
+`store-version` edge function) still apply to every app, including this one.
 
 ### The publish workflow
 
