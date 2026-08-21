@@ -170,7 +170,7 @@ v2 prerequisite (DECISIONS 2026-06-24; PHASE_12_DESIGN 12b "Build path").
 
 ## health-screens — Screens and navigation
 
-`App.tsx:35` declares the tab union:
+`App.tsx:37` declares the tab union:
 `"diary" | "meal" | "add" | "plan" | "workouts" | "coach"`.
 
 **Visible bottom tab bar today (flag OFF): Diary · Add · Plan.** The Workouts
@@ -189,7 +189,7 @@ button — it is reached from the Plan tab's launcher, which is also flagged off
 | **Workouts library + runner** | `WorkoutsScreen`, `WorkoutRunner`, `WorkoutOverview`, `CardioPlayer`, `WorkoutSummary`, `CoachReflect` | **Hidden by the flag.** Code intact and tested. |
 | **Coach chat** | `src/screens/CoachScreen.tsx` | **Hidden by the flag** (`App.tsx:373`). |
 | **Evening check-in** | `src/components/DayCheckin.tsx` | **Hidden by the flag** (`App.tsx:273`, `:391`). Banner-only by design — no notifications. |
-| **Settings (cog)** | `src/screens/SettingsSheet.tsx` | Live. Deliberately *not* a plan editor any more: units preference + "Reset health data" only, plus the program-editor sub-view reached from "Edit workouts" (`SettingsSheet.tsx:16`). |
+| **Settings (cog)** | `src/screens/SettingsSheet.tsx` | Live. Deliberately *not* a plan editor any more: units preference + "Reset health data" only, plus the program-editor sub-view reached from "Edit workouts" (`SettingsSheet.tsx:14-21`). |
 
 **The plan banner, not a gate.** Early v2 made the wizard a full-screen first-run
 gate. It is now a dismissible `PlanBanner` above the Today tracker
@@ -280,6 +280,18 @@ site and never appended to.
 | P4 #61 | AI coach + Tell-coach bar + symptom classifier + reprompt validator | ~12–14 hr | Coach **built then paused**; Tell-coach bar and reprompt validator **never built**; symptom classifier written but **unwired** |
 | P5 #62 | Settings + `notify` permission + disclaimer + ToS link + publish | ~5–6 hr | Settings + disclaimer done; **`notify` is not in the manifest permission list** and `notify` appears nowhere in `src/` |
 
+> **Provenance note.** The recorded decision
+> (`ConjureOS/DECISIONS_ARCHIVE.md:72`) words P4 as *"AI workout coach +
+> Tell-coach bar"* and P5 as *"Settings + `notify` permission + disclaimer +
+> publish"*. The extra items above — "+ symptom classifier + reprompt
+> validator" on P4 and "+ ToS link" on P5 — come from `PHASE_12_DESIGN.md` §12b's
+> build-phase list, not from the decision entry. The GitHub issues themselves
+> (#57–#62) were **not readable when this doc was written**, so treat issue
+> titles and states as unverified. Every issue number, and
+> `ConjureOS#553` / `ConjureOS#573` / `conjureos-mobile#2` / `conjureos-mobile#7`
+> elsewhere in this doc, is reported as of **2026-08-21** and was not confirmed
+> against GitHub.
+
 Total estimate at scoping: **~42–50 productive hours, ~5–6 weeks of evenings.**
 Actual elapsed: 2026-06-24 → 2026-08-19, ~60 versions, and the shape changed
 substantially along the way.
@@ -365,7 +377,7 @@ plan, which is the single canonical home for the disclaimer audit record.
 
 ### The two implementations are deliberately unequal
 
-`src/data/repository.ts:52` declares one interface with two groups of methods:
+`src/data/repository.ts:50` declares one interface with two groups of methods:
 
 - **v1 surface** — profile, goals, diary entries, weights, plus the history
   clears. Implemented by **both** `MockRepository` and `SupabaseRepository`.
@@ -572,7 +584,7 @@ scan attempts and history are scoped to owner + `public.is_admin(auth.uid())`.
 
 ### The function's auth model
 
-The function's own header comment (`index.ts:7-11`) states that
+The function's own header comment (`index.ts:6-11`) states that
 `verify_jwt` is "intentionally OFF at the platform layer" so the function can
 serve anon lookups, and self-checks writes instead.
 
@@ -582,7 +594,8 @@ serve anon lookups, and self-checks writes instead.
 > `recipes-db`, `mint-app-token`, `cleanup-issue-attachments`, `submit-report`,
 > `send-email`) and **`health-foods-db` is not one of them**. The file's own
 > header (`config.toml:1-3`) says "Functions not listed here keep CLI defaults
-> (`verify_jwt = true`)", and `supabase-functions.yml:77` deploys with a plain
+> (`verify_jwt = true`)", and the deploy workflow
+> (`ConjureOS/.github/workflows/supabase-functions.yml:77`) runs a plain
 > `supabase functions deploy "$fn" --project-ref …` — no `--no-verify-jwt`. The
 > directly comparable function, `recipes-db`, uses the *same* minted-token
 > pattern and **is** declared at `config.toml:20-26`, with a comment explaining
@@ -630,7 +643,7 @@ IP, resetting on cold start:
 | `search` | public | 30/min | `ilike` on name/brand, `is_flagged = false`, canonical-first ordering, limit 1–50 |
 | `get` | public | 60/min | Fetch one row by id |
 | `submit` | required | 10/min | User/AI-derived write (below) |
-| `logScanAttempt` | required | 60/min | Client-side telemetry row |
+| `logScanAttempt` | required | 60/min | Client-side telemetry row — **see the gap below** |
 | `flag` | required | 5/min | Increment `flag_count`; `>= 3` sets `is_flagged` |
 
 **`lookup`** (`index.ts:170`), three steps:
@@ -655,6 +668,18 @@ IP, resetting on cold start:
    - A row with **no calories is treated as a miss**, not stored — the client
      would otherwise show a confident 0.
 3. **Miss.** Client falls back to an AI photo parse.
+
+> **Telemetry gap, verified 2026-08-21.** `logScanAttempt` requires auth, but
+> the client never escalates to a minted token for it:
+> `WRITE_ACTIONS = new Set(["submit"])` (`conjureHealthDb.ts:64`). So on mobile
+> (where `getAccessToken()` returns null by design) and for any signed-out
+> desktop user, `logScanAttempt` sends `Bearer <ANON>`, is refused by
+> `index.ts:97`, and the client swallows the failure (`conjureHealthDb.ts:90`).
+> **Partly mitigated:** `lookup()` writes its own scan-attempt row server-side
+> for every barcode outcome including misses (`index.ts:189`, `:218`, `:229`), so the
+> "store every miss" data-licensing premise holds for *barcodes*. What is lost
+> is the client-only terminal outcomes — `ai_label`, `ai_front`, `usda`,
+> `user_manual` — and all text-query telemetry.
 
 **`submit`** (`index.ts:352`): input goes through a strict allowlist
 (`sanitizeFood`). Numeric fields are **strict, not clamped** — a 999,999-calorie
@@ -749,7 +774,7 @@ There are **13 call sites**, all funnelled through `complete()` in
 | `epic` | Opus 4.7 | $5.00 / $25.00 per M in/out |
 
 **Conjure Health never uses `epic`.** On the hosted free tier ConjureOS forces
-every tier down to Haiku (`ConjureOS/src/ai/adapterSelector.ts:19`), so free-tier
+every tier down to Haiku (documented at `ConjureOS/src/ai/adapterSelector.ts:19`), so free-tier
 users get Haiku quality even on the `capable` calls — the *shape* of the response
 is the same, the *quality* differs. That is the direct cause of several
 historical bugs in this app (e.g. Haiku returning plan goals as plain strings,
@@ -776,7 +801,10 @@ wrapper, and object-map goals).
 
 ### Rough cost intuition
 
-Order of magnitude, using the Sonnet 4.6 rate and typical prompt sizes:
+Order of magnitude, using the Sonnet 4.6 rate ($3.00/$15.00 per M) and typical
+prompt sizes. **For the hosted free-tier majority the real rate is Haiku 4.5's
+$1.00/$5.00 (`ConjureOS/src/ai/pricing.ts:40`) — roughly 3× lower than every
+figure below** — because the free tier forces all three tiers to `cheap`:
 
 - **Food logging calls (#1–#3)**: sub-cent per call for text; a photo pushes
   input tokens up (image blocks dominate) but still lands in the fractions of a
@@ -945,6 +973,39 @@ Conjure Health reads wearable workout calories via a native broker that exists
 `reason: "unsupported"`, which is why the client feature-detects rather than
 assuming.
 
+### Read this first: the whole path is behind a build flag
+
+**HealthKit / Health Connect is compiled in only when
+`EXPO_PUBLIC_CONJUREOS_HEALTH === "1"`.** This is the single most practical
+thing to know in this section, because it means the verification loop
+`conjureos-mobile/CLAUDE.md` prescribes cannot exercise Health at all.
+
+- `conjureos-mobile/app.config.ts:22` — `const health = process.env.EXPO_PUBLIC_CONJUREOS_HEALTH === "1";`
+- `conjureos-mobile/app.config.ts:93` — `if (health) { … }` is what pushes the
+  `@kingstinct/react-native-healthkit` and `react-native-health-connect`
+  plugins. Off → the native modules are simply not in the bundle. The comment
+  at `:88-92` explains the flag is deliberately **decoupled** from
+  `EXPO_PUBLIC_CONJUREOS_MINIMAL` so a build can add HealthKit without
+  re-enabling widgets / share-extension / push — one bundle ID, one added
+  capability, the lowest-risk provisioning delta.
+- `conjureos-mobile/eas.json:40` — `EXPO_PUBLIC_CONJUREOS_HEALTH: "1"` appears
+  **only** in the `testflight` profile. The `development` and `preview` profiles
+  do not set it.
+- With the module absent, `loadHK()` (`healthOps.ts:37-49`) returns null and
+  `available` reports `platform: "unsupported"` (`healthOps.ts:390`) — the app
+  degrades cleanly to "no wearable calories", which is why nothing looks broken.
+
+**Consequence for whoever is finishing this app.** `npx expo run:ios` /
+`run:android` dev clients — the loop `conjureos-mobile/CLAUDE.md` names as "real
+verification" — report `unsupported` and cannot test any of this. The only
+profile that carries the flag is `testflight`, and per that same CLAUDE.md the
+`testflight` profile is **all-prod**, so reaching it requires a dev→main
+promotion *and* an EAS build. EAS builds cost real money on the owner's plan and
+**must not be triggered without asking first**. Practical upshot: treat any
+change to `src/bridge/health.ts` or `src/features/exercise.ts` as unverifiable
+on-device until a Health-flagged build exists, and say so rather than claiming it
+was tested.
+
 ### The app side
 
 `src/bridge/health.ts` is the whole client surface. It wraps
@@ -1058,9 +1119,15 @@ gated intake to `logging_only` **at plan creation**, so a stored `Plan.mode` is
 always already-safe and downstream code never re-checks. The workout surface is
 **hidden, not disabled** — no teasing controls (`App.tsx:263` `loggingOnly`).
 
-**Layer 2 — injury-region exclusions. LIVE.**
-`src/features/safety/injuryExclusions.ts`, a typed module (not JSON, so it's
-type-checked with no loader dependency). Maps an injury region to movement
+**Layer 2 — injury-region exclusions. LIVE, with a format deviation.** The
+recorded decision specifies a *"static **JSON** in bundle"*
+(`ConjureOS/DECISIONS_ARCHIVE.md:72`). The implementation is a **typed TS
+module**, `src/features/safety/injuryExclusions.ts` — deliberate (values are
+type-checked and there is no loader dependency; the file's own header says so),
+and it is the right call, but it *is* an unrecorded deviation from the decision
+and is noted here because that is what the decision layer is for. Recipes hit
+the same wall from the other direction: the store bundler's loader map does not
+cover `.json`, so a JSON import returns `undefined` in a store build. Maps an injury region to movement
 patterns that must not be prescribed. Matching is case-insensitive **name
 substring** — deliberate, because the workout library is name-keyed and has no
 movement taxonomy, and patterns are kept broad ("squat" catches "Goblet Squat",
@@ -1152,7 +1219,7 @@ feature should not be one tapped setting away from reappearing in a user's app.
 
 Set it to `true`. Everything returns, including existing users' programs,
 because no data was removed. Then re-check the things the flag does **not**
-restore on its own, per the checklist in `flags.ts:38`-`47`:
+restore on its own, per the checklist at `flags.ts:37-44`:
 
 1. `package.json` → `conjureos.description` + `promptSuggestions`, rewritten to
    describe a nutrition-only app.
@@ -1277,8 +1344,7 @@ up on the grid. That's a mobile/backend gap, not a publish-flag problem.
 
 This repo does **not** mirror ConjureOS's `dev` → `main` flow. It has `main`
 plus feature branches (`claude/...`). As of 2026-08-21, `origin/main` is at
-`eacf65f` (1.23.1) and the checked-out branch
-`claude/ai-integration-conjureos-16137t` points at the same commit.
+`eacf65f` (1.23.1); code work happens on `claude/…` branches off it.
 
 ---
 
@@ -1415,6 +1481,21 @@ Three things follow from that framing:
 1. **Phase 9 platform sync already backs up VFS files.** So "put it in the VFS"
    is not "don't back it up" — the platform's own sync covers it, for free, with
    no per-app schema.
+
+   > ⚠️ **This premise was later eroded, and the decision has never been
+   > revisited in that light.** A subsequent fix made `localStorage` the
+   > authoritative store precisely *because* it is **not** cloud-synced
+   > (`mockRepository.ts:52` `LOCAL_KEY`; `init()` at `:164` deliberately does
+   > not consult the VFS copy once a device-local one exists). The VFS
+   > `store.json` written by `flush()` (`:192`) is now a **seed for a new
+   > device, not a live backup** of the authoritative copy. So the plan,
+   > day-log and workout-session data this decision placed in the VFS is, in
+   > practice, backed up only as far as the last mirror write — and is never
+   > read back on a device that already has local state. **The decision still
+   > stands on points 2 and 3 below (no new Supabase surface; genuinely
+   > per-device data). It no longer stands on point 1 as originally written.**
+   > See `health-persistence-split` for the mechanism and the bug that forced
+   > it.
 2. **No new Supabase surface at all** — no tables, no RLS, no migration, nothing
    to keep in step. The plan schema could change every week while it was being
    designed, and it did.
@@ -1573,15 +1654,27 @@ this one is *not* in ConjureOS `DECISIONS.md`.
 > **Assessed 2026-08-21** against `origin/main` @ `eacf65f`, `package.json`
 > `1.23.1`. The owner is actively finishing this app; treat anything here as
 > stale after about a week.
+>
+> Corroborating signal, same date: ConjureOS `STATUS.md` "Next 3 things" lists
+> **"1. Finish Conjure Health (Phase A). Almost done — nail the remaining v2
+> work on the health/fitness anchor app. Mobile fixes as needed alongside."**
+> This app is the platform's current top priority after the in-flight Jump
+> Runner verification. Note the ConjureOS repo is being edited concurrently, so
+> line-number citations into it age fast — this doc quotes text where the
+> quotation is what matters.
 
 ### Shipped and working
 
 - Nutrition logging end to end: diary with calorie ring + macro bars, per-meal
   detail, entry edit / move / delete, day navigation, recent-saved re-logging.
 - Four ways to add food: barcode scan (with a freeze-on-detect scanner as of
-  2026-08-17), text search (community DB + USDA + Open Food Facts, US-biased,
-  per-provider 7s timeouts, progressive paint), AI photo scan and AI text
-  describe, and cross-app recipes.
+  2026-08-17), text search, AI photo scan and AI text describe, and cross-app
+  recipes.
+- **Text search hits Open Food Facts + USDA only** (`foodSearch.ts:157`),
+  US-biased, per-provider timeouts, progressive paint. The community food DB is
+  **barcode-only**: `conjureHealthDb.searchText()` (`conjureHealthDb.ts:162`) is
+  written and the edge function's public `search` action is live, but nothing in
+  `src/` calls it. See `health-food-lookup-chain`.
 - The "Looks wrong?" correction flow, with corrections stored locally in
   `food-cache.json` and consulted ahead of every provider.
 - Weight tracking: weigh-in, trend sparkline, BMI.
@@ -1589,7 +1682,11 @@ this one is *not* in ConjureOS `DECISIONS.md`.
   targets driving the diary rings, a manual targets override on the Plan tab,
   the weekly movement goal, and plan archiving.
 - Apple Health / wearable exercise calories added back to the day's budget, with
-  a per-day editable/removable "Completed today" list.
+  a per-day editable/removable "Completed today" list — **shipped in the app,
+  but only reachable on a mobile build compiled with
+  `EXPO_PUBLIC_CONJUREOS_HEALTH=1`, i.e. TestFlight/prod today.** Dev and
+  preview clients report `unsupported` and show no wearable calories. See
+  `health-mobile-healthkit`.
 - Four cross-app actions (`logFood`, `todayTotals`, `logRecipeMeal`,
   `logWorkout`) and the `recipeSource` need via Phase 45 discovery.
 - Settings: units toggle (instant-apply) and an itemized "Reset health data"
@@ -1616,6 +1713,9 @@ data preserved. See `health-coach-pause-flag`.
   nowhere in `src/`.
 - **The persistent coach disclaimer footer** (the third of layer 5's three
   surfaces).
+- **Community-DB text search.** `conjureHealthDb.searchText()` and the edge
+  function's public `search` action both exist; nothing in `src/` calls the
+  client wrapper. The shared catalog is reachable by barcode only.
 - **A re-Vite to `@conjureos/pack`.** Still Vite, deliberately.
 - **OFF write-back.** We pull from Open Food Facts; we never push. Repo issue
   #63, blocked on a bot account.
@@ -1625,6 +1725,22 @@ data preserved. See `health-coach-pause-flag`.
 - **`conjure_project_url` Vault secret** must be set once per Supabase project
   (dev and prod) or the weekly moderation sweep no-ops. Everything else in the
   food DB works without it.
+- **ConjureOS#573** (filed 2026-08-21) — `health-foods-db` is missing from
+  `supabase/config.toml`, so it deploys with the CLI default
+  `verify_jwt = true` despite its own header comment claiming the gateway check
+  is off. If the gateway check really is on, the minted-token mobile write path
+  is rejected before the function runs and the 1.5.1 fix is silently dead.
+  **Verify against the deployed dev function before trusting mobile
+  contributions.** See `health-backend-foods-db`.
+- **conjureos-mobile#7** (filed 2026-08-21) — mobile health Gate 2 is wrapped in
+  `if (ctx.grants)` and fails open. Latent, not live (the Runner always supplies
+  it). See `health-mobile-healthkit`.
+- **No Health-flagged dev build.** `EXPO_PUBLIC_CONJUREOS_HEALTH` is set only on
+  the all-prod `testflight` profile, so the wearable path cannot be verified on
+  a dev client. See `health-mobile-healthkit`.
+- **Client-side scan telemetry is dropping** on mobile and when signed out
+  (`logScanAttempt` is auth-gated but never escalates to a minted token). See
+  `health-backend-foods-db`.
 - **ConjureOS#553** — reinstating some form of nutrition-data moderation
   (review queue, trust and rate limits, protecting upstream attribution from
   being overwritten). Deliberately filed separately after 1.23.1 removed the
@@ -1647,18 +1763,36 @@ data preserved. See `health-coach-pause-flag`.
   `0.2.10` and say "Conjure Health v2 … not started". Read the top few
   paragraphs and the git log; distrust the rest.
 - **`.env.example`** header says "Conjure Fitness — environment configuration".
+- **The pause date is wrong in the code.** `src/features/flags.ts:11` says the
+  coach/workout pause was decided **2026-08-04**, and repo `STATUS.md:3` is
+  headed 2026-08-04 while describing `1.21.0` as the pause. Git disagrees: the
+  pause is commit `7be6b56`, dated **2026-08-14**, and that is the commit where
+  `package.json` becomes `1.21.0`. 2026-08-04 is the *previous* commit
+  (`9e0a885`, the hygiene pass). This doc uses 2026-08-14 throughout. It matters
+  because "If you are picking this up cold" below tells you to read `flags.ts`
+  first — everything else in that comment is accurate, but the date is not.
+- **`src/features/resetData.ts:6-8`** says the active plan is "Deliberately NOT
+  touched", but `HISTORY_ITEMS` ships a `kind: "plan"` / "Current plan" row at
+  `:29-31` that calls `repo.clearPlan()`. The doc comment predates the 1.22.0
+  change that added the row and was never updated.
 - **ConjureOS `STATUS.md:34`** describes 12b as "plan wizard + daily check-off
-  home + AI workout coach" with no mention of the pause, and implies CI builds
-  Fitness with `@bundle` (it uses the Vite `build:inline` output).
-- **ConjureOS `STATUS.md:103`** tells you to bump `src/version.ts` for Fitness.
-  That file does not exist here.
+  home + AI workout coach" with no mention of the pause. (It is *correct* about
+  the build path — the same sentence says "Fitness/Health + Finance still on
+  Vite for now".)
+- **ConjureOS `ANCHOR_APP_CI_SETUP.md:231-236`** states the `package.json` +
+  `src/version.ts` two-place bump unscoped, which reads as applying to this app.
+  It does not — see `health-build-publish`.
+  `ConjureOS/docs/internal/ONBOARDING.md:993` already records the carve-out.
 - **ConjureOS `DECISIONS.md`** has no entry for the 2026-08-14 coach/workout
   pause.
 
 ### If you are picking this up cold
 
 1. Read `src/features/flags.ts` first — it explains more about the current
-   product than the README does.
+   product than the README does. **Its one error: the date.** It says the pause
+   was decided 2026-08-04; the commit is 2026-08-14 (`7be6b56`, `1.21.0`).
+   Everything else in that comment, including the revival checklist, is
+   accurate.
 2. `npm install && npm run typecheck && npm test` (90 tests as of 1.23.1).
 3. `npm run dev` runs the whole app on mocks with zero configuration.
 4. Bump `package.json` `version` before any push you intend to publish, and say
