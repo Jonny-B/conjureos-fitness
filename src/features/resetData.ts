@@ -16,7 +16,14 @@ import { vfs } from "../bridge/vfs";
 import { COACH_AND_WORKOUTS_ENABLED } from "./flags";
 
 /** One independently clearable slice of the user's history. */
-export type HistoryKind = "diary" | "weights" | "workouts" | "coach" | "planHistory" | "plan";
+export type HistoryKind =
+  | "diary"
+  | "weights"
+  | "workouts"
+  | "coach"
+  | "coachChat"
+  | "planHistory"
+  | "plan";
 
 /** The clearable history slices with their user-facing copy, in the order
  *  Settings lists them. Drives the reset UI so labels live beside the logic. */
@@ -24,7 +31,8 @@ export const HISTORY_ITEMS: { kind: HistoryKind; label: string; desc: string }[]
   { kind: "diary", label: "Food diary", desc: "Every logged meal and snack" },
   { kind: "weights", label: "Weight history", desc: "All weigh-ins and the trend graph" },
   { kind: "workouts", label: "Workout history", desc: "Completed sessions and daily check-offs" },
-  { kind: "coach", label: "Coach conversations", desc: "Chat history and the coach's memory of you" },
+  { kind: "coachChat", label: "Food questions", desc: "Everything you've asked about food, and the answers" },
+  { kind: "coach", label: "Coach memory", desc: "What the coach remembers about you" },
   {
     kind: "plan",
     label: "Current plan",
@@ -54,9 +62,12 @@ export async function clearHistory(kind: HistoryKind): Promise<void> {
     case "workouts":
       await repo.clearWorkoutHistory().catch(() => {});
       return;
-    case "coach":
-      // Conversation + long-term memory live as their own VFS docs.
+    case "coachChat":
+      // The Q&A thread behind the home screen's ask box.
       await rm("coach-chat.json");
+      return;
+    case "coach":
+      // The trainer's long-term memory of the user, separate from the thread.
       await rm("coach.json");
       return;
     case "planHistory":
@@ -67,15 +78,12 @@ export async function clearHistory(kind: HistoryKind): Promise<void> {
       // removed the archive — so a user who cleared everything still landed on
       // the Plan tab with their old plan intact.
       await repo.clearPlan().catch(() => {});
-      // While the coach is paused its own reset row is hidden, so this is the
-      // only way to reach coach.json. Leaving it behind meant a cleared plan
-      // still showed the coach's narrative about the plan that just went away
-      // — visible, stale, and impossible to remove. The coach's memory is
-      // about the plan, so clearing one should clear the other regardless.
-      if (!COACH_AND_WORKOUTS_ENABLED) {
-        await rm("coach-chat.json");
-        await rm("coach.json");
-      }
+      // The trainer's memory is a narrative ABOUT the plan, so it goes with
+      // it — and while the coach is paused its own row is hidden, making this
+      // the only way to reach the stale text. The chat thread is deliberately
+      // NOT cleared here: those are the user's own food questions, they have
+      // their own row in Settings, and they outlive any one plan.
+      if (!COACH_AND_WORKOUTS_ENABLED) await rm("coach.json");
       return;
   }
 }
@@ -91,6 +99,8 @@ export async function clearAllHistories(): Promise<void> {
 
 /** Slices belonging to the paused coach + workout features (see features/flags). */
 const PAUSED_KINDS: ReadonlySet<HistoryKind> = new Set<HistoryKind>(["workouts", "coach"]);
+// "coachChat" is deliberately NOT paused: the home screen's ask box writes to
+// it, so the user must be able to clear what they can see.
 
 /**
  * The history rows Settings should actually offer. While the coach and workout

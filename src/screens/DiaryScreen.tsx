@@ -7,6 +7,8 @@ import { CalorieRing, MacroBars } from "../components/rings";
 import { ChevronLeft, ChevronRight, WorkoutsIcon } from "../components/icons";
 import { WeightCard } from "../components/WeightCard";
 import { CoachPlanCard } from "../components/CoachPlanCard";
+import { AskCoachCard } from "../components/AskCoachCard";
+import { CoachChatModal } from "../components/CoachChatModal";
 import { exerciseCaloriesForDate } from "../features/exercise";
 
 interface Props {
@@ -40,6 +42,8 @@ export function DiaryScreen({
   const [view, setView] = useState<DayView | null>(null);
   // Exercise calories for the day — added back to the budget.
   const [exercise, setExercise] = useState(0);
+  // The question in flight; non-null also means the chat sheet is open.
+  const [asking, setAsking] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -132,6 +136,9 @@ export function DiaryScreen({
 
       <WeightCard profile={profile} nonce={nonce} />
       <CoachPlanCard plan={plan} goals={goals} onOpen={onOpenPlan} />
+      <AskCoachCard onAsk={setAsking} />
+
+      {asking !== null && <CoachChatModal initialQuestion={asking} onClose={() => setAsking(null)} />}
     </div>
   );
 }

@@ -390,7 +390,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
               placeholder={
                 COACH_AND_WORKOUTS_ENABLED
                   ? "e.g. lose a few pounds and get better at the Murph"
-                  : "e.g. lose 15 lb by Christmas, and eat more protein"
+                  : "e.g. lose a couple of pounds"
               }
               value={goalText}
               onChange={(e) => setGoalText(e.target.value)}

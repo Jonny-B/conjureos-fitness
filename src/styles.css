@@ -3490,3 +3490,86 @@ input[type="date"].text-input {
   padding: 9px 18px;
   font-size: 13px;
 }
+
+/* ── Ask about food ──────────────────────────────────────────────────────
+   The home card and its conversation sheet. */
+.ask-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ask-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 16px keeps iOS Safari from zooming the viewport on focus. */
+  font-size: 16px;
+}
+/* The rotating suggestion is content, not chrome — let it read clearly, and
+   fade between questions so a swap registers as a change, not a flicker. */
+.ask-input::placeholder {
+  color: var(--muted, #8b8b9e);
+  opacity: 0.85;
+  animation: ask-fade var(--cui-duration-slow, 320ms) var(--cui-ease, ease);
+}
+@keyframes ask-fade {
+  from { opacity: 0; }
+}
+.ask-send { flex: 0 0 auto; width: auto; padding: 10px 18px; }
+.ask-hint { margin-top: 8px; }
+
+.chat-sheet { height: 88vh; }
+.chat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.chat-empty { margin: auto 0; text-align: center; }
+.chat-bubble {
+  max-width: 85%;
+  padding: 10px 13px;
+  border-radius: 14px;
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-bubble.user {
+  align-self: flex-end;
+  background: var(--cui-accent, #7c6cf5);
+  color: #fff;
+  border-bottom-right-radius: 5px;
+}
+.chat-bubble.assistant {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 5px;
+}
+.chat-bubble.thinking { display: flex; gap: 5px; align-items: center; padding: 14px 15px; }
+.chat-bubble.thinking .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; opacity: 0.35;
+  animation: chat-dot 1.2s infinite ease-in-out;
+}
+.chat-bubble.thinking .dot:nth-child(2) { animation-delay: 0.18s; }
+.chat-bubble.thinking .dot:nth-child(3) { animation-delay: 0.36s; }
+@keyframes chat-dot {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 0.9; transform: translateY(-3px); }
+}
+.chat-foot { gap: 8px; }
+.chat-foot .text-input { flex: 1 1 auto; min-width: 0; font-size: 16px; }
+.chat-foot .chat-send { flex: 0 0 auto; width: auto; padding: 10px 18px; }
+
+/* Wide screens: the sheet stops being a phone drawer and centres as a dialog. */
+@media (min-width: 700px) {
+  .sheet-backdrop { align-items: center; }
+  .chat-sheet { border-radius: 18px; height: min(720px, 82vh); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-input::placeholder { animation: none; }
+  .chat-bubble.thinking .dot { animation: none; opacity: 0.5; }
+}
