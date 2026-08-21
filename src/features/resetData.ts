@@ -28,7 +28,7 @@ export const HISTORY_ITEMS: { kind: HistoryKind; label: string; desc: string }[]
   {
     kind: "plan",
     label: "Current plan",
-    desc: "Your goal, dates and daily targets. Weigh-ins and diary are kept.",
+    desc: "Your goal, dates, daily targets and plan notes. Weigh-ins and diary are kept.",
   },
   { kind: "planHistory", label: "Past plans", desc: "Only the archive of previous plans" },
 ];
@@ -67,6 +67,15 @@ export async function clearHistory(kind: HistoryKind): Promise<void> {
       // removed the archive — so a user who cleared everything still landed on
       // the Plan tab with their old plan intact.
       await repo.clearPlan().catch(() => {});
+      // While the coach is paused its own reset row is hidden, so this is the
+      // only way to reach coach.json. Leaving it behind meant a cleared plan
+      // still showed the coach's narrative about the plan that just went away
+      // — visible, stale, and impossible to remove. The coach's memory is
+      // about the plan, so clearing one should clear the other regardless.
+      if (!COACH_AND_WORKOUTS_ENABLED) {
+        await rm("coach-chat.json");
+        await rm("coach.json");
+      }
       return;
   }
 }

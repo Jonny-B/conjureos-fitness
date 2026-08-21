@@ -113,7 +113,7 @@ export function SettingsSheet({
           <div className="section-label">Reset health data</div>
           <div className="reset-list">
             <p className="muted small reset-warning">
-              Clearing is permanent. Your profile, units, and current plan are kept.
+              Clearing is permanent. Your profile and units are kept.
             </p>
             {visibleHistoryItems().map((item) => (
               <ResetRow
