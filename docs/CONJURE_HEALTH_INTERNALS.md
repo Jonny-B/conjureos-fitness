@@ -117,8 +117,8 @@ practical.
 **Shared state and invalidation.** `src/App.tsx` is the single source of
 navigation and shared state: active tab, selected date, cached
 `profile` / `goals` / `plan`. After any write, `setNonce(n => n + 1)` is the
-app-wide "re-read" signal (`App.tsx:107`). Note the caveat documented at
-`App.tsx:95`: the plan lives in `App` state, so a nonce bump alone can't make a
+app-wide "re-read" signal (`App.tsx:107`). Note the caveat documented in the
+`onDataCleared` JSDoc (`App.tsx:96-100`; the callback itself is at `:101`): the plan lives in `App` state, so a nonce bump alone can't make a
 cleared plan disappear — that's why `onDataCleared` re-reads plan/profile/goals
 explicitly.
 
@@ -189,7 +189,7 @@ button — it is reached from the Plan tab's launcher, which is also flagged off
 | **Workouts library + runner** | `WorkoutsScreen`, `WorkoutRunner`, `WorkoutOverview`, `CardioPlayer`, `WorkoutSummary`, `CoachReflect` | **Hidden by the flag.** Code intact and tested. |
 | **Coach chat** | `src/screens/CoachScreen.tsx` | **Hidden by the flag** (`App.tsx:373`). |
 | **Evening check-in** | `src/components/DayCheckin.tsx` | **Hidden by the flag** (`App.tsx:273`, `:391`). Banner-only by design — no notifications. |
-| **Settings (cog)** | `src/screens/SettingsSheet.tsx` | Live. Deliberately *not* a plan editor any more: units preference + "Reset health data" only, plus the program-editor sub-view reached from "Edit workouts" (`SettingsSheet.tsx:14-21`). |
+| **Settings (cog)** | `src/screens/SettingsSheet.tsx` | Live for units + "Reset health data" only — deliberately *not* a plan editor any more (`SettingsSheet.tsx:14-21`). The program-editor sub-view it still hosts is **unreachable with the flag off**: it renders only when `initialView === "program" && plan?.program` (`SettingsSheet.tsx:46`), `settingsView` is set from the single `openSettings(view)` call (`App.tsx:169`), and the only `"program"` caller is `onEditWorkouts` (`App.tsx:360`) — wired to buttons inside `PlanScreen.tsx:347` / `:418`, both gated on `showProgram` (`PlanScreen.tsx:96`) or on `plan?.program`, which the flag-forced `eat_better` mode never produces. |
 
 **The plan banner, not a gate.** Early v2 made the wizard a full-screen first-run
 gate. It is now a dismissible `PlanBanner` above the Today tracker
@@ -385,8 +385,11 @@ plan, which is the single canonical home for the disclaimer audit record.
   `saveDayLog` / `markCheckoff`, `listWorkoutSessions` / `saveWorkoutSession` /
   `removeWorkoutSession`, and `clearWorkoutHistory`. Implemented **only** by
   `MockRepository`. Every one of these throws
-  `new Error(PLAN_REQUIRES_V2_BACKEND)` from `SupabaseRepository`
-  (`supabaseRepository.ts:187`–`226`).
+  `new Error(PLAN_REQUIRES_V2_BACKEND)` from `SupabaseRepository`:
+  `clearWorkoutHistory` at `supabaseRepository.ts:182`, and the nine
+  plan / day-log / session stubs at `:191-216` under the section comment
+  `// ── v2: VFS-only today; no backend rows yet (DECISIONS 2026-06-24). ──`
+  at `:187`.
 
 `PLAN_REQUIRES_V2_BACKEND` is exported from `repository.ts:41` precisely so
 callers can catch it and route around it rather than surfacing it to the user.
@@ -477,6 +480,23 @@ leave a "clear all" half-applied.
 (branded) and USDA FoodData Central (whole foods) **only** — in parallel, each
 provider independently timed out, results painting progressively via `onPartial`
 because a slow or 503-ing OFF search endpoint used to wedge the whole search.
+> ⚠️ **Every published build runs USDA on the shared `DEMO_KEY`.**
+> `usda.ts:17` is `const KEY = import.meta.env.VITE_USDA_API_KEY ?? "DEMO_KEY";`,
+> and `.github/workflows/publish-store.yml` bakes **only** the two Supabase vars
+> (`:52-53` dev, `:59-60` prod) — `VITE_USDA_API_KEY` is set in neither job. The
+> file's own header (`usda.ts:5-6`) states the consequence: *"Free API; ships
+> with DEMO_KEY (30 req/hr per IP). Set VITE_USDA_API_KEY for the 1000/hr signup
+> limit."* That quota is **shared globally** across every ConjureOS user behind
+> a given IP. On 429 the provider promise is swallowed by
+> `.catch(() => {})` (`foodSearch.ts:187`) and USDA simply contributes nothing
+> to the merge — **no error, no message, just fewer results**, and since USDA is
+> the front-loaded 0.7-share half of the merge, that is the *whole-foods* half
+> of search quietly disappearing. Filed as **conjureos-fitness#70**
+> (2026-08-21). Adding `VITE_USDA_API_KEY` to both build jobs is the single
+> cheapest fix in the food chain. See also the stale comment noted under
+> `health-status` → Documentation health: `usda.ts:18-19` claims "the UI notes
+> the degraded search", and it does not.
+
 Results are biased US-first (`mergeUsFirst`, `foodSearch.ts:137`): USDA is pulled
 at a higher share (0.7 × limit vs 0.5) and front-loaded 2:1, and OFF adds a
 `cc=us` + United-States country filter.
@@ -524,6 +544,17 @@ unconditional, and is separate from `contribute()`.
   existing row. Reinstating any of it is tracked as **ConjureOS#553**,
   deliberately and separately.
 
+**What "saving" also does, that the UI never asks about.** Every save through
+`EditableNutritionPreview` — the AI-label path, the front-of-package path and
+the "Looks wrong?" correction path alike (`AddFoodScreen.tsx:385`, `:977`,
+`:990`) — **uploads the food to the shared community catalog**, unconditionally,
+before the local save resolves (`EditableNutritionPreview.tsx:103`). The row is
+stored against the user's id server-side. There is no opt-out and, on desktop,
+no consent prompt; the only UI trace is the failure notice. This is the app's
+one outbound data path, so it is documented again with its full consent story
+under `health-cross-app` → "Health data and App Review"
+(conjureos-fitness#71).
+
 The `flag` action still exists server-side; only the client wrapper was removed.
 
 ---
@@ -533,7 +564,18 @@ The `flag` action still exists server-side; only the client wrapper was removed.
 **Lives in the ConjureOS repo, not this one:**
 `ConjureOS/supabase/functions/health-foods-db/index.ts` (686 lines), with
 migrations `090_health_foods.sql`, `092_health_foods_moderation.sql`, and
-`100_health_foods_barcode_full_unique.sql`. Deployed to dev and prod.
+`100_health_foods_barcode_full_unique.sql`.
+
+> **On "deployed".** Every claim in this section about what is *live* on the dev
+> or prod Supabase project — that the function is deployed, that 090/092/100 are
+> applied, and what `verify_jwt` is actually set to — is **asserted from the
+> decision log and CI convention, not observed**. CI is the sole applier
+> (`supabase-migrate.yml` on `supabase/migrations/**`,
+> `supabase-functions.yml` on `supabase/functions/**`) and the decision log
+> records these as shipped to both projects, which is good evidence but is not
+> the deployed state. Nothing in this environment can query the projects. Treat
+> deployment claims here as repo-state plus convention, and check the dashboard
+> when it matters — as it does for `verify_jwt` below.
 
 This is a *shared community food catalog*, distinct from the (currently absent)
 per-user `fitness` schema. Anchor-app backends live in the ConjureOS repo by
@@ -584,7 +626,7 @@ scan attempts and history are scoped to owner + `public.is_admin(auth.uid())`.
 
 ### The function's auth model
 
-The function's own header comment (`index.ts:6-11`) states that
+The function's own header comment (`health-foods-db/index.ts:6-11`) states that
 `verify_jwt` is "intentionally OFF at the platform layer" so the function can
 serve anon lookups, and self-checks writes instead.
 
@@ -620,7 +662,7 @@ serve anon lookups, and self-checks writes instead.
 > until someone checks a real `submit` against the deployed dev function.
 
 Whatever the gateway does, the function self-checks writes. `currentUserId()`
-(`index.ts:125`) tries two paths in order:
+(`health-foods-db/index.ts:125` `currentUserId`) tries two paths in order:
 
 1. **A minted ConjureOS identity token** — ES256, verified locally against
    `mint-app-token`'s JWKS with `issuer` and `audience` checks; `sub` is the user
@@ -634,7 +676,9 @@ The anon key satisfies neither, so it 401s on any write.
 ### Actions
 
 `PUBLIC_ACTIONS = { lookup, search, get }`. Everything else requires a verified
-user. Per-action in-memory token buckets (`index.ts:52`), keyed by user id or
+user. Per-action in-memory token buckets (`health-foods-db/index.ts:52`
+`RATE_BUCKETS` / `:53` `RATE_LIMITS`; the public set is `:49`
+`PUBLIC_ACTIONS`), keyed by user id or
 IP, resetting on cold start:
 
 | Action | Auth | Rate | What it does |
@@ -646,7 +690,7 @@ IP, resetting on cold start:
 | `logScanAttempt` | required | 60/min | Client-side telemetry row — **see the gap below** |
 | `flag` | required | 5/min | Increment `flag_count`; `>= 3` sets `is_flagged` |
 
-**`lookup`** (`index.ts:170`), three steps:
+**`lookup`** (`health-foods-db/index.ts:170`), three steps:
 
 1. **Our DB.** Deliberately serves only *trusted* rows:
    `is_flagged = false AND needs_review = false AND (is_canonical = true OR source IN (off_backfill, usda_backfill))`.
@@ -669,19 +713,37 @@ IP, resetting on cold start:
      would otherwise show a confident 0.
 3. **Miss.** Client falls back to an AI photo parse.
 
-> **Telemetry gap, verified 2026-08-21.** `logScanAttempt` requires auth, but
-> the client never escalates to a minted token for it:
-> `WRITE_ACTIONS = new Set(["submit"])` (`conjureHealthDb.ts:64`). So on mobile
-> (where `getAccessToken()` returns null by design) and for any signed-out
-> desktop user, `logScanAttempt` sends `Bearer <ANON>`, is refused by
-> `index.ts:97`, and the client swallows the failure (`conjureHealthDb.ts:90`).
-> **Partly mitigated:** `lookup()` writes its own scan-attempt row server-side
-> for every barcode outcome including misses (`index.ts:189`, `:218`, `:229`), so the
-> "store every miss" data-licensing premise holds for *barcodes*. What is lost
-> is the client-only terminal outcomes — `ai_label`, `ai_front`, `usda`,
-> `user_manual` — and all text-query telemetry.
+> **Telemetry: one harmless gap, one real one. Verified 2026-08-21.**
+>
+> **The harmless one.** `logScanAttempt` requires auth, and the client never
+> escalates to a minted token for it — `WRITE_ACTIONS` is `new Set(["submit"])`
+> (`conjureHealthDb.ts:64`). So on mobile (where `getAccessToken()` returns null
+> by design) and for any signed-out desktop user it sends `Bearer <ANON>`, is
+> refused by the `!PUBLIC_ACTIONS.has(action) && !userId` check
+> (`health-foods-db/index.ts:97`, inside `Deno.serve`), and the client swallows
+> the failure (`conjureHealthDb.ts:90`). **This costs nothing.** The client's only three
+> callers are inside `lookupBarcode` and send exactly
+> `resolvedFrom: "our_db"` / `"off"` / `"miss"` (`foodSearch.ts:79`, `:93`,
+> `:103`) — the same three outcomes `lookup()` already writes for itself
+> server-side (`health-foods-db/index.ts:189` `our_db`, `:218` `off`, `:229`
+> `miss`). Fixing the auth escalation would recover duplicate rows and nothing
+> else.
+>
+> **The real one: AI, USDA and text-search outcomes are instrumented nowhere.**
+> Not client-side, not server-side. `searchFoods` (`foodSearch.ts:157-192`)
+> contains no telemetry call at all, and nothing in `src/` ever passes
+> `ai_label`, `ai_front`, `usda` or `user_manual` as `resolvedFrom`, or ever
+> populates the `query` field — even though the client SDK's `ScanAttempt` type
+> declares all of them (`conjureHealthDb.ts:248-253` `ScanAttempt`) and the server accepts
+> them (`health-foods-db/index.ts:455`, the `allowed` array in
+> `logScanAttempt`). So the "store
+> every unique miss" data-licensing premise (see `health-decisions-other`,
+> 2026-06-25) holds for **barcodes only**, permanently, and provider hit-rates
+> cannot be compared across the food chain — the thing `logScanAttempt`'s own
+> doc comment says it exists to enable — `conjureHealthDb.ts:255-256`, "so
+> provider hit-rates can be tuned".
 
-**`submit`** (`index.ts:352`): input goes through a strict allowlist
+**`submit`** (`health-foods-db/index.ts:352`): input goes through a strict allowlist
 (`sanitizeFood`). Numeric fields are **strict, not clamped** — a 999,999-calorie
 submission comes back as *no value*, never as a confident reading of the
 ceiling, because "saturating a hostile number is how it gets laundered into a
@@ -803,7 +865,8 @@ wrapper, and object-map goals).
 
 Order of magnitude, using the Sonnet 4.6 rate ($3.00/$15.00 per M) and typical
 prompt sizes. **For the hosted free-tier majority the real rate is Haiku 4.5's
-$1.00/$5.00 (`ConjureOS/src/ai/pricing.ts:40`) — roughly 3× lower than every
+$1.00/$5.00 (`ConjureOS/src/ai/pricing.ts:40`, the
+`"claude-haiku-4-5-20251001"` entry in `MODEL_PRICING`) — roughly 3× lower than every
 figure below** — because the free tier forces all three tiers to `cheap`:
 
 - **Food logging calls (#1–#3)**: sub-cent per call for text; a photo pushes
@@ -822,9 +885,12 @@ figure below** — because the free tier forces all three tiers to `cheap`:
 
 The user pays: ConjureOS routes via the user's BYK key or the hosted free-tier
 proxy, meters the spend kernel-side, and records it per app
-(`ConjureOS/src/kernel/index.ts:1770` `recordAiSpend`, dispatch at `:1698`). Apps also face a
-per-app rate cap and a **foreground gate** — `ai.complete` is refused while
-ConjureOS is a background tab or the app's window is minimized.
+(`ConjureOS/src/kernel/index.ts:1770` `recordAiSpend(this.currentApp, …)`,
+inside `Kernel.dispatchAIRequest` at `:1698`). Apps also face a per-app rate cap
+(`:1732` `checkAiRate(this.currentApp)`) and a **foreground gate** (`:1720`
+`document.visibilityState === "hidden"`, plus an `appForeground` check) —
+`ai.complete` is refused while ConjureOS is a background tab or the app's window
+is minimized.
 
 ### Prompt-injection posture (applies to #1, #2, #3)
 
@@ -935,9 +1001,12 @@ no grant prompt. `markCooked` is `actions.write`, triggers the one-time
 per-caller grant, and is an optional nicety — in discovered mode it only fires
 when the matched provider actually exposes it.
 
-Search results fetched cross-app show a **source pill** (ConjureOS diamond glyph
-+ provider name, e.g. "◆ Recipes") on the title row, so data fetched from another
-app is visibly attributed.
+Search results fetched cross-app show an **app pill** (ConjureOS diamond glyph +
+provider name, e.g. "◆ Recipes") on the title row, so data fetched from another
+app is visibly attributed — `className="app-pill"` with `DiamondIcon`,
+`AddFoodScreen.tsx:322-324`. Do not confuse it with `.source-pill`, an unrelated
+class used in the exercise view for wearable-vs-in-app labels
+(`WorkoutsScreen.tsx:164`, `:200`).
 
 ### Health data and App Review
 
@@ -949,6 +1018,30 @@ including the HealthKit-specific rules) both bear on it, tracked in
 
 Practical implications when changing anything in this section:
 
+- **Know the one outbound path: community-catalog contribution is automatic,
+  unconditional, and stamped with the user's id.** Every food saved through the
+  AI-review or "Looks wrong?" screen is uploaded to the shared catalog —
+  `onSave` calls `contribute({ food, source, aiConfidence, userEdited })`
+  unconditionally at `EditableNutritionPreview.tsx:103`, its only call site in
+  `src/`. There is no opt-in, no opt-out, and no per-save toggle; the UI
+  surfaces only the *failure* ("Logged to your diary. We couldn't share your
+  edit with the community this time.", `:118-120`), which confirms sharing is
+  the default rather than an election. The payload is the whole food row — name,
+  brand, barcode, serving size and grams, and 19 nutrient fields, 24 in all
+  (`conjureHealthDb.ts:192-220` `foodItemToPayload`) — and the
+  server stamps `contributed_by: userId` (`health-foods-db/index.ts:393`).
+  **On desktop there is no consent prompt of any kind:** `call()` uses the
+  existing `getAccessToken()` session and only falls back to a minted token for
+  `WRITE_ACTIONS` (`conjureHealthDb.ts:64`, `:75-78`), so the one-time
+  ConsentSheet described in `health-decisions-other` (2026-07-16) is a
+  consequence of the *mobile minted-token* path, not a contribution consent.
+  **Mitigations that are real:** the rows are food catalog data, never diary
+  entries or health metrics; `display_attribution` defaults false
+  (`090_health_foods.sql:101`) and the public view nulls `contributed_by` unless
+  it is set (`090_health_foods.sql:299`, and `stripContributor` at
+  `health-foods-db/index.ts:569`), so contributors are not publicly exposed. Filed as **conjureos-fitness#71** (2026-08-21). If App
+  Review or a privacy label asks "what leaves the device", **this is the
+  answer** — describe it accurately rather than discovering it in review.
 - Health data must not be used for advertising or sold to data brokers, and must
   not be written to iCloud or any third-party storage without explicit consent.
   The community food DB deliberately stores **food catalog rows**, not user diary
@@ -991,9 +1084,10 @@ thing to know in this section, because it means the verification loop
 - `conjureos-mobile/eas.json:40` — `EXPO_PUBLIC_CONJUREOS_HEALTH: "1"` appears
   **only** in the `testflight` profile. The `development` and `preview` profiles
   do not set it.
-- With the module absent, `loadHK()` (`healthOps.ts:37-49`) returns null and
-  `available` reports `platform: "unsupported"` (`healthOps.ts:390`) — the app
-  degrades cleanly to "no wearable calories", which is why nothing looks broken.
+- With the module absent, `loadHK()` (`healthOps.ts:37-49`) returns null, so
+  `runHealthOp`'s iOS `available` branch returns
+  `platform: HK ? "ios" : "unsupported"` (`healthOps.ts:392`) — the app degrades
+  cleanly to "no wearable calories", which is why nothing looks broken.
 
 **Consequence for whoever is finishing this app.** `npx expo run:ios` /
 `run:android` dev clients — the loop `conjureos-mobile/CLAUDE.md` names as "real
@@ -1046,8 +1140,10 @@ keyed `${start}-${workoutType}` because HealthKit gives no stable id
   (`handlers.ts:114`). A host that constructed a handler context without a
   grants store would skip consent entirely and fall through to `healthOps`,
   leaving only Gate 1 and the OS sheet. **Mitigation, stated for accuracy:**
-  today's shipped Runner always supplies it (`Runner.tsx:412` and `:420`), so
-  the gate holds on the current build — this is latent, not live. Tracked as
+  today's shipped Runner always supplies it — `grants: kernel.grants` in the
+  handler-context literal at `Runner.tsx:420` (the identical line at `:412` is
+  a different thing: the `invokeRemoteAction({…})` options for the cross-app
+  path, not `ctx.grants`) — so the gate holds on today's build — this is latent, not live. Tracked as
   **conjureos-mobile#7** (2026-08-21). Note the cross-app action gate in the
   same file was already hardened the other way: `handlers.ts:542` fails
   **closed** with an explicit comment that "a consent gate must FAIL CLOSED".
@@ -1067,7 +1163,9 @@ replacing it, so camera/photos/share/location stay intact.
 `primeHealthAuth()` (`conjureos-mobile/src/native/healthOps.ts:366`) is **not**
 one of the standard native ops. It is shell-level HealthKit authorization
 priming, fired from the **Home screen**, and it is called from exactly one place:
-`conjureos-mobile/app/index.tsx:193`.
+`conjureos-mobile/app/index.tsx:193` — the `{ text: "Connect", onPress: () =>
+void primeHealthAuth() }` button of the pre-prompt `Alert`, inside the
+`native.health` effect that starts at `:174`.
 
 The flow (`app/index.tsx:174`):
 
@@ -1200,6 +1298,10 @@ feature should not be one tapped setting away from reappearing in a user's app.
 - The Coach chat tab and the Plan tab's coach launcher
 - The evening "how did your day go?" check-in banner + sheet
 - The Plan tab's program section (assigned workouts + benchmark progress)
+- **Settings → the workout program editor**, indirectly: the sub-view still
+  exists in `SettingsSheet`, but every entry point into it is inside a
+  flag-gated program section, so the cog is units + resets only while the flag
+  is off
 - The plan wizard's mode picker — plans are forced `eat_better`
 - The coach/workout rows in Settings → Reset health data
 
@@ -1659,9 +1761,12 @@ this one is *not* in ConjureOS `DECISIONS.md`.
 > **"1. Finish Conjure Health (Phase A). Almost done — nail the remaining v2
 > work on the health/fitness anchor app. Mobile fixes as needed alongside."**
 > This app is the platform's current top priority after the in-flight Jump
-> Runner verification. Note the ConjureOS repo is being edited concurrently, so
-> line-number citations into it age fast — this doc quotes text where the
-> quotation is what matters.
+> Runner verification. Note that `ConjureOS` and `conjureos-mobile` are being
+> edited concurrently, so line-number citations into them age fast. **Citation
+> rule used throughout this doc:** every cross-repo reference carries either the
+> quoted text or the symbol name beside the line number, so a drifted line is
+> still findable with `grep`. Citations into *this* repo are plain line numbers
+> against `eacf65f`.
 
 ### Shipped and working
 
@@ -1671,10 +1776,14 @@ this one is *not* in ConjureOS `DECISIONS.md`.
   2026-08-17), text search, AI photo scan and AI text describe, and cross-app
   recipes.
 - **Text search hits Open Food Facts + USDA only** (`foodSearch.ts:157`),
-  US-biased, per-provider timeouts, progressive paint. The community food DB is
-  **barcode-only**: `conjureHealthDb.searchText()` (`conjureHealthDb.ts:162`) is
-  written and the edge function's public `search` action is live, but nothing in
-  `src/` calls it. See `health-food-lookup-chain`.
+  US-biased, per-provider timeouts, progressive paint — **but materially
+  degraded in every published build**: USDA runs on the shared `DEMO_KEY`
+  (30 req/hr per IP) because CI never bakes `VITE_USDA_API_KEY`, and above the
+  quota the whole-foods half of search silently returns nothing
+  (conjureos-fitness#70). The community food DB is **barcode-only**:
+  `conjureHealthDb.searchText()` (`conjureHealthDb.ts:162`) is written and the
+  edge function's public `search` action is live, but nothing in `src/` calls
+  it. See `health-food-lookup-chain`.
 - The "Looks wrong?" correction flow, with corrections stored locally in
   `food-cache.json` and consulted ahead of every provider.
 - Weight tracking: weigh-in, trend sparkline, BMI.
@@ -1691,8 +1800,10 @@ this one is *not* in ConjureOS `DECISIONS.md`.
   `logWorkout`) and the `recipeSource` need via Phase 45 discovery.
 - Settings: units toggle (instant-apply) and an itemized "Reset health data"
   including a working "Current plan" reset (fixed 1.22.0).
-- The `health-foods-db` community catalog, live on dev and prod, with the
-  barcode-uniqueness fix (migration 100) applied.
+- The `health-foods-db` community catalog and the barcode-uniqueness fix
+  (migration 100) — *shipped in the repo and recorded in the decision log as
+  applied to dev and prod; not observable from here, see
+  `health-backend-foods-db`.*
 
 ### Built but switched off
 
@@ -1738,9 +1849,11 @@ data preserved. See `health-coach-pause-flag`.
 - **No Health-flagged dev build.** `EXPO_PUBLIC_CONJUREOS_HEALTH` is set only on
   the all-prod `testflight` profile, so the wearable path cannot be verified on
   a dev client. See `health-mobile-healthkit`.
-- **Client-side scan telemetry is dropping** on mobile and when signed out
-  (`logScanAttempt` is auth-gated but never escalates to a minted token). See
-  `health-backend-foods-db`.
+- **AI, USDA and text-search lookups are not instrumented at all** — no client
+  or server code path ever records an `ai_label` / `ai_front` / `usda` /
+  `user_manual` outcome or a text query, so scan analytics cover barcodes only.
+  (The separate auth gap on `logScanAttempt` is harmless: its three callers
+  duplicate rows the server already writes.) See `health-backend-foods-db`.
 - **ConjureOS#553** — reinstating some form of nutrition-data moderation
   (review queue, trust and rate limits, protecting upstream attribution from
   being overwritten). Deliberately filed separately after 1.23.1 removed the
@@ -1763,6 +1876,11 @@ data preserved. See `health-coach-pause-flag`.
   `0.2.10` and say "Conjure Health v2 … not started". Read the top few
   paragraphs and the git log; distrust the rest.
 - **`.env.example`** header says "Conjure Fitness — environment configuration".
+- **`src/features/foods/usda.ts:18-19`** says of `USING_DEMO_KEY`: *"The UI
+  notes the degraded search."* It does not. `USING_DEMO_KEY` is defined at
+  `usda.ts:20`, re-exported at `foodSearch.ts:193`, and has **zero** consumers —
+  no screen or component reads it, so the DEMO_KEY degradation is completely
+  invisible to the user. Pairs with conjureos-fitness#70.
 - **The pause date is wrong in the code.** `src/features/flags.ts:11` says the
   coach/workout pause was decided **2026-08-04**, and repo `STATUS.md:3` is
   headed 2026-08-04 while describing `1.21.0` as the pause. Git disagrees: the
