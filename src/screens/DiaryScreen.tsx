@@ -68,75 +68,84 @@ export function DiaryScreen({
   return (
     <div className="diary">
       {banner}
-      <div className="date-nav">
-        <button className="icon-btn" aria-label="Previous day" onClick={() => onChangeDate(shiftDate(date, -1))}>
-          <ChevronLeft size={20} />
-        </button>
-        <button
-          className="date-label"
-          onClick={() => onChangeDate(todayISO())}
-          title={isToday ? undefined : "Jump to today"}
-        >
-          {isToday ? "Today" : formatDate(date)}
-        </button>
-        <button
-          className="icon-btn"
-          aria-label="Next day"
-          disabled={isToday}
-          onClick={() => onChangeDate(shiftDate(date, 1))}
-        >
-          <ChevronRight size={20} />
-        </button>
+
+      {/* These two wrappers exist ONLY for the desktop layout, where they
+          become the primary and secondary columns. Below the breakpoint they
+          are `display: contents`, so the phone layout is exactly as it was. */}
+      <div className="diary-main">
+        <div className="date-nav">
+          <button className="icon-btn" aria-label="Previous day" onClick={() => onChangeDate(shiftDate(date, -1))}>
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            className="date-label"
+            onClick={() => onChangeDate(todayISO())}
+            title={isToday ? undefined : "Jump to today"}
+          >
+            {isToday ? "Today" : formatDate(date)}
+          </button>
+          <button
+            className="icon-btn"
+            aria-label="Next day"
+            disabled={isToday}
+            onClick={() => onChangeDate(shiftDate(date, 1))}
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+
+        <section className="budget-card">
+          <div className="budget-head">
+            <span className="budget-label">Calorie Budget</span>
+            <span className="budget-value">{goals.calories.toLocaleString()}</span>
+          </div>
+
+          <div className="budget-grid">
+            <div className="budget-col">
+              <MealStat label={MEAL_LABELS.breakfast} cal={mealCal("breakfast")} onClick={() => onOpenMeal("breakfast")} />
+              <MealStat label={MEAL_LABELS.lunch} cal={mealCal("lunch")} onClick={() => onOpenMeal("lunch")} />
+            </div>
+            <CalorieRing consumed={total.calories} goal={goals.calories} exercise={exercise} />
+            <div className="budget-col">
+              <MealStat label={MEAL_LABELS.dinner} cal={mealCal("dinner")} onClick={() => onOpenMeal("dinner")} />
+              <MealStat label={MEAL_LABELS.snacks} cal={mealCal("snacks")} onClick={() => onOpenMeal("snacks")} />
+            </div>
+          </div>
+
+          {/* Workout item — opens the Workouts view. Calories burned add back to
+              the day's budget (reflected in the ring + the summary below). */}
+          <button className="workout-stat" onClick={onOpenWorkouts} aria-label="Open workouts">
+            <span className="workout-stat-icon" aria-hidden>
+              <WorkoutsIcon size={18} />
+            </span>
+            <span className="workout-stat-body">
+              <span className="workout-stat-label">Exercise</span>
+              <span className="workout-stat-sub">
+                {exercise > 0 ? `+${exercise} cal back in your budget` : "Log or sync a workout"}
+              </span>
+            </span>
+            <span className="workout-stat-cal">{exercise > 0 ? `+${exercise}` : ""}</span>
+            <ChevronRight size={18} />
+          </button>
+
+          <div className="budget-foot">
+            <span className="summary-eaten">
+              <strong>{total.calories}</strong> eaten
+              {exercise > 0 ? <> · <strong>{exercise}</strong> burned</> : null} · goal{" "}
+              {goals.calories.toLocaleString()}
+            </span>
+          </div>
+
+          <MacroBars total={total} goals={goals} />
+        </section>
+
       </div>
 
-      <section className="budget-card">
-        <div className="budget-head">
-          <span className="budget-label">Calorie Budget</span>
-          <span className="budget-value">{goals.calories.toLocaleString()}</span>
-        </div>
-
-        <div className="budget-grid">
-          <div className="budget-col">
-            <MealStat label={MEAL_LABELS.breakfast} cal={mealCal("breakfast")} onClick={() => onOpenMeal("breakfast")} />
-            <MealStat label={MEAL_LABELS.lunch} cal={mealCal("lunch")} onClick={() => onOpenMeal("lunch")} />
-          </div>
-          <CalorieRing consumed={total.calories} goal={goals.calories} exercise={exercise} />
-          <div className="budget-col">
-            <MealStat label={MEAL_LABELS.dinner} cal={mealCal("dinner")} onClick={() => onOpenMeal("dinner")} />
-            <MealStat label={MEAL_LABELS.snacks} cal={mealCal("snacks")} onClick={() => onOpenMeal("snacks")} />
-          </div>
-        </div>
-
-        {/* Workout item — opens the Workouts view. Calories burned add back to
-            the day's budget (reflected in the ring + the summary below). */}
-        <button className="workout-stat" onClick={onOpenWorkouts} aria-label="Open workouts">
-          <span className="workout-stat-icon" aria-hidden>
-            <WorkoutsIcon size={18} />
-          </span>
-          <span className="workout-stat-body">
-            <span className="workout-stat-label">Exercise</span>
-            <span className="workout-stat-sub">
-              {exercise > 0 ? `+${exercise} cal back in your budget` : "Log or sync a workout"}
-            </span>
-          </span>
-          <span className="workout-stat-cal">{exercise > 0 ? `+${exercise}` : ""}</span>
-          <ChevronRight size={18} />
-        </button>
-
-        <div className="budget-foot">
-          <span className="summary-eaten">
-            <strong>{total.calories}</strong> eaten
-            {exercise > 0 ? <> · <strong>{exercise}</strong> burned</> : null} · goal{" "}
-            {goals.calories.toLocaleString()}
-          </span>
-        </div>
-
-        <MacroBars total={total} goals={goals} />
-      </section>
-
-      <WeightCard profile={profile} nonce={nonce} />
-      <CoachPlanCard plan={plan} goals={goals} onOpen={onOpenPlan} />
-      <AskCoachCard onAsk={setAsking} />
+      <div className="diary-side">
+        <WeightCard profile={profile} nonce={nonce} />
+        <CoachPlanCard plan={plan} goals={goals} onOpen={onOpenPlan} />
+        <AskCoachCard onAsk={setAsking} />
+      </div>
 
       {asking !== null && <CoachChatModal initialQuestion={asking} onClose={() => setAsking(null)} />}
     </div>

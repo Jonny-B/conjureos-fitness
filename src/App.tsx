@@ -27,6 +27,7 @@ import { SettingsSheet, type SettingsView } from "./screens/SettingsSheet";
 import { AppHeader } from "./components/AppHeader";
 import {
   AddIcon,
+  AppleIcon,
   DiaryIcon,
   TrendsIcon,
   WorkoutsIcon,
@@ -378,6 +379,15 @@ export function App() {
       </main>
 
       <nav className="tabbar">
+        {/* Desktop only (hidden below the rail breakpoint): with the tab bar
+            turned into a left rail, the rail is where the app's identity
+            belongs — otherwise the nav starts flush against the header. */}
+        <div className="rail-brand" aria-hidden>
+          <span className="brand-mark">
+            <AppleIcon />
+          </span>
+          <span className="rail-brand-name">Conjure Health</span>
+        </div>
         <TabButton label="Diary" Icon={DiaryIcon} active={tab === "diary" || tab === "meal"} onClick={() => setTab("diary")} />
         <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(mealForNow())} />
         <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan" || tab === "coach"} onClick={() => setTab("plan")} />
