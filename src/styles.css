@@ -3574,6 +3574,19 @@ input[type="date"].text-input {
   .chat-bubble.thinking .dot { animation: none; opacity: 0.5; }
 }
 
+/* Between a phone and the rail (roughly a small tablet or a half-width
+   window), the 560px cap left the column stranded in the middle of the window
+   with dead space either side — the same complaint as the desktop view, just
+   at a narrower size. Let the shell grow with the window instead; the bottom
+   tab bar stays, since there isn't room for a rail yet. */
+@media (min-width: 561px) and (max-width: 819px) {
+  .app,
+  .tabbar,
+  .app-version {
+    max-width: 720px;
+  }
+}
+
 /* ── Desktop layout ──────────────────────────────────────────────────────
    Everything above is phone-first, and below 900px nothing here applies —
    the mobile layout is byte-identical to what it was. Above it the app stops
@@ -3588,7 +3601,7 @@ input[type="date"].text-input {
   display: contents;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 820px) {
   :root {
     --rail-w: 236px;
   }
@@ -3661,19 +3674,8 @@ input[type="date"].text-input {
     margin-inline: auto;
   }
 
-  /* Home: budget on the left, the lighter cards beside it rather than a
-     half-mile of scrolling. `align-items: start` keeps the short column from
-     stretching to match the tall one. */
-  .diary {
-    display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-    grid-auto-flow: row dense;
-    gap: 0 22px;
-    align-items: start;
-  }
-  .diary > .setup-banner {
-    grid-column: 1 / -1;
-  }
+  /* The wrappers stop being transparent as soon as the rail exists, so the
+     single-column order stays predictable before the grid kicks in. */
   .diary-main,
   .diary-side {
     display: block;
@@ -3697,6 +3699,22 @@ input[type="date"].text-input {
   }
 }
 
+/* Two columns only once there is genuinely room for two. At the rail
+   breakpoint the content column is ~584px — splitting that gives two cramped
+   halves, which is worse than one honest column. */
+@media (min-width: 1040px) {
+  .diary {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-auto-flow: row dense;
+    gap: 0 22px;
+    align-items: start;
+  }
+  .diary > .setup-banner {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Very wide: stop growing and centre the whole thing, rail included. */
 @media (min-width: 1500px) {
   .app {
@@ -3713,7 +3731,7 @@ input[type="date"].text-input {
 .rail-brand {
   display: none;
 }
-@media (min-width: 900px) {
+@media (min-width: 820px) {
   .rail-brand {
     display: flex;
     align-items: center;
