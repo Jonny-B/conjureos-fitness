@@ -38,12 +38,21 @@ import type {
   Goals,
   Plan,
   Profile,
+  SleepEntry,
+  SymptomEntry,
+  WaterEntry,
   WeightEntry,
   WorkoutSession,
 } from "../types";
 import { DEFAULT_GOALS } from "../types";
 import { readJson, writeJson } from "../bridge/vfs";
-import type { DayLogPatch, NewDiaryEntry, Repository } from "./repository";
+import type {
+  DayLogPatch,
+  NewDiaryEntry,
+  NewSymptomEntry,
+  NewWaterEntry,
+  Repository,
+} from "./repository";
 import { newId } from "./id";
 
 const STORE_PATH = "store.json";
@@ -61,8 +70,21 @@ interface StoreShapeV1 {
 }
 
 /** v2: adds the plan / daily check-off / workout-session slices. */
-interface StoreShape {
+interface StoreShapeV2 {
   v: 2;
+  profile: Profile | null;
+  goals: Goals | null;
+  diary: DiaryEntry[];
+  weights: WeightEntry[];
+  plan: Plan | null;
+  dayLogs: Record<string, DailyCheckoff>;
+  workoutSessions: WorkoutSession[];
+  updatedAt?: string;
+}
+
+/** v3: adds sleep, water and symptoms. */
+interface StoreShape {
+  v: 3;
   profile: Profile | null;
   goals: Goals | null;
   diary: DiaryEntry[];
@@ -71,6 +93,9 @@ interface StoreShape {
   /** Keyed by YYYY-MM-DD. */
   dayLogs: Record<string, DailyCheckoff>;
   workoutSessions: WorkoutSession[];
+  sleep: SleepEntry[];
+  water: WaterEntry[];
+  symptoms: SymptomEntry[];
   /** Wall-clock of the last local write. Informational (aids debugging and any
    *  future explicit cross-device merge); not used for reconciliation today. */
   updatedAt?: string;
@@ -113,7 +138,7 @@ function writeLocal(store: StoreShape): void {
 }
 
 const EMPTY: StoreShape = {
-  v: 2,
+  v: 3,
   profile: null,
   goals: null,
   diary: [],
@@ -121,6 +146,9 @@ const EMPTY: StoreShape = {
   plan: null,
   dayLogs: {},
   workoutSessions: [],
+  sleep: [],
+  water: [],
+  symptoms: [],
 };
 
 /**
@@ -131,18 +159,55 @@ const EMPTY: StoreShape = {
 function migrate(loaded: unknown): StoreShape {
   if (!loaded || typeof loaded !== "object") return structuredClone(EMPTY);
   const doc = loaded as { v?: number };
-  if (doc.v === 2) return loaded as StoreShape;
+  // Even a current-version document gets its collections normalised. Trusting
+  // the shape wholesale means one truncated write, hand-edit or partial sync
+  // turns every read into "Cannot read properties of undefined" — and the
+  // fallback for a corrupt store is EMPTY, which would silently discard the
+  // slices that ARE intact. Filling gaps keeps whatever survived.
+  if (doc.v === 3) {
+    const v3 = loaded as Partial<StoreShape>;
+    return {
+      v: 3,
+      profile: v3.profile ?? null,
+      goals: v3.goals ?? null,
+      diary: Array.isArray(v3.diary) ? v3.diary : [],
+      weights: Array.isArray(v3.weights) ? v3.weights : [],
+      plan: v3.plan ?? null,
+      dayLogs: v3.dayLogs && typeof v3.dayLogs === "object" ? v3.dayLogs : {},
+      workoutSessions: Array.isArray(v3.workoutSessions) ? v3.workoutSessions : [],
+      sleep: Array.isArray(v3.sleep) ? v3.sleep : [],
+      water: Array.isArray(v3.water) ? v3.water : [],
+      symptoms: Array.isArray(v3.symptoms) ? v3.symptoms : [],
+      ...(v3.updatedAt ? { updatedAt: v3.updatedAt } : {}),
+    };
+  }
+  // v2 → v3 is purely additive: every existing slice is kept as-is and the
+  // three new ones start empty. Losing a user's diary to a version bump would
+  // be unforgivable, so this path never discards.
+  if (doc.v === 2) {
+    const v2 = loaded as Partial<StoreShapeV2>;
+    return {
+      v: 3,
+      profile: v2.profile ?? null,
+      goals: v2.goals ?? null,
+      diary: Array.isArray(v2.diary) ? v2.diary : [],
+      weights: Array.isArray(v2.weights) ? v2.weights : [],
+      plan: v2.plan ?? null,
+      dayLogs: v2.dayLogs && typeof v2.dayLogs === "object" ? v2.dayLogs : {},
+      workoutSessions: Array.isArray(v2.workoutSessions) ? v2.workoutSessions : [],
+      sleep: [],
+      water: [],
+      symptoms: [],
+    };
+  }
   if (doc.v === 1) {
     const v1 = loaded as StoreShapeV1;
     return {
-      v: 2,
+      ...structuredClone(EMPTY),
       profile: v1.profile ?? null,
       goals: v1.goals ?? null,
       diary: v1.diary ?? [],
       weights: v1.weights ?? [],
-      plan: null,
-      dayLogs: {},
-      workoutSessions: [],
     };
   }
   return structuredClone(EMPTY);
@@ -267,6 +332,98 @@ export class MockRepository implements Repository {
   async clearWorkoutHistory(): Promise<void> {
     this.store.workoutSessions = [];
     this.store.dayLogs = {};
+    await this.flush();
+  }
+
+  async clearWellbeing(): Promise<void> {
+    this.store.sleep = [];
+    this.store.water = [];
+    this.store.symptoms = [];
+    await this.flush();
+  }
+
+  // ── Sleep, water & symptoms ────────────────────────────────────────
+  //
+  // All three are flat arrays filtered by `date`, matching how the diary
+  // already works. Ranges are inclusive on both ends and compare the
+  // YYYY-MM-DD strings directly, which sorts correctly because the format is
+  // fixed-width — no Date parsing, no timezone to get wrong.
+
+  async listSleep(date: string): Promise<SleepEntry[]> {
+    return this.store.sleep.filter((e) => e.date === date);
+  }
+
+  async listSleepRange(from: string, to: string): Promise<SleepEntry[]> {
+    return this.store.sleep
+      .filter((e) => e.date >= from && e.date <= to)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  async saveSleep(entry: SleepEntry): Promise<void> {
+    const idx = this.store.sleep.findIndex((e) => e.id === entry.id);
+    if (idx >= 0) this.store.sleep[idx] = entry;
+    else this.store.sleep.push(entry);
+    await this.flush();
+  }
+
+  async removeSleep(id: string): Promise<void> {
+    this.store.sleep = this.store.sleep.filter((e) => e.id !== id);
+    await this.flush();
+  }
+
+  async listWater(date: string): Promise<WaterEntry[]> {
+    return this.store.water
+      .filter((e) => e.date === date)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+  }
+
+  async listWaterRange(from: string, to: string): Promise<WaterEntry[]> {
+    return this.store.water
+      .filter((e) => e.date >= from && e.date <= to)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+  }
+
+  async addWater(entry: NewWaterEntry): Promise<WaterEntry> {
+    const stored: WaterEntry = {
+      ...entry,
+      id: newId(),
+      loggedAt: entry.loggedAt ?? new Date().toISOString(),
+    };
+    this.store.water.push(stored);
+    await this.flush();
+    return stored;
+  }
+
+  async removeWater(id: string): Promise<void> {
+    this.store.water = this.store.water.filter((e) => e.id !== id);
+    await this.flush();
+  }
+
+  async listSymptoms(date: string): Promise<SymptomEntry[]> {
+    return this.store.symptoms
+      .filter((e) => e.date === date)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+  }
+
+  async listSymptomsRange(from: string, to: string): Promise<SymptomEntry[]> {
+    return this.store.symptoms
+      .filter((e) => e.date >= from && e.date <= to)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+  }
+
+  async addSymptom(entry: NewSymptomEntry): Promise<SymptomEntry> {
+    const stored: SymptomEntry = {
+      ...entry,
+      id: newId(),
+      loggedAt: entry.loggedAt ?? new Date().toISOString(),
+    };
+    this.store.symptoms.push(stored);
+    await this.flush();
+    return stored;
+  }
+
+  async removeSymptom(id: string): Promise<void> {
+    this.store.symptoms = this.store.symptoms.filter((e) => e.id !== id);
     await this.flush();
   }
 

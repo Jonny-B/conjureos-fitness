@@ -118,6 +118,77 @@ export interface DiaryEntry {
   loggedAt: string;
 }
 
+// ── Sleep, water & symptoms ──────────────────────────────────────────
+
+/**
+ * One night's sleep.
+ *
+ * Both ends are full ISO timestamps rather than clock strings, because the
+ * whole difficulty here is that a night crosses a date boundary: "23:10 to
+ * 06:40" and "00:40 to 08:15" are both ordinary nights, and only absolute
+ * instants can tell them apart from a typo. `date` is the WAKE date — the day
+ * the night belongs to in every sleep tracker and in how people talk ("I
+ * slept badly last night"), so Monday's row shows the sleep that ENDED Monday
+ * morning. See features/sleep.
+ */
+export interface SleepEntry {
+  id: string;
+  /** The date this night is filed under: the local date of `wakeAt`. */
+  date: string;
+  /** When they went to bed, ISO with offset. May be the previous calendar day. */
+  bedAt: string;
+  /** When they got up, ISO with offset. Always after `bedAt`. */
+  wakeAt: string;
+  /** Self-rated rest, 1 (awful) to 5 (great). Optional. */
+  quality?: number;
+  note?: string;
+}
+
+/** A drink. Stored in millilitres regardless of the user's display units, so
+ *  switching units never rewrites history. */
+export interface WaterEntry {
+  id: string;
+  /** Local calendar date, YYYY-MM-DD. */
+  date: string;
+  /** ISO timestamp it was logged — this is where it lands on the timeline. */
+  loggedAt: string;
+  ml: number;
+}
+
+/**
+ * Something the user felt and wanted on the record — a headache, heartburn,
+ * anything they type. Deliberately free-form with a suggested bank rather than
+ * a fixed enum: the point is to catch whatever THEY notice, and a closed list
+ * would quietly discard the interesting cases.
+ */
+export interface SymptomEntry {
+  id: string;
+  /** Local calendar date, YYYY-MM-DD. */
+  date: string;
+  /** ISO timestamp it was logged — this is where it lands on the timeline. */
+  loggedAt: string;
+  /** What it was, e.g. "Headache". Free text; the bank is only a shortcut. */
+  label: string;
+  /** How bad, 1 (barely) to 5 (severe). Optional. */
+  severity?: number;
+  note?: string;
+}
+
+/** The common ones, offered as one-tap chips. Not exhaustive and not a
+ *  constraint — anything typed is stored verbatim. */
+export const COMMON_SYMPTOMS: readonly string[] = [
+  "Headache",
+  "Heartburn",
+  "Bloating",
+  "Nausea",
+  "Fatigue",
+  "Cramps",
+  "Dizziness",
+  "Congestion",
+  "Joint pain",
+  "Low mood",
+];
+
 // ── Profile & goals ──────────────────────────────────────────────────
 
 /** Biological sex for the Mifflin calorie estimate. `not_shared` = undisclosed;

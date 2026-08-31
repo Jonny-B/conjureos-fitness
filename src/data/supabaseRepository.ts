@@ -17,6 +17,9 @@ import type {
   Goals,
   Plan,
   Profile,
+  SleepEntry,
+  SymptomEntry,
+  WaterEntry,
   WeightEntry,
   WorkoutSession,
 } from "../types";
@@ -181,6 +184,50 @@ export class SupabaseRepository implements Repository {
 
   async clearWorkoutHistory(): Promise<void> {
     // Workout sessions/day logs are VFS-only (v2) — nothing server-side yet.
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+
+  // ── Sleep, water & symptoms: VFS-only, same as the v2 plan surface ──
+  // No server tables yet, so every method throws and callers fall back to the
+  // mock layer exactly as they already do for plans.
+
+  async clearWellbeing(): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async listSleep(): Promise<SleepEntry[]> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async listSleepRange(): Promise<SleepEntry[]> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async saveSleep(): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async removeSleep(): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async listWater(): Promise<WaterEntry[]> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async listWaterRange(): Promise<WaterEntry[]> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async addWater(): Promise<WaterEntry> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async removeWater(): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async listSymptoms(): Promise<SymptomEntry[]> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async listSymptomsRange(): Promise<SymptomEntry[]> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async addSymptom(): Promise<SymptomEntry> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async removeSymptom(): Promise<void> {
     throw new Error(PLAN_REQUIRES_V2_BACKEND);
   }
 

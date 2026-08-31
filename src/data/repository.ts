@@ -22,6 +22,9 @@ import type {
   Goals,
   Plan,
   Profile,
+  SleepEntry,
+  SymptomEntry,
+  WaterEntry,
   WeightEntry,
   WorkoutSession,
 } from "../types";
@@ -29,6 +32,11 @@ import { getAccessToken, isHostAuthAvailable } from "../bridge/host";
 
 /** Fields the caller supplies when logging; id + loggedAt are assigned here. */
 export type NewDiaryEntry = Omit<DiaryEntry, "id" | "loggedAt">;
+/** A drink before storage assigns its id + timestamp. `loggedAt` may be given
+ *  to back-date an entry the user is correcting. */
+export type NewWaterEntry = Omit<WaterEntry, "id" | "loggedAt"> & { loggedAt?: string };
+/** A symptom before storage assigns its id + timestamp. */
+export type NewSymptomEntry = Omit<SymptomEntry, "id" | "loggedAt"> & { loggedAt?: string };
 
 /** A patch to a day's check-off; `date` is supplied separately. */
 export type DayLogPatch = Partial<Omit<DailyCheckoff, "date">>;
@@ -76,6 +84,36 @@ export interface Repository {
   /** Delete one logged entry. Idempotent. */
   removeDiaryEntry(id: string): Promise<void>;
 
+  // ── Sleep, water & symptoms ────────────────────────────────────────
+
+  /** Nights filed under this date (see features/sleep for what that means).
+   *  Normally 0 or 1; a list because a nap or a correction can add another. */
+  listSleep(date: string): Promise<SleepEntry[]>;
+  /** Sleep across a date range, inclusive, oldest first. */
+  listSleepRange(from: string, to: string): Promise<SleepEntry[]>;
+  /** Store a night, replacing any with the same id. */
+  saveSleep(entry: SleepEntry): Promise<void>;
+  /** Delete one night. Idempotent. */
+  removeSleep(id: string): Promise<void>;
+
+  /** Every drink logged on a date, oldest first. */
+  listWater(date: string): Promise<WaterEntry[]>;
+  /** Drinks across a date range, inclusive, oldest first. */
+  listWaterRange(from: string, to: string): Promise<WaterEntry[]>;
+  /** Log a drink; returns the stored entry with its id + loggedAt. */
+  addWater(entry: NewWaterEntry): Promise<WaterEntry>;
+  /** Delete one drink. Idempotent. */
+  removeWater(id: string): Promise<void>;
+
+  /** Symptoms logged on a date, oldest first. */
+  listSymptoms(date: string): Promise<SymptomEntry[]>;
+  /** Symptoms across a date range, inclusive, oldest first. */
+  listSymptomsRange(from: string, to: string): Promise<SymptomEntry[]>;
+  /** Record a symptom; returns the stored entry with its id + loggedAt. */
+  addSymptom(entry: NewSymptomEntry): Promise<SymptomEntry>;
+  /** Delete one symptom. Idempotent. */
+  removeSymptom(id: string): Promise<void>;
+
   /** Weight history, newest first. (Scaffold slice — fully wired in mock.) */
   listWeights(): Promise<WeightEntry[]>;
   /** One canonical weight per day; last write wins. */
@@ -88,6 +126,8 @@ export interface Repository {
   clearWeights(): Promise<void>;
   /** Delete all workout sessions + daily check-offs. Destructive; no undo. */
   clearWorkoutHistory(): Promise<void>;
+  /** Delete every sleep, water and symptom entry. Destructive; no undo. */
+  clearWellbeing(): Promise<void>;
 
   // ── v2: plans + daily check-off + coached sessions ──────────────────
   // VFS-only today. SupabaseRepository throws PLAN_REQUIRES_V2_BACKEND for
