@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight, WorkoutsIcon } from "../components/icons";
 import { WeightCard } from "../components/WeightCard";
 import { CoachPlanCard } from "../components/CoachPlanCard";
 import { AskCoachCard } from "../components/AskCoachCard";
+import { WellbeingCard } from "../components/WellbeingCard";
 import { CoachChatModal } from "../components/CoachChatModal";
 import { exerciseCaloriesForDate } from "../features/exercise";
 
@@ -23,6 +24,8 @@ interface Props {
   onOpenMeal: (meal: MealType) => void;
   onOpenPlan: () => void;
   onOpenWorkouts: () => void;
+  /** Fired when this screen writes something the shell also renders. */
+  onMutated: () => void;
 }
 
 /** The home tab: calorie ring, macro bars, weight card, plan card, and the
@@ -38,6 +41,7 @@ export function DiaryScreen({
   onOpenMeal,
   onOpenPlan,
   onOpenWorkouts,
+  onMutated,
 }: Props) {
   const [view, setView] = useState<DayView | null>(null);
   // Exercise calories for the day — added back to the budget.
@@ -143,6 +147,12 @@ export function DiaryScreen({
 
       <div className="diary-side">
         <WeightCard profile={profile} nonce={nonce} />
+        <WellbeingCard
+          date={date}
+          units={profile?.units ?? "metric"}
+          nonce={nonce}
+          onMutated={onMutated}
+        />
         <CoachPlanCard plan={plan} goals={goals} onOpen={onOpenPlan} />
         <AskCoachCard onAsk={setAsking} />
       </div>

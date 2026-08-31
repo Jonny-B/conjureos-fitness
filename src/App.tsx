@@ -287,6 +287,7 @@ export function App() {
     <DiaryScreen
       date={date}
       goals={effectiveGoals}
+      onMutated={() => setNonce((n) => n + 1)}
       banner={banners}
       nonce={nonce}
       plan={plan}
