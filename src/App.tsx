@@ -20,6 +20,7 @@ import { DayCheckinBanner, DayCheckinSheet, isEvening } from "./components/DayCh
 import { recordPlanStarted } from "./features/coach/memory";
 import { AddFoodScreen, type AddMode } from "./screens/AddFoodScreen";
 import { PlanScreen } from "./screens/PlanScreen";
+import { JournalScreen } from "./screens/JournalScreen";
 import { WorkoutsScreen } from "./screens/WorkoutsScreen";
 import { COACH_AND_WORKOUTS_ENABLED } from "./features/flags";
 import { CoachScreen } from "./screens/CoachScreen";
@@ -28,6 +29,7 @@ import { AppHeader } from "./components/AppHeader";
 import {
   AddIcon,
   AppleIcon,
+  CalendarIcon,
   DiaryIcon,
   TrendsIcon,
   WorkoutsIcon,
@@ -35,7 +37,7 @@ import {
 import { MEAL_LABELS } from "./types";
 import type { ComponentType } from "react";
 
-type Tab = "diary" | "meal" | "add" | "plan" | "workouts" | "coach";
+type Tab = "diary" | "meal" | "add" | "plan" | "journal" | "workouts" | "coach";
 
 /** Sensible default meal when opening Add from the tab bar (no meal context) —
  *  by time of day. The user can still switch it in the Add screen. */
@@ -310,6 +312,8 @@ export function App() {
           }
         : tab === "plan"
           ? { title: "Plan" }
+          : tab === "journal"
+            ? { title: "Journal" }
           : tab === "workouts"
             ? COACH_AND_WORKOUTS_ENABLED
               ? { title: "Workouts" }
@@ -349,6 +353,8 @@ export function App() {
             onCancel={() => setTab(addReturn)}
             onModeChange={setAddMode}
           />
+        ) : tab === "journal" ? (
+          <JournalScreen units={profile?.units ?? "metric"} nonce={nonce} />
         ) : tab === "plan" ? (
           <PlanScreen
             nonce={nonce}
@@ -392,6 +398,7 @@ export function App() {
         <TabButton label="Diary" Icon={DiaryIcon} active={tab === "diary" || tab === "meal"} onClick={() => setTab("diary")} />
         <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(mealForNow())} />
         <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan" || tab === "coach"} onClick={() => setTab("plan")} />
+        <TabButton label="Journal" Icon={CalendarIcon} active={tab === "journal"} onClick={() => setTab("journal")} />
         {!loggingOnly && COACH_AND_WORKOUTS_ENABLED && (
           <TabButton label="Workouts" Icon={WorkoutsIcon} active={tab === "workouts"} onClick={() => setTab("workouts")} />
         )}
