@@ -4084,3 +4084,94 @@ input[type="date"].text-input {
   .print-head { margin-bottom: 14px; }
   @page { margin: 16mm; }
 }
+
+/* ── Meal history ────────────────────────────────────────────────────── */
+.meal-history { margin-top: 22px; }
+.history-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.history-list li + li { margin-top: 6px; }
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--bg-2);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--cui-duration) var(--cui-ease);
+}
+.history-item:hover:not(:disabled) { border-color: var(--accent); }
+.history-item:disabled { opacity: 0.55; cursor: default; }
+.history-body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.history-cal {
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.history-add {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  font-size: 17px;
+  line-height: 1;
+}
+
+/* ── Toggles on the AI review screen ─────────────────────────────────── */
+.ai-toggles {
+  margin: 14px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 13px 14px;
+  background: var(--bg-2);
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.toggle-row + .toggle-row { border-top: 1px solid var(--line); }
+.toggle-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.toggle-label { font-size: 14.5px; font-weight: 600; }
+.toggle-hint { line-height: 1.4; }
+.toggle-track {
+  flex: 0 0 auto;
+  position: relative;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  transition: background var(--cui-duration) var(--cui-ease);
+}
+.toggle-track.on { background: var(--accent); }
+.toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--cui-duration) var(--cui-ease);
+}
+.toggle-track.on .toggle-knob { transform: translateX(18px); }
+.group-name-field {
+  padding: 0 14px 13px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--line);
+}
+.group-name-field span { display: block; padding-top: 11px; }

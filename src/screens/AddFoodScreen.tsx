@@ -4,7 +4,7 @@ import type { FoodItem, MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { searchFoods, lookupBarcode, rememberCorrection } from "../features/foods/foodSearch";
-import { parseMeal } from "../features/naturalLanguage";
+import { groupItems, parseMealWithGroup, suggestGroupName } from "../features/naturalLanguage";
 import { recentFoodsForMeal, type RecentFood } from "../features/recentFoods";
 import { isValidBarcode } from "../features/barcode";
 import { useScrollLock } from "../hooks/useScrollLock";
@@ -342,6 +342,35 @@ function SearchMode({ meal, onPick }: { meal: MealType; onPick: (food: FoodItem,
   );
 }
 
+/** Detections at or above this many items are grouped by default — that many
+ *  separate diary rows is the problem grouping was added to solve. */
+const GROUP_BY_DEFAULT_AT = 5;
+
+/** A labelled switch with a line explaining what it will actually do. */
+function ToggleRow({
+  label,
+  hint,
+  on,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  on: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button className="toggle-row" role="switch" aria-checked={on} onClick={() => onChange(!on)}>
+      <span className="toggle-text">
+        <span className="toggle-label">{label}</span>
+        <span className="toggle-hint muted small">{hint}</span>
+      </span>
+      <span className={`toggle-track${on ? " on" : ""}`} aria-hidden>
+        <span className="toggle-knob" />
+      </span>
+    </button>
+  );
+}
+
 // ── Scan (barcode) ───────────────────────────────────────────────────────
 
 type CaptureMode = "label" | "front" | null;
@@ -554,6 +583,14 @@ function AiMode({
   const [shotUrl, setShotUrl] = useState<string | null>(null);
   // Index of the parsed item being edited inline, or null for the list view.
   const [editing, setEditing] = useState<number | null>(null);
+  // Log the detection as one dish instead of its parts. Off by default: the
+  // itemised view is what lets someone delete the thing that wasn't theirs.
+  const [grouped, setGrouped] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  // Whether these entries should come back as re-log suggestions. On by
+  // default, because that is right for the everyday case; the escape hatch is
+  // for the twenty-item cheese board.
+  const [toHistory, setToHistory] = useState(true);
 
   const removeItem = (i: number) =>
     setItems((prev) => (prev ? prev.filter((_, idx) => idx !== i) : prev));
@@ -565,7 +602,13 @@ function AiMode({
     setError(null);
     setItems(null);
     try {
-      setItems(await parseMeal(input));
+      const res = await parseMealWithGroup(input);
+      setItems(res.items);
+      setGroupName(res.groupName);
+      // A long detection is exactly the case grouping exists for, so lead with
+      // it turned on rather than making the user notice the toggle.
+      setGrouped(res.items.length >= GROUP_BY_DEFAULT_AT);
+      setToHistory(res.items.length < GROUP_BY_DEFAULT_AT);
     } catch {
       setError("Couldn’t reach the estimator. Check your connection and try again.");
     } finally {
@@ -583,13 +626,22 @@ function AiMode({
     setItems(null);
     setError(null);
     setEditing(null);
+    setGrouped(false);
+    setGroupName("");
+    setToHistory(true);
   };
 
   const logAll = async () => {
     if (!items?.length) return;
     const repo = await getRepository();
-    for (const food of items) {
-      await repo.addDiaryEntry({ date, meal, quantity: 1, food });
+    const exclude = toHistory ? {} : { excludeFromHistory: true };
+    if (grouped) {
+      const one = groupItems(items, groupName);
+      if (one) await repo.addDiaryEntry({ date, meal, quantity: 1, food: one, ...exclude });
+    } else {
+      for (const food of items) {
+        await repo.addDiaryEntry({ date, meal, quantity: 1, food, ...exclude });
+      }
     }
     onLogged();
   };
@@ -664,7 +716,47 @@ function AiMode({
               <MealPicker meal={meal} onChange={setMeal} />
             </label>
           )}
-          <div className="muted small">Estimates — tap an item to edit or delete what isn’t yours.</div>
+          <div className="ai-toggles">
+            <ToggleRow
+              label="Log as one item"
+              hint={
+                grouped
+                  ? "Saved as a single entry with the totals added up."
+                  : `Saved as ${items.length} separate ${items.length === 1 ? "entry" : "entries"}.`
+              }
+              on={grouped}
+              onChange={setGrouped}
+            />
+            {grouped && (
+              <label className="field group-name-field">
+                <span>Name</span>
+                <input
+                  className="text-input"
+                  aria-label="Grouped name"
+                  maxLength={40}
+                  value={groupName}
+                  placeholder={suggestGroupName(items)}
+                  onChange={(e) => setGroupName(e.target.value)}
+                />
+              </label>
+            )}
+            <ToggleRow
+              label="Add to history"
+              hint={
+                toHistory
+                  ? "Shows up as a one-tap re-log for this meal."
+                  : "Kept out of the re-log list. Still counts towards your day."
+              }
+              on={toHistory}
+              onChange={setToHistory}
+            />
+          </div>
+
+          <div className="muted small">
+            {grouped
+              ? "Estimates — tap an item to edit or delete what isn’t yours before grouping."
+              : "Estimates — tap an item to edit or delete what isn’t yours."}
+          </div>
           <ul className="parsed-list">
             {items.map((f, i) => (
               <li className="parsed editable" key={f.id}>
@@ -685,7 +777,9 @@ function AiMode({
             ))}
           </ul>
           <button className="btn primary block" onClick={logAll}>
-            Log {items.length} item{items.length === 1 ? "" : "s"} to {MEAL_LABELS[meal]}
+            {grouped
+              ? `Log “${(groupName.trim() || suggestGroupName(items)).slice(0, 30)}” to ${MEAL_LABELS[meal]}`
+              : `Log ${items.length} item${items.length === 1 ? "" : "s"} to ${MEAL_LABELS[meal]}`}
           </button>
         </>
       )}

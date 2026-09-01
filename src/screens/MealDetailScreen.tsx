@@ -3,6 +3,7 @@ import type { DiaryEntry, FoodItem, Goals, MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { entryMacros, isAiEstimate } from "../features/diary";
+import { recentFoodsForMeal, type RecentFood } from "../features/recentFoods";
 import { BarcodeIcon, DiamondIcon, EditIcon, SearchIcon, TrashIcon } from "../components/icons";
 import { AiEstimateBadge } from "../components/AiEstimateBadge";
 import { useScrollLock } from "../hooks/useScrollLock";
@@ -30,6 +31,11 @@ interface Props {
  */
 /** Smallest loggable portion. Also the floor the +/- steppers stop at. */
 export const MIN_QTY = 0.1;
+
+/** How far back the meal history looks, and how many rows it shows. Short on
+ *  purpose — this is a scannable shortcut list, not an archive. */
+const HISTORY_DAYS = 7;
+const HISTORY_LIMIT = 10;
 
 export function MealDetailScreen({
   date,
@@ -135,6 +141,8 @@ export function MealDetailScreen({
         </button>
       </div>
 
+      <MealHistory meal={meal} date={date} nonce={nonce} onLogged={onMutated} />
+
       {editing && (
         <EntryEditModal
           entry={editing}
@@ -146,6 +154,89 @@ export function MealDetailScreen({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * What you last put in this meal, over the past week.
+ *
+ * Sits under the add buttons rather than above them: it's a shortcut for the
+ * common case, not the primary action, and someone who wants something new
+ * shouldn't have to scroll past a week of breakfasts to reach Search.
+ *
+ * A week rather than the 30 days the search screen uses — this list is meant
+ * to stay short enough to scan, and what you ate last Tuesday is a better
+ * suggestion than what you ate a month ago.
+ */
+function MealHistory({
+  meal,
+  date,
+  nonce,
+  onLogged,
+}: {
+  meal: MealType;
+  date: string;
+  nonce: number;
+  onLogged: () => void;
+}) {
+  const [recents, setRecents] = useState<RecentFood[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    recentFoodsForMeal(meal, { days: HISTORY_DAYS, limit: HISTORY_LIMIT })
+      .then((r) => {
+        if (alive) setRecents(r);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [meal, nonce]);
+
+  if (recents.length === 0) return null;
+
+  const relog = async (r: RecentFood) => {
+    const key = `${r.food.name}-${r.lastLoggedAt}`;
+    if (busy) return;
+    setBusy(key);
+    try {
+      const repo = await getRepository();
+      await repo.addDiaryEntry({ date, meal, quantity: r.quantity, food: r.food });
+      onLogged();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="meal-history">
+      <div className="section-label">History</div>
+      <ul className="history-list">
+        {recents.map((r) => {
+          const key = `${r.food.name}-${r.lastLoggedAt}`;
+          const cal = Math.round(r.food.perServing.calories * r.quantity);
+          return (
+            <li key={key}>
+              <button className="history-item" disabled={busy !== null} onClick={() => relog(r)}>
+                <span className="history-body">
+                  <span className="entry-name">{r.food.name}</span>
+                  <span className="entry-sub">
+                    {r.quantity !== 1 ? `${r.quantity}\u00d7 ` : ""}
+                    {r.food.servingSize}
+                    {r.food.brand ? ` \u00b7 ${r.food.brand}` : ""}
+                  </span>
+                </span>
+                <span className="history-cal">{cal}</span>
+                <span className="history-add" aria-hidden>
+                  +
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

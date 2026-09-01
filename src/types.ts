@@ -116,6 +116,16 @@ export interface DiaryEntry {
   quantity: number;
   /** ISO timestamp the entry was created. */
   loggedAt: string;
+  /**
+   * Keep this entry out of the meal history suggestions.
+   *
+   * Set when the user logs something they don't want re-suggested — a cheese
+   * board that came back as twenty items would otherwise fill the history for
+   * a week and bury the things they eat regularly. The entry stays in the
+   * diary and counts towards the day exactly as normal; it is only hidden from
+   * the re-log shortcuts.
+   */
+  excludeFromHistory?: boolean;
 }
 
 // ── Sleep, water & symptoms ──────────────────────────────────────────
