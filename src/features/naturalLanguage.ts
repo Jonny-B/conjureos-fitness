@@ -69,6 +69,21 @@ export async function parseMeal(input: {
 }
 
 /**
+ * Why a parse produced no foods. The distinction matters to the user: "we
+ * couldn't see any food in what you wrote" is their problem to fix, and
+ * "the estimator didn't answer" is ours. Collapsing both into an empty list
+ * told someone their plain description of three beef hotdogs was
+ * unrecognisable, when the model had in fact returned nothing readable.
+ */
+export type MealParseOutcome = "ok" | "unreadable";
+
+export interface MealParseResult {
+  items: FoodItem[];
+  groupName: string;
+  outcome: MealParseOutcome;
+}
+
+/**
  * Parse a meal AND the model's suggested name for it as one dish.
  *
  * Separate entry point so the existing `parseMeal` contract is untouched;
@@ -77,9 +92,9 @@ export async function parseMeal(input: {
 export async function parseMealWithGroup(input: {
   text?: string;
   image?: ChatImage;
-}): Promise<{ items: FoodItem[]; groupName: string }> {
+}): Promise<MealParseResult> {
   const text = (input.text ?? "").trim();
-  if (!text && !input.image) return { items: [], groupName: "" };
+  if (!text && !input.image) return { items: [], groupName: "", outcome: "ok" };
 
   const content =
     text || "Identify each food and drink visible in this photo and estimate its nutrition.";
@@ -90,8 +105,29 @@ export async function parseMealWithGroup(input: {
     tier: "capable",
   });
 
+  // A non-string or blank body means the call came back without an answer at
+  // all — an upstream error, a refusal, an exhausted quota. That is not the
+  // same as "no food here" and must not be reported as such.
+  if (typeof raw !== "string" || !raw.trim()) {
+    return { items: [], groupName: "", outcome: "unreadable" };
+  }
+  if (!readableJson(raw)) {
+    return { items: [], groupName: "", outcome: "unreadable" };
+  }
+
   const items = parseItems(raw);
-  return { items, groupName: parseGroupName(raw) || suggestGroupName(items) };
+  return { items, groupName: parseGroupName(raw) || suggestGroupName(items), outcome: "ok" };
+}
+
+/** Whether the body holds JSON with an `items` array — i.e. the model actually
+ *  answered in the shape we asked for, even if that array is empty. */
+function readableJson(raw: string): boolean {
+  try {
+    const json = JSON.parse(extractJson(raw)) as { items?: unknown };
+    return Array.isArray(json.items);
+  } catch {
+    return false;
+  }
 }
 
 /** The model's own group name, if it gave a usable one. */

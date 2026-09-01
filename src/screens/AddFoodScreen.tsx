@@ -580,6 +580,12 @@ function AiMode({
   const [meal, setMeal] = useState<MealType>(defaultMeal);
   const [items, setItems] = useState<FoodItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set when the estimator answered with nothing we could read. Kept apart
+  // from `error` (a thrown call) and from an empty `items` (it answered, and
+  // genuinely saw no food) so the user is told which of the three happened.
+  const [unreadable, setUnreadable] = useState(false);
+  // The last input, so "Try again" doesn't mean "retype it".
+  const [lastInput, setLastInput] = useState<{ text?: string; image?: ChatImage } | null>(null);
   const [busy, setBusy] = useState(false);
   const [shotUrl, setShotUrl] = useState<string | null>(null);
   // Index of the parsed item being edited inline, or null for the list view.
@@ -601,9 +607,16 @@ function AiMode({
   const run = async (input: { text?: string; image?: ChatImage }) => {
     setBusy(true);
     setError(null);
+    setUnreadable(false);
     setItems(null);
+    setLastInput(input);
     try {
       const res = await parseMealWithGroup(input);
+      if (res.outcome === "unreadable") {
+        setUnreadable(true);
+        setItems(null);
+        return;
+      }
       setItems(res.items);
       setGroupName(res.groupName);
       // A long detection is exactly the case grouping exists for, so lead with
@@ -630,6 +643,7 @@ function AiMode({
     setGrouped(false);
     setGroupName("");
     setToHistory(true);
+    setUnreadable(false);
   };
 
   const logAll = async () => {
@@ -700,6 +714,21 @@ function AiMode({
 
       {busy && tab === "photo" && <div className="muted small">Reading your photo…</div>}
       {error && <div className="notice notice-error">{error}</div>}
+
+      {unreadable && (
+        <div className="notice notice-error">
+          <div>The estimator didn’t send back an answer this time.</div>
+          <div className="muted small">
+            Nothing wrong with what you wrote — this is on our side. It usually works on a
+            second try.
+          </div>
+          {lastInput && (
+            <button className="btn" disabled={busy} onClick={() => run(lastInput)}>
+              Try again
+            </button>
+          )}
+        </div>
+      )}
 
       {items && items.length === 0 && !error && (
         <div className="notice">
