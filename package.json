@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "1.28.2",
+  "version": "1.29.0",
   "description": "Conjure Health: calorie + nutrition logging, daily targets, weight tracking, and a simple weight-loss plan for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -265,6 +265,173 @@
             "id",
             "caloriesBurned"
           ]
+        }
+      },
+      "dayNutrition": {
+        "permission": "actions.read",
+        "description": "Return what the user has eaten on a date with what is left of their targets: targets, consumed, remaining (calories include exercise added back), exercise calories, and the foods logged with their meal and calories. Defaults to today. Nutrition only - sleep, symptoms and weight are not exposed.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD. Defaults to today."
+            }
+          }
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "type": "string"
+            },
+            "targets": {
+              "type": "object",
+              "properties": {
+                "calories": {
+                  "type": "integer"
+                },
+                "protein": {
+                  "type": "integer",
+                  "description": "Grams."
+                },
+                "carbs": {
+                  "type": "integer",
+                  "description": "Grams."
+                },
+                "fat": {
+                  "type": "integer",
+                  "description": "Grams."
+                }
+              }
+            },
+            "consumed": {
+              "type": "object",
+              "properties": {
+                "calories": {
+                  "type": "integer"
+                },
+                "protein": {
+                  "type": "integer",
+                  "description": "Grams."
+                },
+                "carbs": {
+                  "type": "integer",
+                  "description": "Grams."
+                },
+                "fat": {
+                  "type": "integer",
+                  "description": "Grams."
+                }
+              }
+            },
+            "remaining": {
+              "type": "object",
+              "properties": {
+                "calories": {
+                  "type": "integer"
+                },
+                "protein": {
+                  "type": "integer",
+                  "description": "Grams."
+                },
+                "carbs": {
+                  "type": "integer",
+                  "description": "Grams."
+                },
+                "fat": {
+                  "type": "integer",
+                  "description": "Grams."
+                }
+              }
+            },
+            "exerciseCalories": {
+              "type": "integer"
+            },
+            "foods": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "meal": {
+                    "type": "string",
+                    "enum": [
+                      "breakfast",
+                      "lunch",
+                      "dinner",
+                      "snacks"
+                    ]
+                  },
+                  "quantity": {
+                    "type": "number"
+                  },
+                  "calories": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "moreFoods": {
+              "type": "integer",
+              "description": "Foods beyond the listed cap."
+            }
+          }
+        }
+      },
+      "recentNutrition": {
+        "permission": "actions.read",
+        "description": "Return daily nutrition totals for the last N days, oldest first, for trends. N defaults to 7 and is capped at 14. Nutrition only.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 14
+            }
+          }
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "days": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string"
+                  },
+                  "consumed": {
+                    "type": "object",
+                    "properties": {
+                      "calories": {
+                        "type": "integer"
+                      },
+                      "protein": {
+                        "type": "integer",
+                        "description": "Grams."
+                      },
+                      "carbs": {
+                        "type": "integer",
+                        "description": "Grams."
+                      },
+                      "fat": {
+                        "type": "integer",
+                        "description": "Grams."
+                      }
+                    }
+                  },
+                  "exerciseCalories": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },

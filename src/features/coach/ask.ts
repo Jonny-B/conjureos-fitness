@@ -15,6 +15,7 @@
 import { complete, isAiAvailable, type ChatMessage } from "../../bridge/ai";
 import { readJson, writeJson } from "../../bridge/vfs";
 import { getRepository } from "../../data/repository";
+import { daySnapshot, recentSnapshots, renderDayForPrompt, renderRecentForPrompt } from "../dataApi";
 import { fmtWeight } from "../units";
 import type { CoachChatItem } from "./model";
 
@@ -54,7 +55,11 @@ STYLE
 
 SCOPE
 - Food, nutrition, hydration, and general healthy-eating habits.
-- If the user's own targets are relevant to the answer, use them. Do not recite them back otherwise.
+- You are given the user's targets and what they have logged today. USE IT. When they ask what
+  to eat, answer against what is actually left for the day and what they have already had.
+  Never ask them to paste in data you were given, and never claim you cannot see their diary.
+- If today shows nothing logged, say so plainly and answer generally — that is different from
+  not having access.
 - A question that is odd, vague or a joke still gets a straight, good-humoured answer. Do not lecture.
 
 LIMITS
@@ -65,27 +70,49 @@ LIMITS
   purging, fasting as weight control, or "earning" food with exercise.
 - You cannot change the user's plan, targets or diary. If asked, say that is done in the Plan tab.`;
 
-/** One line of who's asking, so answers can be specific without the user
- *  repeating themselves. Silently degrades to nothing when the store is empty. */
+/**
+ * Everything the coach should already know before the user says a word.
+ *
+ * This used to be three lines — targets, weight, direction — which meant
+ * "what should I eat, based on what I've had today" got answered with "I
+ * don't have today's diary loaded, paste it in". The user's own assistant
+ * asking the user to copy out their own data is the wrong shape entirely.
+ *
+ * Now: today in full, plus a few days of context for trends. Silently
+ * degrades to whatever it could read.
+ */
 async function askContext(): Promise<string> {
   try {
     const repo = await getRepository();
-    const [goals, profile] = await Promise.all([repo.getGoals(), repo.getProfile()]);
-    const bits: string[] = [];
-    if (goals?.calories) {
-      bits.push(
-        `Daily targets: ${goals.calories} cal, ${goals.protein} g protein, ${goals.carbs} g carbs, ${goals.fat} g fat.`,
-      );
-    }
-    if (profile?.weightKg && profile.units) {
-      bits.push(`Current weight: ${fmtWeight(profile.weightKg, profile.units)}.`);
-    }
+    const profile = await repo.getProfile().catch(() => null);
+    const units = profile?.units ?? "metric";
+
+    const [today, recent] = await Promise.all([
+      daySnapshot(),
+      // Yesterday and the day before. Enough for "am I usually short on
+      // protein" without turning every question into a week's audit.
+      recentSnapshots(3).then((d) => d.slice(0, -1)),
+    ]);
+
+    const parts = [`TODAY\n${renderDayForPrompt(today, units)}`];
+
+    const bio: string[] = [];
+    if (profile?.weightKg) bio.push(`Weight: ${fmtWeight(profile.weightKg, units)}.`);
     if (profile?.direction) {
       const dir =
-        profile.direction === "lose" ? "losing weight" : profile.direction === "gain" ? "gaining weight" : "maintaining";
-      bits.push(`Goal: ${dir}.`);
+        profile.direction === "lose"
+          ? "losing weight"
+          : profile.direction === "gain"
+            ? "gaining weight"
+            : "maintaining";
+      bio.push(`Goal: ${dir}.`);
     }
-    return bits.join(" ");
+    if (bio.length) parts.push(bio.join(" "));
+
+    const prior = renderRecentForPrompt(recent);
+    if (prior) parts.push(`RECENT DAYS\n${prior}`);
+
+    return parts.join("\n\n");
   } catch {
     return "";
   }

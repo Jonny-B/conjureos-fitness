@@ -5,6 +5,8 @@
  *
  *   logFood({ name, calories, protein?, carbs?, fat?, meal?, date? })  → write
  *   todayTotals()                                                      → read
+ *   dayNutrition({ date? })                                            → read
+ *   recentNutrition({ days? })                                         → read
  *   logRecipeMeal({ slug, servings?, meal?, date? })                   → write
  *
  * Params come from other (untrusted) apps, so every field is type-checked,
@@ -19,6 +21,7 @@ import { parseMeal } from "../features/naturalLanguage";
 import { buildDayView, todayISO } from "../features/diary";
 import { getRecipe, markCooked, RecipesAppClosedError, type ListedRecipe } from "./recipeBridge";
 import { exerciseCaloriesForDate } from "../features/exercise";
+import { daySnapshot, recentSnapshots } from "../features/dataApi";
 import { newId } from "../data/id";
 
 /** Exercise calories for a date: wearable (Apple Health, etc.) + in-app logged
@@ -147,6 +150,65 @@ async function todayTotals(): Promise<{
 }
 
 /**
+ * What the user has eaten on a date, with what's left of their targets.
+ *
+ * The read another app actually wants: a recipe app suggesting dinner needs
+ * the gap, not just the totals. Deliberately NUTRITION ONLY — sleep, symptoms
+ * and weight are in the same snapshot the in-app coach sees, and are withheld
+ * here. The user's own assistant seeing their symptoms is one thing; handing
+ * them to any installed app that asks is another, and nothing outside this app
+ * has a nutrition reason to want them.
+ */
+async function dayNutrition(raw?: unknown): Promise<{
+  date: string;
+  targets: Macros;
+  consumed: Macros;
+  remaining: Macros;
+  exerciseCalories: number;
+  foods: { name: string; meal: MealType; quantity: number; calories: number }[];
+  moreFoods: number;
+}> {
+  const p = asObject(raw);
+  const date = asDate(p.date);
+  const s = await daySnapshot(date);
+  return {
+    date: s.date,
+    targets: s.targets,
+    consumed: s.consumed,
+    remaining: s.remaining,
+    exerciseCalories: s.exerciseCalories,
+    foods: s.foods.map((f) => ({
+      name: f.name,
+      meal: f.meal,
+      quantity: f.quantity,
+      calories: f.calories,
+    })),
+    moreFoods: s.moreFoods,
+  };
+}
+
+/**
+ * Daily nutrition totals over a recent window, oldest first — for anything
+ * that wants a trend rather than a single day. Capped at two weeks: a caller
+ * wanting more should ask the user for the journal export instead of pulling
+ * an unbounded history through an action.
+ */
+async function recentNutrition(raw?: unknown): Promise<{
+  days: { date: string; consumed: Macros; exerciseCalories: number }[];
+}> {
+  const p = asObject(raw);
+  const days = p.days === undefined ? 7 : asNonNegInt(p.days, "days", 14) || 7;
+  const snaps = await recentSnapshots(Math.max(1, days));
+  return {
+    days: snaps.map((s) => ({
+      date: s.date,
+      consumed: s.consumed,
+      exerciseCalories: s.exerciseCalories,
+    })),
+  };
+}
+
+/**
  * Log a completed workout (from an assistant, the home orchestrator, or a
  * cross-app handoff). `calories` feeds the diary's exercise add-back. `type`
  * and `durationMin` are accepted + validated for forward-compat, but only the
@@ -222,8 +284,8 @@ async function logRecipeMeal(raw?: unknown): Promise<{ id: string; logged: boole
 }
 
 /**
- * Publish this app's actions (logFood, todayTotals, logRecipeMeal,
- * logWorkout) to ConjureOS so the assistant and other apps can call them.
+ * Publish this app's actions (logFood, todayTotals, dayNutrition,
+ * recentNutrition, logRecipeMeal, logWorkout) to ConjureOS so the assistant and other apps can call them.
  * Call once at startup; a no-op outside ConjureOS or on a host too old to
  * support registration. Keep the handler set in sync with the `conjureos.actions`
  * block in package.json — that's the schema the host validates against.
@@ -231,5 +293,12 @@ async function logRecipeMeal(raw?: unknown): Promise<{ id: string; logged: boole
 export async function registerActions(): Promise<void> {
   const bridge = window.__conjureos?.actions;
   if (!bridge?.register) return; // not inside ConjureOS, or host too old
-  await bridge.register({ logFood, todayTotals, logRecipeMeal, logWorkout });
+  await bridge.register({
+    logFood,
+    todayTotals,
+    dayNutrition,
+    recentNutrition,
+    logRecipeMeal,
+    logWorkout,
+  });
 }

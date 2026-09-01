@@ -15,12 +15,31 @@ vi.mock("../../bridge/vfs", () => ({
     files[p] = JSON.stringify(v);
   },
 }));
+const today = new Date().toISOString().slice(0, 10);
+const food = (name: string, cal: number, p: number) => ({
+  id: name, source: "usda", name, servingSize: "1 serving",
+  perServing: { calories: cal, protein: p, carbs: 10, fat: 5 },
+});
 vi.mock("../../data/repository", () => ({
   getRepository: async () => ({
     getGoals: async () => ({ calories: 2200, protein: 150, carbs: 200, fat: 70 }),
     getProfile: async () => ({ units: "imperial", weightKg: 81, direction: "lose" }),
+    listDiary: async (d: string) =>
+      d === today
+        ? [
+            { id: "1", date: d, meal: "breakfast", quantity: 1, loggedAt: `${d}T08:00:00Z`,
+              food: food("Greek yogurt", 150, 25) },
+            { id: "2", date: d, meal: "lunch", quantity: 2, loggedAt: `${d}T12:00:00Z`,
+              food: food("Tortilla chips", 300, 4) },
+          ]
+        : [],
+    listWater: async () => [],
+    listSleep: async () => [],
+    listSymptoms: async () => [],
+    listWeights: async () => [],
   }),
 }));
+vi.mock("../exercise", () => ({ exerciseCaloriesForDate: async () => 0 }));
 
 beforeEach(() => {
   complete.mockReset();
@@ -44,6 +63,42 @@ describe("askCoach", () => {
     const req = complete.mock.calls[0]![0] as { system: string };
     expect(req.system).toContain("2200 cal");
     expect(req.system).toContain("losing weight");
+  });
+
+  /**
+   * The reported bug: asked what to eat "based on what I've eaten and what my
+   * macros are", the coach replied that it didn't have today's diary loaded
+   * and asked the user to paste it in. It was never given the diary.
+   */
+  it("sends what was eaten TODAY, by meal", async () => {
+    const { askCoach } = await import("./ask");
+    complete.mockResolvedValue("ok");
+    await askCoach("what should I eat for dinner?");
+    const sys = (complete.mock.calls[0]![0] as { system: string }).system;
+    expect(sys).toContain("Greek yogurt");
+    expect(sys).toContain("2× Tortilla chips");
+    expect(sys).toMatch(/Breakfast:/);
+    expect(sys).toMatch(/Lunch:/);
+  });
+
+  it("does the subtraction so the model doesn't have to", async () => {
+    const { askCoach } = await import("./ask");
+    complete.mockResolvedValue("ok");
+    await askCoach("what's left?");
+    const sys = (complete.mock.calls[0]![0] as { system: string }).system;
+    // 150 + 600 eaten of 2200; 25 + 8 protein of 150.
+    expect(sys).toContain("Eaten so far: 750 cal");
+    expect(sys).toContain("Remaining, negative means over (1450 cal");
+    expect(sys).toContain("117g protein");
+  });
+
+  it("forbids the 'I can't see your diary' answer", async () => {
+    const { askCoach } = await import("./ask");
+    complete.mockResolvedValue("ok");
+    await askCoach("anything");
+    const sys = (complete.mock.calls[0]![0] as { system: string }).system;
+    expect(sys).toMatch(/never claim you cannot see their diary/i);
+    expect(sys).toMatch(/Never ask them to paste in data you were given/i);
   });
 
   it("sends prior turns so follow-ups make sense", async () => {
