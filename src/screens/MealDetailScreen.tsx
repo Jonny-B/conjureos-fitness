@@ -4,7 +4,8 @@ import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { entryMacros, isAiEstimate } from "../features/diary";
 import { recentFoodsForMeal, type RecentFood } from "../features/recentFoods";
-import { BarcodeIcon, DiamondIcon, EditIcon, SearchIcon, TrashIcon } from "../components/icons";
+import { groupEntries, suggestGroupName } from "../features/grouping";
+import { BarcodeIcon, CheckIcon, DiamondIcon, EditIcon, SearchIcon, TrashIcon } from "../components/icons";
 import { AiEstimateBadge } from "../components/AiEstimateBadge";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { NumberField } from "../components/NumberField";
@@ -49,6 +50,10 @@ export function MealDetailScreen({
   const [entries, setEntries] = useState<DiaryEntry[] | null>(null);
   // The entry currently open in the edit modal, or null.
   const [editing, setEditing] = useState<DiaryEntry | null>(null);
+  // Multi-select mode for collapsing several logged foods into one saved group.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [naming, setNaming] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -73,10 +78,28 @@ export function MealDetailScreen({
   const list = entries ?? [];
   const total = list.reduce((sum, e) => sum + entryMacros(e).calories, 0);
 
+  const selected = list.filter((e) => picked.has(e.id));
+  const exitSelect = () => {
+    setSelecting(false);
+    setPicked(new Set());
+  };
+
   return (
     <div className="meal-detail">
       <div className="meal-detail-subhead">
-        <span className="meal-detail-cal">{total} cal logged</span>
+        <span className="meal-detail-cal">
+          {selecting ? `${selected.length} selected` : `${total} cal logged`}
+        </span>
+        {list.length >= 2 &&
+          (selecting ? (
+            <button className="link-btn" onClick={exitSelect}>
+              Cancel
+            </button>
+          ) : (
+            <button className="link-btn" onClick={() => setSelecting(true)}>
+              Group foods
+            </button>
+          ))}
       </div>
 
       {entries === null ? (
@@ -92,7 +115,25 @@ export function MealDetailScreen({
           {list.map((e) => {
             const em = entryMacros(e);
             return (
-              <li className="entry" key={e.id}>
+              <li className={`entry${selecting ? " selectable" : ""}`} key={e.id}>
+                {selecting && (
+                  <button
+                    className={`entry-check${picked.has(e.id) ? " on" : ""}`}
+                    role="checkbox"
+                    aria-checked={picked.has(e.id)}
+                    aria-label={`Select ${e.food.name}`}
+                    onClick={() =>
+                      setPicked((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(e.id)) next.delete(e.id);
+                        else next.add(e.id);
+                        return next;
+                      })
+                    }
+                  >
+                    {picked.has(e.id) ? <CheckIcon size={14} /> : null}
+                  </button>
+                )}
                 <div className="entry-main">
                   <div className="entry-title">
                     <span className="entry-name">{e.food.name}</span>
@@ -104,7 +145,7 @@ export function MealDetailScreen({
                   </div>
                 </div>
                 <div className="entry-cal">{em.calories}</div>
-                <div className="entry-actions">
+                <div className="entry-actions" hidden={selecting}>
                   <button
                     className="step"
                     aria-label="Less"
@@ -126,6 +167,18 @@ export function MealDetailScreen({
         </ul>
       )}
 
+      {selecting ? (
+        <div className="group-bar">
+          <span className="muted small">
+            {selected.length < 2
+              ? "Pick two or more to group them."
+              : `Combine ${selected.length} into one saved food.`}
+          </span>
+          <button className="btn primary" disabled={selected.length < 2} onClick={() => setNaming(true)}>
+            Group
+          </button>
+        </div>
+      ) : (
       <div className="meal-cta-row three">
         <button className="meal-cta" onClick={onScan}>
           <BarcodeIcon size={22} />
@@ -140,8 +193,28 @@ export function MealDetailScreen({
           <span>AI</span>
         </button>
       </div>
+      )}
 
-      <MealHistory meal={meal} date={date} nonce={nonce} onLogged={onMutated} />
+      {!selecting && <MealHistory meal={meal} date={date} nonce={nonce} onLogged={onMutated} />}
+
+      {naming && (
+        <GroupNameSheet
+          entries={selected}
+          onCancel={() => setNaming(false)}
+          onDone={async (name: string) => {
+            const food = groupEntries(selected, name);
+            if (!food) return;
+            const repo = await getRepository();
+            // Replace, not add: the parts collapse INTO the group, so the meal
+            // total is unchanged and the diary doesn't double-count.
+            await repo.addDiaryEntry({ date, meal, quantity: 1, food });
+            for (const e of selected) await repo.removeDiaryEntry(e.id);
+            setNaming(false);
+            exitSelect();
+            onMutated();
+          }}
+        />
+      )}
 
       {editing && (
         <EntryEditModal
@@ -153,6 +226,105 @@ export function MealDetailScreen({
           }}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Name the group, then collapse.
+ *
+ * Prefilled with a derived name so Enter alone is a complete answer — the
+ * point of this flow is that a smoothie you make constantly stops costing
+ * three scans, and making someone think of a name first would be a new bit of
+ * friction in place of the old one.
+ *
+ * It lists what is about to be combined because the action is destructive in a
+ * quiet way: the parts stop existing as separate rows, and the totals need to
+ * be recognisably the same afterwards.
+ */
+function GroupNameSheet({
+  entries,
+  onCancel,
+  onDone,
+}: {
+  entries: DiaryEntry[];
+  onCancel: () => void;
+  onDone: (name: string) => void | Promise<void>;
+}) {
+  useScrollLock();
+  const suggestion = suggestGroupName(entries.map((e) => e.food));
+  const [name, setName] = useState(suggestion);
+  const [busy, setBusy] = useState(false);
+
+  const totals = entries.reduce(
+    (sum, e) => sum + entryMacros(e).calories,
+    0,
+  );
+
+  const submit = async () => {
+    const text = name.trim() || suggestion;
+    if (!text || busy) return;
+    setBusy(true);
+    try {
+      await onDone(text);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Name this group" onClick={onCancel}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2>Name this group</h2>
+        </div>
+        <div className="sheet-body">
+          <label className="field">
+            <span>Name</span>
+            <input
+              className="text-input"
+              autoFocus
+              maxLength={40}
+              aria-label="Group name"
+              value={name}
+              placeholder={suggestion}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void submit();
+              }}
+            />
+          </label>
+
+          <div className="section-label">Combining</div>
+          <ul className="group-preview">
+            {entries.map((e) => (
+              <li key={e.id}>
+                <span>
+                  {e.quantity !== 1 ? `${e.quantity}\u00d7 ` : ""}
+                  {e.food.name}
+                </span>
+                <span className="muted">{entryMacros(e).calories}</span>
+              </li>
+            ))}
+            <li className="group-preview-total">
+              <span>Total</span>
+              <span>{totals} cal</span>
+            </li>
+          </ul>
+          <div className="muted small">
+            These rows are replaced by one entry. Your day\u2019s total doesn\u2019t change, and the
+            group shows up in this meal\u2019s history.
+          </div>
+        </div>
+        <div className="sheet-foot">
+          <button className="btn" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn primary" disabled={busy || !name.trim()} onClick={submit}>
+            {busy ? "Grouping\u2026" : "Group"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

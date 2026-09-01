@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { GROUP_NAME_MAX, groupItems, suggestGroupName } from "./naturalLanguage";
-import type { FoodItem } from "../types";
+import { GROUP_NAME_MAX, groupEntries, groupItems, suggestGroupName } from "./grouping";
+import type { DiaryEntry, FoodItem } from "../types";
 
 const f = (name: string, cal: number, p = 0, c = 0, fat = 0): FoodItem => ({
   id: name, source: "custom", name, servingSize: "1 serving",
@@ -70,5 +70,59 @@ describe("groupItems", () => {
 
   it("is null for nothing", () => {
     expect(groupItems([])).toBeNull();
+  });
+});
+
+describe("groupEntries", () => {
+  const entry = (name: string, cal: number, quantity: number, ai = false): DiaryEntry => ({
+    id: name, date: "2026-09-01", meal: "breakfast", quantity, loggedAt: "x",
+    food: {
+      id: name, source: ai ? "custom" : "openfoodfacts", name, servingSize: "1 serving",
+      perServing: { calories: cal, protein: 10, carbs: 20, fat: 5 },
+      ...(ai ? { provenance: { sourceTag: "ai_estimate" as const } } : {}),
+    },
+  });
+
+  it("respects each entry's quantity — the smoothie case", () => {
+    // Half a scoop of protein powder is half its macros, not all of them.
+    const g = groupEntries([
+      entry("Frozen berries", 80, 1),
+      entry("Greek yogurt", 120, 2),
+      entry("Protein powder", 100, 0.5),
+    ], "My smoothie")!;
+    expect(g.perServing.calories).toBe(80 + 240 + 50);
+    expect(g.perServing.protein).toBe(10 + 20 + 5);
+  });
+
+  it("re-logs as a single serving of the whole thing", () => {
+    const g = groupEntries([entry("A", 100, 3), entry("B", 50, 1)])!;
+    expect(g.servingSize).toBe("2 items");
+  });
+
+  it("uses the given name, capped", () => {
+    expect(groupEntries([entry("A", 1, 1)], "My smoothie")!.name).toBe("My smoothie");
+    expect(groupEntries([entry("A", 1, 1)], "z".repeat(90))!.name.length).toBe(GROUP_NAME_MAX);
+  });
+
+  it("derives a name when none is given", () => {
+    const g = groupEntries([entry("Greek yogurt", 300, 1), entry("Honey", 60, 1)])!;
+    expect(g.name).toBe("Greek yogurt with honey");
+  });
+
+  it("keeps the AI-estimate tag only when every part was estimated", () => {
+    const allAi = groupEntries([entry("A", 10, 1, true), entry("B", 10, 1, true)])!;
+    expect(allAi.provenance?.sourceTag).toBe("ai_estimate");
+    // One scanned barcode in the mix means it is no longer purely a guess.
+    const mixed = groupEntries([entry("A", 10, 1, true), entry("B", 10, 1, false)])!;
+    expect(mixed.provenance).toBeUndefined();
+  });
+
+  it("survives a corrupt quantity instead of poisoning the totals", () => {
+    const bad = { ...entry("A", 100, 1), quantity: NaN } as DiaryEntry;
+    expect(groupEntries([bad])!.perServing.calories).toBe(100);
+  });
+
+  it("is null for nothing", () => {
+    expect(groupEntries([])).toBeNull();
   });
 });

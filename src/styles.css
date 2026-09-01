@@ -4175,3 +4175,61 @@ input[type="date"].text-input {
   border-top: 1px solid var(--line);
 }
 .group-name-field span { display: block; padding-top: 11px; }
+
+/* ── Grouping logged foods ───────────────────────────────────────────── */
+.meal-detail-subhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.entry.selectable { cursor: default; }
+.entry-check {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 11px;
+  border-radius: 6px;
+  border: 1.5px solid var(--line);
+  background: none;
+  color: #fff;
+  cursor: pointer;
+  transition: background var(--cui-duration) var(--cui-ease),
+    border-color var(--cui-duration) var(--cui-ease);
+}
+.entry-check.on { background: var(--accent); border-color: var(--accent); }
+
+/* Sticky so the action stays reachable while scrolling a long meal. */
+.group-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-2) 94%, transparent);
+  backdrop-filter: blur(10px);
+}
+.group-bar .btn { width: auto; flex: 0 0 auto; padding: 10px 20px; }
+
+.group-preview {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  font-size: 14px;
+}
+.group-preview li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.group-preview li:last-child { border-bottom: none; }
+.group-preview-total { font-weight: 700; }
