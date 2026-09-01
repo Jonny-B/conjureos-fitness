@@ -33,7 +33,7 @@ interface Props {
 /** Smallest loggable portion. Also the floor the +/- steppers stop at. */
 export const MIN_QTY = 0.1;
 
-/** How far back the meal history looks, and how many rows it shows. Short on
+/** How far back the quick-add list looks, and how many rows it shows. Short on
  *  purpose — this is a scannable shortcut list, not an archive. */
 const HISTORY_DAYS = 7;
 const HISTORY_LIMIT = 10;
@@ -313,7 +313,7 @@ function GroupNameSheet({
           </ul>
           <div className="muted small">
             These rows are replaced by one entry. Your day\u2019s total doesn\u2019t change, and the
-            group shows up in this meal\u2019s history.
+            group shows up in this meal\u2019s quick-add list.
           </div>
         </div>
         <div className="sheet-foot">
@@ -383,7 +383,7 @@ function MealHistory({
 
   return (
     <section className="meal-history">
-      <div className="section-label">History</div>
+      <div className="section-label">Quick add</div>
       <ul className="history-list">
         {recents.map((r) => {
           const key = `${r.food.name}-${r.lastLoggedAt}`;

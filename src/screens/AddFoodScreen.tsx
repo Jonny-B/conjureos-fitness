@@ -635,7 +635,7 @@ function AiMode({
   const logAll = async () => {
     if (!items?.length) return;
     const repo = await getRepository();
-    const exclude = toHistory ? {} : { excludeFromHistory: true };
+    const exclude = toHistory ? {} : { excludeFromQuickAdd: true };
     if (grouped) {
       const one = groupItems(items, groupName);
       if (one) await repo.addDiaryEntry({ date, meal, quantity: 1, food: one, ...exclude });
@@ -742,11 +742,11 @@ function AiMode({
               </label>
             )}
             <ToggleRow
-              label="Add to history"
+              label="Save to Quick add"
               hint={
                 toHistory
-                  ? "Shows up as a one-tap re-log for this meal."
-                  : "Kept out of the re-log list. Still counts towards your day."
+                  ? "Appears under Quick add on this meal for one-tap re-logging."
+                  : "Won\u2019t appear under Quick add. Still logged, still counts towards your day."
               }
               on={toHistory}
               onChange={setToHistory}

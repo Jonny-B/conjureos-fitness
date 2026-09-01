@@ -117,15 +117,19 @@ export interface DiaryEntry {
   /** ISO timestamp the entry was created. */
   loggedAt: string;
   /**
-   * Keep this entry out of the meal history suggestions.
+   * Keep this entry out of the meal's Quick add shortcuts.
    *
    * Set when the user logs something they don't want re-suggested — a cheese
-   * board that came back as twenty items would otherwise fill the history for
-   * a week and bury the things they eat regularly. The entry stays in the
-   * diary and counts towards the day exactly as normal; it is only hidden from
-   * the re-log shortcuts.
+   * board that came back as twenty items would otherwise fill Quick add for a
+   * week and bury the things they eat regularly. The entry stays in the diary
+   * and in the journal, and counts towards the day exactly as normal; it is
+   * only hidden from the one-tap re-log list.
+   *
+   * Named for Quick add rather than "history" on purpose: the Journal tab is
+   * the history, and having two different things by that name confused the
+   * first person who used it.
    */
-  excludeFromHistory?: boolean;
+  excludeFromQuickAdd?: boolean;
 }
 
 // ── Sleep, water & symptoms ──────────────────────────────────────────

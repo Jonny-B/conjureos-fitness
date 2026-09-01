@@ -76,7 +76,7 @@ export async function recentFoodsForMeal(
     .flat()
     // Entries the user chose to keep out of history never surface here. They
     // are still in the diary; this only governs the re-log shortcuts.
-    .filter((e) => e.meal === meal && !e.excludeFromHistory)
+    .filter((e) => e.meal === meal && !e.excludeFromQuickAdd)
     .sort((a, b) => (a.loggedAt < b.loggedAt ? 1 : a.loggedAt > b.loggedAt ? -1 : 0));
 
   const seen = new Set<string>();
