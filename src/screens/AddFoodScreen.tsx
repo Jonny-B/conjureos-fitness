@@ -19,8 +19,7 @@ import { BarcodeScanner } from "../components/BarcodeScanner";
 import { NumberField } from "../components/NumberField";
 import { MIN_QTY } from "./MealDetailScreen";
 import { CameraCapture } from "../components/CameraCapture";
-import { NutritionLabelCapture } from "../components/NutritionLabelCapture";
-import { FrontOfPackageCapture } from "../components/FrontOfPackageCapture";
+import { PackageCapture, type PackageResult } from "../components/PackageCapture";
 import { EditableNutritionPreview } from "../components/EditableNutritionPreview";
 import {
   BarcodeIcon,
@@ -29,7 +28,6 @@ import {
   DiamondIcon,
   EditIcon,
   NutritionPanelIcon,
-  PackageIcon,
   SearchIcon,
   TrashIcon,
 } from "../components/icons";
@@ -374,7 +372,7 @@ function ToggleRow({
 
 // ── Scan (barcode) ───────────────────────────────────────────────────────
 
-type CaptureMode = "label" | "front" | null;
+type CaptureMode = "photo" | null;
 
 interface PendingPreview {
   food: FoodItem;
@@ -388,8 +386,7 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
   const [manualOpen, setManualOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [missedBarcode, setMissedBarcode] = useState<string | null>(null);
-  // "choose" = user opened the photo fallback themselves (no barcode miss).
-  const [capture, setCapture] = useState<CaptureMode | "choose">(null);
+  const [capture, setCapture] = useState<CaptureMode>(null);
   const [pendingPreview, setPendingPreview] = useState<PendingPreview | null>(null);
   const busy = useRef(false);
 
@@ -428,73 +425,38 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
     );
   }
 
-  if (capture === "label") {
+  // Reached from a barcode miss or from the scanner's "snap a photo" shortcut.
+  if (capture === "photo" || missedBarcode) {
     return (
-      <NutritionLabelCapture
-        barcode={missedBarcode ?? undefined}
-        onParsed={(food, confidence) => setPendingPreview({ food, source: "ai_label", confidence })}
-        onCancel={() => setCapture(missedBarcode ? "choose" : null)}
-      />
-    );
-  }
-
-  if (capture === "front") {
-    return (
-      <FrontOfPackageCapture
-        barcode={missedBarcode ?? undefined}
-        onParsed={(est) =>
-          setPendingPreview({
-            food: est.food,
-            source: "ai_front",
-            confidence: est.confidence,
-            warningNote: est.warningNote,
-          })
-        }
-        onCancel={() => setCapture(missedBarcode ? "choose" : null)}
-      />
-    );
-  }
-
-  // Photo chooser — reached either from a barcode miss or from the "snap a
-  // photo" shortcut on the scanner. Same two paths, framed by context.
-  if (capture === "choose" || missedBarcode) {
-    return (
-      <div className="mode-body snap-miss">
-        {missedBarcode ? (
-          <>
+      <>
+        {missedBarcode && (
+          <div className="mode-body snap-miss-head">
             <div className="snap-miss-barcode-row">
               <span className="chip muted">No match</span>
               <span className="muted small">{missedBarcode}</span>
             </div>
-            <div className="snap-miss-copy">
-              <div>We don't have this one yet. Help us teach Conjure.</div>
-              <div className="muted small">
-                We checked our database and Open Food Facts. Snap a photo and we'll do the rest.
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="snap-miss-copy">
-            <div>Scan it from a photo</div>
             <div className="muted small">
-              No barcode, or it won't read? Snap the label or the package and we'll log it.
+              We checked our database and Open Food Facts. Photograph it and we'll do the rest.
             </div>
           </div>
         )}
-
-        <PhotoChoiceCards onLabel={() => setCapture("label")} onFront={() => setCapture("front")} />
-
-        <button
-          className="link-btn"
-          onClick={() => {
+        <PackageCapture
+          barcode={missedBarcode ?? undefined}
+          onParsed={(res) =>
+            setPendingPreview({
+              food: res.food,
+              source: res.source,
+              confidence: res.confidence,
+              ...(res.warningNote ? { warningNote: res.warningNote } : {}),
+            })
+          }
+          onCancel={() => {
             setCapture(null);
             setMissedBarcode(null);
             setManual("");
           }}
-        >
-          {missedBarcode ? "Try another barcode" : "Back to scanner"}
-        </button>
-      </div>
+        />
+      </>
     );
   }
 
@@ -504,7 +466,7 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
         onDetected={resolve}
         onError={(m) => setStatus(m)}
         onEnterBarcode={() => setManualOpen((v) => !v)}
-        onSnapPhoto={() => setCapture("choose")}
+        onSnapPhoto={() => setCapture("photo")}
       />
       {manualOpen && (
         <div className="manual-barcode">
@@ -526,41 +488,6 @@ function ScanMode({ onPick }: { onPick: (food: FoodItem) => void }) {
   );
 }
 
-/** The two photo-capture paths, shared by the miss screen and the shortcut. */
-function PhotoChoiceCards({ onLabel, onFront }: { onLabel: () => void; onFront: () => void }) {
-  return (
-    <>
-      <button
-        className="snap-cta-card primary"
-        onClick={onLabel}
-        aria-label="Snap the nutrition label, recommended for best accuracy"
-      >
-        <span className="snap-cta-icon">
-          <NutritionPanelIcon size={28} />
-        </span>
-        <span className="snap-cta-text">
-          <span className="snap-cta-title">Snap the nutrition label</span>
-          <span className="snap-cta-sub">Best accuracy. Reads the panel directly.</span>
-        </span>
-        <ChevronRight size={20} />
-        <span className="snap-cta-pill">Recommended</span>
-      </button>
-
-      <button className="snap-cta-card secondary" onClick={onFront}>
-        <span className="snap-cta-icon">
-          <PackageIcon size={28} />
-        </span>
-        <span className="snap-cta-text">
-          <span className="snap-cta-title">Snap the front of the package</span>
-          <span className="snap-cta-sub">
-            For produce, beer, or anything without a label. We'll estimate.
-          </span>
-        </span>
-        <ChevronRight size={20} />
-      </button>
-    </>
-  );
-}
 
 // ── AI (photograph a meal / describe it) ─────────────────────────────────
 
@@ -1093,7 +1020,7 @@ function FixFlow({
   onFixed: (food: FoodItem) => void;
   onCancel: () => void;
 }) {
-  const [stage, setStage] = useState<"choose" | "manual" | "label" | "front">("choose");
+  const [stage, setStage] = useState<"choose" | "manual" | "photo">("choose");
   const [parsed, setParsed] = useState<PendingPreview | null>(null);
 
   if (parsed) {
@@ -1120,24 +1047,18 @@ function FixFlow({
     );
   }
 
-  if (stage === "label" || stage === "front") {
-    const onParsed = (f: FoodItem, confidence: number, warningNote?: string) =>
-      setParsed({
-        food: f,
-        source: stage === "label" ? "ai_label" : "ai_front",
-        confidence,
-        ...(warningNote ? { warningNote } : {}),
-      });
-    return stage === "label" ? (
-      <NutritionLabelCapture
+  if (stage === "photo") {
+    return (
+      <PackageCapture
         barcode={food.barcode}
-        onParsed={(f, c) => onParsed(f, c)}
-        onCancel={() => setStage("choose")}
-      />
-    ) : (
-      <FrontOfPackageCapture
-        barcode={food.barcode}
-        onParsed={(est) => onParsed(est.food, est.confidence, est.warningNote)}
+        onParsed={(res: PackageResult) =>
+          setParsed({
+            food: res.food,
+            source: res.source,
+            confidence: res.confidence,
+            ...(res.warningNote ? { warningNote: res.warningNote } : {}),
+          })
+        }
         onCancel={() => setStage("choose")}
       />
     );
@@ -1152,7 +1073,16 @@ function FixFlow({
         </div>
       </div>
 
-      <PhotoChoiceCards onLabel={() => setStage("label")} onFront={() => setStage("front")} />
+      <button className="snap-cta-card primary" onClick={() => setStage("photo")}>
+        <span className="snap-cta-icon">
+          <NutritionPanelIcon size={26} />
+        </span>
+        <span className="snap-cta-text">
+          <span className="snap-cta-title">Photograph the package</span>
+          <span className="snap-cta-sub">The nutrition panel, the front, or both.</span>
+        </span>
+        <ChevronRight size={20} />
+      </button>
 
       <button className="snap-cta-card secondary" onClick={() => setStage("manual")}>
         <span className="snap-cta-icon">
