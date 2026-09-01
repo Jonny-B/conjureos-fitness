@@ -1,0 +1,60 @@
+name: CI Publish Both (temp 1.26.1)
+
+on:
+  push:
+    branches: [ci/publish-1.26.1]
+
+concurrency:
+  group: ci-publish-both-1.26.1
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install deps
+        run: npm ci
+      - name: Checkout ConjureOS (shared publish action)
+        uses: actions/checkout@v4
+        with:
+          repository: Jonny-B/ConjureOS
+          ref: dev
+          token: ${{ secrets.CONJUREOS_REPO_TOKEN }}
+          path: .conjureos
+      - name: Build single-file HTML (dev project)
+        env:
+          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_REF }}.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xcHZqbHN5d3JwdGVmZ3d1enRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTA3OTMsImV4cCI6MjA5NTQ4Njc5M30.ITZjX5KkMNgbJuFEHS5-IqFFJC6A39OynVgOznZeqD8
+        run: npm run build:inline
+      - name: Publish to App Store (dev)
+        uses: ./.conjureos/.github/actions/publish-anchor-app
+        with:
+          supabase-url: https://${{ secrets.SUPABASE_DEV_PROJECT_REF }}.supabase.co
+          supabase-anon-key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xcHZqbHN5d3JwdGVmZ3d1enRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTA3OTMsImV4cCI6MjA5NTQ4Njc5M30.ITZjX5KkMNgbJuFEHS5-IqFFJC6A39OynVgOznZeqD8
+          bot-email: conjureosbot@gmail.com
+          bot-password: ${{ secrets.PUBLISH_BOT_DEV_PASSWORD }}
+          html-path: dist/index.html
+          slug: fitness
+          changelog: 'Tap anything on your journal timeline to edit or delete it - servings, water amounts, symptoms, or the whole entry.'
+      - name: Build single-file HTML (prod project)
+        env:
+          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50Z2VsYnRlcGVjcXNxbG94bWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTkzMzEsImV4cCI6MjA5MzY3NTMzMX0.fgRCszkeAbHANaK-JJAGmTwWHyOh-3b6-od1c3s3V0w
+        run: npm run build:inline
+      - name: Publish to App Store (prod)
+        uses: ./.conjureos/.github/actions/publish-anchor-app
+        with:
+          supabase-url: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
+          supabase-anon-key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50Z2VsYnRlcGVjcXNxbG94bWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTkzMzEsImV4cCI6MjA5MzY3NTMzMX0.fgRCszkeAbHANaK-JJAGmTwWHyOh-3b6-od1c3s3V0w
+          bot-email: conjureosbot@gmail.com
+          bot-password: ${{ secrets.PUBLISH_BOT_PROD_PASSWORD }}
+          html-path: dist/index.html
+          slug: fitness
+          changelog: 'Tap anything on your journal timeline to edit or delete it - servings, water amounts, symptoms, or the whole entry.'
