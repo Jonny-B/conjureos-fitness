@@ -22,6 +22,9 @@ export type HistoryKind =
   | "workouts"
   | "coach"
   | "coachChat"
+  | "sleep"
+  | "water"
+  | "symptoms"
   | "planHistory"
   | "plan";
 
@@ -31,6 +34,9 @@ export const HISTORY_ITEMS: { kind: HistoryKind; label: string; desc: string }[]
   { kind: "diary", label: "Food diary", desc: "Every logged meal and snack" },
   { kind: "weights", label: "Weight history", desc: "All weigh-ins and the trend graph" },
   { kind: "workouts", label: "Workout history", desc: "Completed sessions and daily check-offs" },
+  { kind: "sleep", label: "Sleep", desc: "Every night you've recorded" },
+  { kind: "water", label: "Water", desc: "Every drink you've logged" },
+  { kind: "symptoms", label: "Symptoms", desc: "Everything under \u201cHow you felt\u201d" },
   { kind: "coachChat", label: "Food questions", desc: "Everything you've asked about food, and the answers" },
   { kind: "coach", label: "Coach memory", desc: "What the coach remembers about you" },
   {
@@ -61,6 +67,15 @@ export async function clearHistory(kind: HistoryKind): Promise<void> {
       return;
     case "workouts":
       await repo.clearWorkoutHistory().catch(() => {});
+      return;
+    case "sleep":
+      await repo.clearSleep().catch(() => {});
+      return;
+    case "water":
+      await repo.clearWater().catch(() => {});
+      return;
+    case "symptoms":
+      await repo.clearSymptoms().catch(() => {});
       return;
     case "coachChat":
       // The Q&A thread behind the home screen's ask box.

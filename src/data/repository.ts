@@ -135,8 +135,12 @@ export interface Repository {
   clearWeights(): Promise<void>;
   /** Delete all workout sessions + daily check-offs. Destructive; no undo. */
   clearWorkoutHistory(): Promise<void>;
-  /** Delete every sleep, water and symptom entry. Destructive; no undo. */
-  clearWellbeing(): Promise<void>;
+  /** Delete every recorded night. Destructive; no undo. */
+  clearSleep(): Promise<void>;
+  /** Delete every logged drink. Destructive; no undo. */
+  clearWater(): Promise<void>;
+  /** Delete every recorded symptom. Destructive; no undo. */
+  clearSymptoms(): Promise<void>;
 
   // ── v2: plans + daily check-off + coached sessions ──────────────────
   // VFS-only today. SupabaseRepository throws PLAN_REQUIRES_V2_BACKEND for

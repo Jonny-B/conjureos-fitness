@@ -125,16 +125,25 @@ describe("sleep / water / symptom storage", () => {
     expect(await repo.listWater("2026-08-10")).toEqual([]);
   });
 
-  it("clearWellbeing wipes all three and nothing else", async () => {
+  it("each clear wipes only its own slice", async () => {
     await repo.addWater({ date: "2026-08-10", ml: 300 });
     await repo.addSymptom({ date: "2026-08-10", label: "Headache" });
     await repo.saveSleep(buildSleepEntry("n1", "2026-08-10", "23:00", "07:00")!);
     await repo.upsertWeight({ date: "2026-08-10", weightKg: 81 });
 
-    await repo.clearWellbeing();
+    await repo.clearWater();
     expect(await repo.listWater("2026-08-10")).toEqual([]);
+    // The others are untouched — these are independent slices in Settings.
+    expect(await repo.listSymptoms("2026-08-10")).toHaveLength(1);
+    expect(await repo.listSleep("2026-08-10")).toHaveLength(1);
+
+    await repo.clearSymptoms();
     expect(await repo.listSymptoms("2026-08-10")).toEqual([]);
+    expect(await repo.listSleep("2026-08-10")).toHaveLength(1);
+
+    await repo.clearSleep();
     expect(await repo.listSleep("2026-08-10")).toEqual([]);
+    // Weight is a different slice entirely and survives all three.
     expect(await repo.listWeights()).toHaveLength(1);
   });
 

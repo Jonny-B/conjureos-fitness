@@ -340,9 +340,17 @@ export class MockRepository implements Repository {
     await this.flush();
   }
 
-  async clearWellbeing(): Promise<void> {
+  async clearSleep(): Promise<void> {
     this.store.sleep = [];
+    await this.flush();
+  }
+
+  async clearWater(): Promise<void> {
     this.store.water = [];
+    await this.flush();
+  }
+
+  async clearSymptoms(): Promise<void> {
     this.store.symptoms = [];
     await this.flush();
   }

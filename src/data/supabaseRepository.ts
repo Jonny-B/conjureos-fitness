@@ -195,7 +195,13 @@ export class SupabaseRepository implements Repository {
   // No server tables yet, so every method throws and callers fall back to the
   // mock layer exactly as they already do for plans.
 
-  async clearWellbeing(): Promise<void> {
+  async clearSleep(): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async clearWater(): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async clearSymptoms(): Promise<void> {
     throw new Error(PLAN_REQUIRES_V2_BACKEND);
   }
   async listSleep(): Promise<SleepEntry[]> {
