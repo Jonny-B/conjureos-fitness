@@ -319,6 +319,11 @@ export class MockRepository implements Repository {
     await this.flush();
   }
 
+  async removeWeight(date: string): Promise<void> {
+    this.store.weights = this.store.weights.filter((w) => w.date !== date);
+    await this.flush();
+  }
+
   async clearDiary(): Promise<void> {
     this.store.diary = [];
     await this.flush();
@@ -394,6 +399,13 @@ export class MockRepository implements Repository {
     return stored;
   }
 
+  async updateWater(id: string, patch: Partial<Pick<WaterEntry, "ml" | "loggedAt">>): Promise<void> {
+    const idx = this.store.water.findIndex((e) => e.id === id);
+    if (idx < 0) return;
+    this.store.water[idx] = { ...this.store.water[idx]!, ...patch };
+    await this.flush();
+  }
+
   async removeWater(id: string): Promise<void> {
     this.store.water = this.store.water.filter((e) => e.id !== id);
     await this.flush();
@@ -420,6 +432,21 @@ export class MockRepository implements Repository {
     this.store.symptoms.push(stored);
     await this.flush();
     return stored;
+  }
+
+  async updateSymptom(
+    id: string,
+    patch: Partial<Pick<SymptomEntry, "label" | "severity" | "note" | "loggedAt">>,
+  ): Promise<void> {
+    const idx = this.store.symptoms.findIndex((e) => e.id === id);
+    if (idx < 0) return;
+    const next = { ...this.store.symptoms[idx]!, ...patch };
+    // An explicitly cleared severity/note must actually go away, not linger as
+    // a stale value the user can no longer see.
+    if (patch.severity === undefined && "severity" in patch) delete next.severity;
+    if (patch.note === undefined && "note" in patch) delete next.note;
+    this.store.symptoms[idx] = next;
+    await this.flush();
   }
 
   async removeSymptom(id: string): Promise<void> {

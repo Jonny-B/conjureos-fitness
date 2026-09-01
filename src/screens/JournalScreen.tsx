@@ -21,6 +21,7 @@ import { shiftDate, todayISO } from "../features/diary";
 import { fmtWater } from "../features/water";
 import { formatSleep } from "../features/sleep";
 import { CoachChatModal } from "../components/CoachChatModal";
+import { JournalEntrySheet } from "../components/JournalEntrySheet";
 import { ChevronLeft, ChevronRight, CoachIcon } from "../components/icons";
 
 type Units = Profile["units"];
@@ -68,6 +69,9 @@ export function JournalScreen({ units, nonce }: { units: Units; nonce: number })
   const [day, setDay] = useState<DayJournal | null>(null);
   const [printOpen, setPrintOpen] = useState(false);
   const [asking, setAsking] = useState<string | null>(null);
+  const [editing, setEditing] = useState<JournalEvent | null>(null);
+  // Bumped after an edit so both the day and the month grid re-read.
+  const [localNonce, setLocalNonce] = useState(0);
 
   const from = monthStart(cursor);
   const to = monthEnd(cursor);
@@ -78,7 +82,7 @@ export function JournalScreen({ units, nonce }: { units: Units; nonce: number })
 
   useEffect(() => {
     void loadMonth();
-  }, [loadMonth, nonce]);
+  }, [loadMonth, nonce, localNonce]);
 
   useEffect(() => {
     let alive = true;
@@ -88,7 +92,7 @@ export function JournalScreen({ units, nonce }: { units: Units; nonce: number })
     return () => {
       alive = false;
     };
-  }, [selected, nonce, units]);
+  }, [selected, nonce, units, localNonce]);
 
   const byDate = useMemo(() => {
     const map = new Map<string, DayJournal>();
@@ -177,16 +181,35 @@ export function JournalScreen({ units, nonce }: { units: Units; nonce: number })
         )}
       </div>
 
-      <DayDetail day={day} units={units} />
+      <DayDetail day={day} units={units} onPick={setEditing} />
 
       {printOpen && <PrintSheet defaultFrom={from} defaultTo={to} units={units} onClose={() => setPrintOpen(false)} />}
       {asking !== null && <CoachChatModal initialQuestion={asking} onClose={() => setAsking(null)} />}
+      {editing && (
+        <JournalEntrySheet
+          event={editing}
+          units={units}
+          onClose={() => setEditing(null)}
+          onChanged={() => {
+            setEditing(null);
+            setLocalNonce((n) => n + 1);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 /** One day, read top to bottom. */
-function DayDetail({ day, units }: { day: DayJournal | null; units: Units }) {
+function DayDetail({
+  day,
+  units,
+  onPick,
+}: {
+  day: DayJournal | null;
+  units: Units;
+  onPick: (e: JournalEvent) => void;
+}) {
   if (!day) return <div className="muted small">Loading…</div>;
   const t = day.totals;
   return (
@@ -212,17 +235,27 @@ function DayDetail({ day, units }: { day: DayJournal | null; units: Units }) {
 
           <ol className="timeline">
             {day.events.map((e, i) => (
-              <li key={i} className={`tl-item tl-${e.kind}`}>
-                <span className="tl-time">{eventTime(e)}</span>
-                <span className="tl-dot" aria-hidden />
-                <span className="tl-body">
-                  <span className="tl-label">
-                    {e.label}
-                    {e.meal ? <span className="tl-meal">{e.meal}</span> : null}
+              <li key={`${e.kind}-${e.id}-${i}`} className={`tl-item tl-${e.kind}`}>
+                {/* A row is a button only when there is something to do with
+                    it — a wearable workout is read-only here, and a disabled
+                    button would just look broken. */}
+                <button
+                  className="tl-row"
+                  disabled={!e.editable}
+                  aria-label={e.editable ? `Edit ${e.label}` : e.label}
+                  onClick={() => e.editable && onPick(e)}
+                >
+                  <span className="tl-time">{eventTime(e)}</span>
+                  <span className="tl-dot" aria-hidden />
+                  <span className="tl-body">
+                    <span className="tl-label">
+                      {e.label}
+                      {e.meal ? <span className="tl-meal">{e.meal}</span> : null}
+                    </span>
+                    {e.note ? <span className="tl-note muted small">{e.note}</span> : null}
                   </span>
-                  {e.note ? <span className="tl-note muted small">{e.note}</span> : null}
-                </span>
-                {e.detail ? <span className="tl-detail">{e.detail}</span> : null}
+                  {e.detail ? <span className="tl-detail">{e.detail}</span> : null}
+                </button>
               </li>
             ))}
           </ol>

@@ -102,6 +102,8 @@ export interface Repository {
   listWaterRange(from: string, to: string): Promise<WaterEntry[]>;
   /** Log a drink; returns the stored entry with its id + loggedAt. */
   addWater(entry: NewWaterEntry): Promise<WaterEntry>;
+  /** Change a logged drink's amount. No-op for an unknown id. */
+  updateWater(id: string, patch: Partial<Pick<WaterEntry, "ml" | "loggedAt">>): Promise<void>;
   /** Delete one drink. Idempotent. */
   removeWater(id: string): Promise<void>;
 
@@ -111,6 +113,11 @@ export interface Repository {
   listSymptomsRange(from: string, to: string): Promise<SymptomEntry[]>;
   /** Record a symptom; returns the stored entry with its id + loggedAt. */
   addSymptom(entry: NewSymptomEntry): Promise<SymptomEntry>;
+  /** Patch a recorded symptom. No-op for an unknown id. */
+  updateSymptom(
+    id: string,
+    patch: Partial<Pick<SymptomEntry, "label" | "severity" | "note" | "loggedAt">>,
+  ): Promise<void>;
   /** Delete one symptom. Idempotent. */
   removeSymptom(id: string): Promise<void>;
 
@@ -118,6 +125,8 @@ export interface Repository {
   listWeights(): Promise<WeightEntry[]>;
   /** One canonical weight per day; last write wins. */
   upsertWeight(entry: WeightEntry): Promise<void>;
+  /** Remove a day's weigh-in. Idempotent. */
+  removeWeight(date: string): Promise<void>;
 
   // ── History resets (settings → "Reset health data") ─────────────────
   /** Delete every diary entry. Destructive; no undo. */

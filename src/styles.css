@@ -3976,15 +3976,31 @@ input[type="date"].text-input {
 }
 
 .timeline { list-style: none; margin: 0; padding: 0; }
-.tl-item {
+.tl-item { border-bottom: 1px solid var(--line); }
+.tl-item:last-child { border-bottom: none; }
+/* The row itself is the hit target, so the whole line is tappable rather than
+   just a small icon at the end. */
+.tl-row {
   display: grid;
   grid-template-columns: 4.5rem 12px 1fr auto;
   align-items: baseline;
   gap: 10px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--line);
+  width: 100%;
+  padding: 9px 6px;
+  margin: 0 -6px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--cui-duration) var(--cui-ease);
 }
-.tl-item:last-child { border-bottom: none; }
+.tl-row:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); }
+.tl-row:disabled { cursor: default; }
+
+.entry-headline { font-size: 17px; font-weight: 700; margin-bottom: 14px; }
 .tl-time {
   font-size: 12.5px;
   color: var(--muted);
@@ -4058,6 +4074,7 @@ input[type="date"].text-input {
   /* Only the report prints. The live journal behind the overlay would
      otherwise land on page one, because the overlay goes static to paginate. */
   .journal.printing > *:not(.print-overlay) { display: none !important; }
+  .tl-row { padding: 0 !important; margin: 0 !important; }
   .print-doc { max-width: none; }
   .print-head .muted { color: #444 !important; }
   .print-totals, .print-time, .print-kind { color: #444 !important; }

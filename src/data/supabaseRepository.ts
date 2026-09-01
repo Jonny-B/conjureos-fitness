@@ -172,6 +172,10 @@ export class SupabaseRepository implements Repository {
     await this.client.upsert("weights", { date: entry.date, weight_kg: entry.weightKg }, "user_id,date");
   }
 
+  async removeWeight(date: string): Promise<void> {
+    await this.client.remove("weights", `date=eq.${date}`);
+  }
+
   // RLS scopes deletes to the caller's rows; the always-true filter satisfies
   // PostgREST's require-a-filter rule for bulk deletes.
   async clearDiary(): Promise<void> {
@@ -215,6 +219,9 @@ export class SupabaseRepository implements Repository {
   async addWater(): Promise<WaterEntry> {
     throw new Error(PLAN_REQUIRES_V2_BACKEND);
   }
+  async updateWater(): Promise<void> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
   async removeWater(): Promise<void> {
     throw new Error(PLAN_REQUIRES_V2_BACKEND);
   }
@@ -225,6 +232,9 @@ export class SupabaseRepository implements Repository {
     throw new Error(PLAN_REQUIRES_V2_BACKEND);
   }
   async addSymptom(): Promise<SymptomEntry> {
+    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  }
+  async updateSymptom(): Promise<void> {
     throw new Error(PLAN_REQUIRES_V2_BACKEND);
   }
   async removeSymptom(): Promise<void> {

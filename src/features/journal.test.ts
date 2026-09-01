@@ -40,7 +40,7 @@ describe("summarizeRange", () => {
     const at = new Date(2026, 7, 10, 21, 30).getTime();
     const d = day({
       date: "2026-08-10",
-      events: [{ at, timed: true, kind: "symptom", label: "Heartburn", detail: "3/5" }],
+      events: [{ id: "y1", editable: true, at, timed: true, kind: "symptom", label: "Heartburn", detail: "3/5" }],
       totals: { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0, exerciseKcal: 0,
                 sleepMinutes: 0, symptomCount: 1, foodCount: 0 },
     });
@@ -54,8 +54,8 @@ describe("summarizeRange", () => {
     const d = day({
       date: "2026-08-10",
       events: [
-        { at: 1, timed: true, kind: "food", label: "Pizza", detail: "800 cal" },
-        { at: 2, timed: true, kind: "food", label: "Coffee", detail: "5 cal" },
+        { id: "f1", editable: true, at: 1, timed: true, kind: "food", label: "Pizza", detail: "800 cal" },
+        { id: "f2", editable: true, at: 2, timed: true, kind: "food", label: "Coffee", detail: "5 cal" },
       ],
       totals: { calories: 805, protein: 30, carbs: 90, fat: 35, waterMl: 0, exerciseKcal: 0,
                 sleepMinutes: 0, symptomCount: 0, foodCount: 2 },
@@ -68,7 +68,7 @@ describe("summarizeRange", () => {
   it("renders sleep as hours and minutes", () => {
     const d = day({
       date: "2026-08-10",
-      events: [{ at: 1, timed: true, kind: "sleep", label: "Slept", detail: "7h 30m" }],
+      events: [{ id: "s1", editable: true, at: 1, timed: true, kind: "sleep", label: "Slept", detail: "7h 30m" }],
       totals: { calories: 0, protein: 0, carbs: 0, fat: 0, waterMl: 0, exerciseKcal: 0,
                 sleepMinutes: 450, symptomCount: 0, foodCount: 0 },
     });
@@ -77,7 +77,7 @@ describe("summarizeRange", () => {
 
   it("caps a very long food list so one day can't eat the prompt", () => {
     const events = Array.from({ length: 30 }, (_, i) => ({
-      at: i, timed: true as const, kind: "food" as const, label: `Item${i}`,
+      id: `f${i}`, editable: true, at: i, timed: true as const, kind: "food" as const, label: `Item${i}`,
     }));
     const d = day({
       date: "2026-08-10", events,
@@ -94,6 +94,6 @@ describe("isEmptyDay", () => {
   it("is true only with no events at all", () => {
     expect(isEmptyDay(day({ date: "2026-08-09" }))).toBe(true);
     expect(isEmptyDay(day({ date: "2026-08-09",
-      events: [{ at: 1, timed: true, kind: "water", label: "Water" }] }))).toBe(false);
+      events: [{ id: "w1", editable: true, at: 1, timed: true, kind: "water", label: "Water" }] }))).toBe(false);
   });
 });

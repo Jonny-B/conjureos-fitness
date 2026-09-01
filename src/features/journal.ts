@@ -28,6 +28,15 @@ type Units = Profile["units"];
 
 /** One thing that happened, placed on the day's timeline. */
 export interface JournalEvent {
+  /**
+   * Identity of the underlying record, so a row on the timeline can be edited
+   * or deleted rather than merely read. Empty only for things the journal
+   * shows but does not own — a wearable workout belongs to Apple Health, not
+   * to us, and the exercise screen is where it gets excluded.
+   */
+  id: string;
+  /** Whether this row can be opened for editing. */
+  editable: boolean;
   /** Sort key: ms since epoch. */
   at: number;
   /** Whether `at` is a real recorded time or a placeholder (see `dayStart`). */
@@ -113,6 +122,8 @@ export async function loadDayJournal(date: string, units: Units = "metric"): Pro
     totals.carbs += e.food.perServing.carbs * e.quantity;
     totals.fat += e.food.perServing.fat * e.quantity;
     events.push({
+      id: e.id,
+      editable: true,
       at: ms(e.loggedAt),
       timed: true,
       kind: "food",
@@ -126,6 +137,8 @@ export async function loadDayJournal(date: string, units: Units = "metric"): Pro
   for (const w of water) {
     totals.waterMl += w.ml;
     events.push({
+      id: w.id,
+      editable: true,
       at: ms(w.loggedAt),
       timed: true,
       kind: "water",
@@ -136,6 +149,8 @@ export async function loadDayJournal(date: string, units: Units = "metric"): Pro
 
   for (const s of symptoms) {
     events.push({
+      id: s.id,
+      editable: true,
       at: ms(s.loggedAt),
       timed: true,
       kind: "symptom",
@@ -151,6 +166,8 @@ export async function loadDayJournal(date: string, units: Units = "metric"): Pro
     // Placed at the wake time: that is when the night ended and the day began,
     // so it sorts above everything else that happened after getting up.
     events.push({
+      id: n.id,
+      editable: true,
       at: ms(n.wakeAt),
       timed: true,
       kind: "sleep",
@@ -164,6 +181,10 @@ export async function loadDayJournal(date: string, units: Units = "metric"): Pro
     if (w.excluded) continue;
     totals.exerciseKcal += w.kcal;
     events.push({
+      // A wearable workout is Apple Health's record, not ours — we can hide it
+      // from a day's total but never delete it, so it isn't offered as editable.
+      id: w.source === "app" ? w.key : "",
+      editable: w.source === "app",
       at: dayStart(date),
       timed: false,
       kind: "exercise",
@@ -175,7 +196,15 @@ export async function loadDayJournal(date: string, units: Units = "metric"): Pro
 
   const weight = weights.find((w) => w.date === date);
   if (weight) {
-    events.push({ at: dayStart(date), timed: false, kind: "weight", label: "Weighed in", detail: "" });
+    events.push({
+      id: date,
+      editable: true,
+      at: dayStart(date),
+      timed: false,
+      kind: "weight",
+      label: "Weighed in",
+      detail: "",
+    });
   }
 
   // Untimed events first (they describe the day, not a moment in it), then
