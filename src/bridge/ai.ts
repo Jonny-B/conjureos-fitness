@@ -96,10 +96,12 @@ export async function complete(req: CompleteRequest): Promise<string> {
 export function aiErrorMessage(err: unknown, fallback = "The AI didn't answer. Try again."): string {
   const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
   const m = raw.toLowerCase();
+  // Ordered most-specific first: the proxy's 402/429 bodies mention credits
+  // AND limits, so "out of credits" must be decided before the daily cap.
   if (m.includes("out_of_credits") || m.includes("out of credits")) {
     return "You're out of AI credits. Top up in ConjureOS settings, or add your own Anthropic key.";
   }
-  if (m.includes("daily_cap") || m.includes("free_tier") || m.includes("daily cap")) {
+  if (m.includes("daily_cap") || m.includes("free_tier") || m.includes("free-tier") || m.includes("daily")) {
     return "You've used up today's AI allowance. It resets at midnight UTC.";
   }
   if (m.includes("rate limit") || m.includes("rate_limited")) {
@@ -111,14 +113,17 @@ export function aiErrorMessage(err: unknown, fallback = "The AI didn't answer. T
   if (m.includes("background") || m.includes("minimized")) {
     return "AI is paused while this app isn't the one on screen. Bring it to the front and try again.";
   }
+  if (m.includes("sign in") || m.includes("authentication")) {
+    return "Sign in to ConjureOS to use AI.";
+  }
   if (m.includes("permission")) {
     return "This app doesn't have AI permission yet. Grant it in ConjureOS and try again.";
   }
-  if (m.includes("not configured") || m.includes("not available") || m.includes("no ai")) {
-    return "AI isn't available here yet.";
-  }
   if (m.includes("unsupported_model")) {
     return "Your plan can't run the model this needs. Check your ConjureOS plan.";
+  }
+  if (m.includes("configured") || m.includes("not available") || m.includes("isn't available")) {
+    return "AI isn't available here yet.";
   }
   if (!raw) return fallback;
   return `${fallback} (${raw})`;

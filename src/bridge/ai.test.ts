@@ -24,6 +24,19 @@ describe("aiErrorMessage", () => {
     expect(aiErrorMessage(new Error("ai timeout"))).toMatch(/too long/i);
   });
 
+  it("handles the real strings both hosts actually reject with", () => {
+    // Desktop kernel (ConjureOS src/kernel/index.ts) and the mobile runner
+    // (conjureos-mobile src/platform/ai.ts) word these differently; both must land.
+    expect(aiErrorMessage(new Error("You're out of credits. Top up in ConjureOS Settings on the web."))).toMatch(/out of AI credits/i);
+    expect(aiErrorMessage(new Error("Daily free-tier limit reached. Wait for the daily reset, or upgrade on the web."))).toMatch(/today's AI allowance/i);
+    expect(aiErrorMessage(new Error("AI provider not configured"))).toMatch(/isn't available/i);
+    expect(aiErrorMessage(new Error("Supabase isn't configured."))).toMatch(/isn't available/i);
+    expect(aiErrorMessage(new Error("Sign in to use AI."))).toMatch(/sign in/i);
+    expect(aiErrorMessage(new Error("app does not have ai.complete permission"))).toMatch(/AI permission/i);
+    expect(aiErrorMessage(new Error("ai.complete blocked: ConjureOS is in the background"))).toMatch(/on screen/i);
+    expect(aiErrorMessage(new Error('AI proxy request failed (402): {"error":"out_of_credits","tier":"free"}'))).toMatch(/out of AI credits/i);
+  });
+
   it("keeps an unrecognised host reason visible instead of swallowing it", () => {
     const msg = aiErrorMessage(new Error("kaboom 517"), "The estimator didn't answer.");
     expect(msg).toContain("kaboom 517");
