@@ -37,6 +37,17 @@ describe("aiErrorMessage", () => {
     expect(aiErrorMessage(new Error('AI proxy request failed (402): {"error":"out_of_credits","tier":"free"}'))).toMatch(/out of AI credits/i);
   });
 
+  it("reads Anthropic's own exhausted-account 400", () => {
+    // The real string that broke prod on 2026-09-04. Anthropic returns it as a
+    // 400 invalid_request_error, so nothing upstream of us calls it a credit
+    // problem — the app has to recognise the sentence itself.
+    const raw =
+      'AI proxy request failed (400): {"type":"error","error":{"type":"invalid_request_error",' +
+      '"message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}';
+    expect(aiErrorMessage(new Error(raw))).toMatch(/out of credit/i);
+    expect(aiErrorMessage(new Error(raw))).not.toMatch(/connection/i);
+  });
+
   it("keeps an unrecognised host reason visible instead of swallowing it", () => {
     const msg = aiErrorMessage(new Error("kaboom 517"), "The estimator didn't answer.");
     expect(msg).toContain("kaboom 517");

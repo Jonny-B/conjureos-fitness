@@ -98,6 +98,13 @@ export function aiErrorMessage(err: unknown, fallback = "The AI didn't answer. T
   const m = raw.toLowerCase();
   // Ordered most-specific first: the proxy's 402/429 bodies mention credits
   // AND limits, so "out of credits" must be decided before the daily cap.
+  // Anthropic answers an exhausted account with a 400, not a 402, and the
+  // proxy forwards its body verbatim: "Your credit balance is too low to
+  // access the Anthropic API." That is the platform's balance (or the user's
+  // own pasted key), never their ConjureOS credits, so it gets its own line.
+  if (m.includes("credit balance is too low")) {
+    return "The AI service is out of credit. Top up the Anthropic account behind ConjureOS (or the key in your settings) and try again.";
+  }
   if (m.includes("out_of_credits") || m.includes("out of credits")) {
     return "You're out of AI credits. Top up in ConjureOS settings, or add your own Anthropic key.";
   }
