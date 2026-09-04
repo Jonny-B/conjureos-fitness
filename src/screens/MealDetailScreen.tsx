@@ -184,13 +184,13 @@ export function MealDetailScreen({
           <BarcodeIcon size={22} />
           <span>Scan Barcode</span>
         </button>
-        <button className="meal-cta" onClick={onSearch}>
-          <SearchIcon size={20} />
-          <span>Search</span>
-        </button>
         <button className="meal-cta" onClick={onAi}>
           <DiamondIcon size={20} />
           <span>AI</span>
+        </button>
+        <button className="meal-cta" onClick={onSearch}>
+          <SearchIcon size={20} />
+          <span>Search</span>
         </button>
       </div>
       )}

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { Plan } from "../types";
-import type { ChatMessage } from "../bridge/ai";
+import { aiErrorMessage, type ChatMessage } from "../bridge/ai";
 import { readJson, writeJson } from "../bridge/vfs";
 import { buildCoachContext } from "../features/coach/context";
 import { coachChat } from "../features/coach/coach";
@@ -124,10 +124,10 @@ export function CoachScreen({
       const next = [...withUser, assistant];
       setMessages(next);
       await writeJson(CHAT_PATH, next.slice(-MAX_STORED));
-    } catch {
+    } catch (err) {
       setMessages([
         ...withUser,
-        { role: "assistant", content: "Sorry — I couldn't reach the AI service just now. Try again in a moment." },
+        { role: "assistant", content: aiErrorMessage(err, "Sorry — I couldn’t reach the AI service just now. Try again in a moment.") },
       ]);
     } finally {
       busyRef.current = false;

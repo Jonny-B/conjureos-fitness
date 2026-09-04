@@ -12,7 +12,7 @@
  * conversation started here is still there when the trainer comes back.
  */
 
-import { complete, isAiAvailable, type ChatMessage } from "../../bridge/ai";
+import { aiErrorMessage, complete, isAiAvailable, type ChatMessage } from "../../bridge/ai";
 import { readJson, writeJson } from "../../bridge/vfs";
 import { getRepository } from "../../data/repository";
 import { daySnapshot, recentSnapshots, renderDayForPrompt, renderRecentForPrompt } from "../dataApi";
@@ -160,7 +160,7 @@ export async function askCoach(question: string, history: CoachChatItem[] = []):
     });
     const text = reply.trim();
     return text || "I couldn't come up with an answer to that one. Try asking it a different way?";
-  } catch {
-    return "Something went wrong reaching the AI service. Try again in a moment.";
+  } catch (err) {
+    return aiErrorMessage(err, "Something went wrong reaching the AI service. Try again in a moment.");
   }
 }

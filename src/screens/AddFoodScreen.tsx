@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChatImage } from "../bridge/ai";
+import { aiErrorMessage, type ChatImage } from "../bridge/ai";
 import type { FoodItem, MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
@@ -49,14 +49,18 @@ interface Props {
   onLogged: () => void;
   onCancel: () => void;
   /** Fired when the user switches input mode inside the screen, so the shell
-   *  header can track it (Scan Barcode / Search / AI). */
+   *  header can track it (Scan Barcode / AI / Search). */
   onModeChange?: (mode: AddMode) => void;
 }
 
+/** Order matters and is shared with the meal screen's buttons: Scan, then AI,
+ *  then Search. AI sits second because describing or photographing a meal
+ *  answers more of the time than a text search does; Search is the fallback
+ *  for when you already know exactly what you want. */
 const MODE_TABS: { mode: AddMode; label: string; Icon: typeof SearchIcon }[] = [
   { mode: "scan", label: "Scan", Icon: BarcodeIcon },
-  { mode: "search", label: "Search", Icon: SearchIcon },
   { mode: "ai", label: "AI", Icon: DiamondIcon },
+  { mode: "search", label: "Search", Icon: SearchIcon },
 ];
 
 /** The add-food surface, hosting all three entry paths — barcode Scan, text
@@ -550,8 +554,8 @@ function AiMode({
       // it turned on rather than making the user notice the toggle.
       setGrouped(res.items.length >= GROUP_BY_DEFAULT_AT);
       setToHistory(res.items.length < GROUP_BY_DEFAULT_AT);
-    } catch {
-      setError("Couldn’t reach the estimator. Check your connection and try again.");
+    } catch (err) {
+      setError(aiErrorMessage(err, "Couldn’t reach the estimator. Try again."));
     } finally {
       setBusy(false);
     }
