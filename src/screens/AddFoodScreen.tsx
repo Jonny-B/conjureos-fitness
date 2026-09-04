@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChatImage } from "../bridge/ai";
+import { aiErrorMessage, type ChatImage } from "../bridge/ai";
 import type { FoodItem, MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
@@ -554,8 +554,8 @@ function AiMode({
       // it turned on rather than making the user notice the toggle.
       setGrouped(res.items.length >= GROUP_BY_DEFAULT_AT);
       setToHistory(res.items.length < GROUP_BY_DEFAULT_AT);
-    } catch {
-      setError("Couldn’t reach the estimator. Check your connection and try again.");
+    } catch (err) {
+      setError(aiErrorMessage(err, "Couldn’t reach the estimator. Try again."));
     } finally {
       setBusy(false);
     }

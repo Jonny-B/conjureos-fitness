@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { ChatImage } from "../bridge/ai";
+import { aiErrorMessage, type ChatImage } from "../bridge/ai";
 import type { FoodItem } from "../types";
 import { parseNutritionLabel } from "../features/foods/labelParse";
 import { estimateFromFront, type FrontEstimate } from "../features/foods/frontParse";
@@ -98,8 +98,8 @@ export function PackageCapture({
         source: "ai_front",
         ...(est.warningNote ? { warningNote: est.warningNote } : {}),
       });
-    } catch {
-      setError("The estimator didn't respond. Check your connection and try again.");
+    } catch (err) {
+      setError(aiErrorMessage(err, "The estimator didn’t respond. Try again."));
     } finally {
       setBusy(false);
     }

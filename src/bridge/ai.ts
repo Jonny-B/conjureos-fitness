@@ -80,6 +80,51 @@ export async function complete(req: CompleteRequest): Promise<string> {
 }
 
 /**
+ * Turn a rejected `complete()` into something worth reading.
+ *
+ * The host rejects with its own reason — "out_of_credits", "rate limit",
+ * "ai.complete blocked: this app's window is minimized", "ai timeout" — and
+ * every one of those was being reported to the user as "check your
+ * connection", which is both wrong and unactionable. Running out of credits
+ * is not a network problem and no amount of retrying fixes it.
+ *
+ * Known reasons map to a sentence that says what to DO. Anything unrecognised
+ * keeps the host's own words in parentheses rather than being swallowed: in
+ * alpha, a reason we haven't seen before is worth more on screen than a
+ * reassuring generic.
+ */
+export function aiErrorMessage(err: unknown, fallback = "The AI didn't answer. Try again."): string {
+  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
+  const m = raw.toLowerCase();
+  if (m.includes("out_of_credits") || m.includes("out of credits")) {
+    return "You're out of AI credits. Top up in ConjureOS settings, or add your own Anthropic key.";
+  }
+  if (m.includes("daily_cap") || m.includes("free_tier") || m.includes("daily cap")) {
+    return "You've used up today's AI allowance. It resets at midnight UTC.";
+  }
+  if (m.includes("rate limit") || m.includes("rate_limited")) {
+    return "Too many AI requests just now. Wait a few seconds and try again.";
+  }
+  if (m.includes("timeout") || m.includes("timed out")) {
+    return "The AI took too long to answer. Try again.";
+  }
+  if (m.includes("background") || m.includes("minimized")) {
+    return "AI is paused while this app isn't the one on screen. Bring it to the front and try again.";
+  }
+  if (m.includes("permission")) {
+    return "This app doesn't have AI permission yet. Grant it in ConjureOS and try again.";
+  }
+  if (m.includes("not configured") || m.includes("not available") || m.includes("no ai")) {
+    return "AI isn't available here yet.";
+  }
+  if (m.includes("unsupported_model")) {
+    return "Your plan can't run the model this needs. Check your ConjureOS plan.";
+  }
+  if (!raw) return fallback;
+  return `${fallback} (${raw})`;
+}
+
+/**
  * Pull the JSON payload out of a model reply.
  *
  * Every JSON-returning prompt in this app ends with "output ONLY the JSON",
