@@ -64,4 +64,46 @@ describe("extractJson", () => {
   it("unwraps a fenced block", () => {
     expect(extractJson('```json\n{"a":1}\n```')).toBe('{"a":1}');
   });
+
+  it("takes the corrected object when the model answers twice", () => {
+    // The real Sonnet reply that broke prod on 2026-09-04: a first attempt
+    // with carbs as a string, a sentence of self-correction, then a fixed
+    // object. The widest-span heuristic swallowed the prose between them and
+    // produced something unparseable.
+    const raw =
+      '{"groupName":"Large DQ Twist Cone","items":[{"name":"DQ Large Twist Soft Serve Cone",' +
+      '"servingSize":"1 large cone","calories":500,"protein":10,"carbs":"72","fat":17}]}\n\n' +
+      "Let me correct that — carbs must be a number:\n\n" +
+      '{"groupName":"Large DQ Twist Cone","items":[{"name":"DQ Large Twist Soft Serve Cone",' +
+      '"servingSize":"1 large cone","calories":500,"protein":10,"carbs":72,"fat":17}]}';
+    const parsed = JSON.parse(extractJson(raw)) as { items: { carbs: number }[] };
+    expect(parsed.items).toHaveLength(1);
+    expect(parsed.items[0]?.carbs).toBe(72);
+  });
+
+  it("prefers the last parseable fence when the model fences twice", () => {
+    const raw = '```json\n{"items":[],"n":1}\n```\nOops:\n```json\n{"items":[],"n":2}\n```';
+    expect(JSON.parse(extractJson(raw))).toEqual({ items: [], n: 2 });
+  });
+
+  it("ignores braces inside string values", () => {
+    const raw = 'Here: {"name":"Rice {special}","items":[]} done';
+    expect(JSON.parse(extractJson(raw))).toEqual({ name: "Rice {special}", items: [] });
+  });
+
+  it("handles an escaped quote before a brace", () => {
+    const raw = '{"name":"12\\" pizza {big}","items":[]}';
+    const parsed = JSON.parse(extractJson(raw)) as { name: string };
+    expect(parsed.name).toBe('12" pizza {big}');
+  });
+
+  it("still returns the widest span when nothing parses, so the caller reports it", () => {
+    const raw = "{ not json at all }";
+    expect(extractJson(raw)).toBe("{ not json at all }");
+    expect(() => JSON.parse(extractJson(raw))).toThrow();
+  });
+
+  it("survives prose with no JSON in it", () => {
+    expect(extractJson("  I could not identify any food.  ")).toBe("I could not identify any food.");
+  });
 });

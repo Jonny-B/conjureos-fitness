@@ -72,3 +72,33 @@ describe("a failed estimate is not 'no foods recognized'", () => {
     expect(complete).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * 2026-09-04: "Large DQ Twist cone" reported "The estimator didn't send back
+ * an answer this time." The estimator HAD answered — Sonnet emitted an
+ * object, noticed it had typed carbs as a string, and emitted a corrected one
+ * after a sentence of prose. `extractJson`'s widest-span heuristic joined the
+ * two through the prose in the middle, so nothing parsed. Verbatim reply,
+ * captured from the proxy.
+ */
+describe("a model that answers twice", () => {
+  const SONNET_REPLY =
+    '{"groupName":"Large DQ Twist Cone","items":[{"name":"DQ Large Twist Soft Serve Cone",' +
+    '"servingSize":"1 large cone","calories":500,"protein":10,"carbs":"72","fat":17}]}\n\n' +
+    "Let me correct that — carbs must be a number:\n\n" +
+    '{"groupName":"Large DQ Twist Cone","items":[{"name":"DQ Large Twist Soft Serve Cone",' +
+    '"servingSize":"1 large cone","calories":500,"protein":10,"carbs":72,"fat":17}]}';
+
+  it("reads the corrected answer instead of reporting it unreadable", async () => {
+    complete.mockResolvedValue(SONNET_REPLY);
+    const { parseMealWithGroup } = await import("./naturalLanguage");
+    const res = await parseMealWithGroup({ text: "Large DQ Twist cone" });
+    expect(res.outcome).toBe("ok");
+    expect(res.items).toHaveLength(1);
+    expect(res.groupName).toBe("Large DQ Twist Cone");
+    const item = res.items[0];
+    expect(item?.name).toBe("DQ Large Twist Soft Serve Cone");
+    expect(item?.servingSize).toBe("1 large cone");
+    expect(item?.perServing).toMatchObject({ calories: 500, protein: 10, carbs: 72, fat: 17 });
+  });
+});

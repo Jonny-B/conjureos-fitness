@@ -141,21 +141,94 @@ export function aiErrorMessage(err: unknown, fallback = "The AI didn't answer. T
  *
  * Every JSON-returning prompt in this app ends with "output ONLY the JSON",
  * and models still wrap it in ```fences``` or a sentence of preamble often
- * enough that parsing the raw string is a reliable source of failures. This
- * tries, in order: a fenced block, then the widest `{…}` span, then the
- * trimmed input.
+ * enough that parsing the raw string is a reliable source of failures.
  *
- * Returns a *candidate* string, never a parsed value — it does no validation
- * and does not throw, so the caller still wraps `JSON.parse` in try/catch and
- * validates the shape before trusting it.
+ * Worse, a model may answer TWICE — Sonnet reliably does this for the meal
+ * prompt, emitting an object, then "Let me correct that — carbs must be a
+ * number:", then a corrected object. Taking the widest `{…}` span (what this
+ * used to do) swallows the prose between them and produces something that
+ * cannot parse, so a perfectly good answer was reported to the user as
+ * unreadable. So: scan for balanced top-level objects and return the LAST one
+ * that actually parses — a self-correction supersedes the attempt it corrects.
+ *
+ * Returns a *candidate* string, never a parsed value. It does no schema
+ * validation and does not throw, so the caller still wraps `JSON.parse` in
+ * try/catch and validates the shape before trusting it.
  */
 export function extractJson(raw: string): string {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced?.[1]) return fenced[1].trim();
+  // Fenced blocks first — a model that fenced its answer fenced each attempt,
+  // so the last parseable fence wins for the same reason as below.
+  const fences = [...raw.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)]
+    .map((m) => (m[1] ?? "").trim())
+    .filter(Boolean);
+  const parseableFence = lastParseable(fences);
+  if (parseableFence) return parseableFence;
+  if (fences.length > 0 && fences[fences.length - 1]) return fences[fences.length - 1] as string;
+
+  const objects = balancedObjects(raw);
+  const parseable = lastParseable(objects);
+  if (parseable) return parseable;
+
+  // Nothing parsed. Fall back to the old widest-span guess so behaviour for
+  // an unparseable reply is unchanged — the caller reports it either way.
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start !== -1 && end > start) return raw.slice(start, end + 1);
   return raw.trim();
+}
+
+/** The last candidate that is valid JSON, or null when none is. */
+function lastParseable(candidates: string[]): string | null {
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const c = candidates[i];
+    if (c === undefined) continue;
+    try {
+      JSON.parse(c);
+      return c;
+    } catch {
+      /* try the one before it */
+    }
+  }
+  return null;
+}
+
+/**
+ * Every balanced top-level `{…}` span in the text, in order.
+ *
+ * Brace counting has to ignore braces inside string literals — a food named
+ * `Rice {special}` would otherwise close the object early — so this tracks
+ * quoting and backslash escapes as it walks.
+ */
+function balancedObjects(raw: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          out.push(raw.slice(start, i + 1));
+          start = -1;
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /**
