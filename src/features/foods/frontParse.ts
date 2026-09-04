@@ -18,6 +18,7 @@
 import { complete, extractJson, type ChatImage } from "../../bridge/ai";
 import type { FoodItem } from "../../types";
 import { newId } from "../../data/id";
+import { parseServingGrams } from "./serving";
 import { clamp } from "../num";
 
 const MIN_CONFIDENCE = 0.2;
@@ -151,8 +152,10 @@ function parseFrontJson(raw: string, barcode?: string): FrontEstimate | null {
   const brand = str(parsed.brand);
   if (brand) food.brand = brand;
   if (barcode) food.barcode = barcode.replace(/\D/g, "");
-  const grams = optNum(parsed.servingGrams, 0, 10000);
-  if (grams !== undefined) food.servingGrams = grams;
+  // Same fallback as the label path: a serving label that says "43 g" should
+  // never leave the gram field empty just because the model omitted it.
+  const grams = optNum(parsed.servingGrams, 0, 10000) ?? parseServingGrams(food.servingSize);
+  if (grams != null && grams > 0) food.servingGrams = grams;
 
   return { food, confidence, warningNote, estimationBasis };
 }
