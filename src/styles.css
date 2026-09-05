@@ -4288,3 +4288,82 @@ input[type="date"].text-input {
 }
 .package-nudge { margin-top: 10px; text-align: center; }
 .snap-miss-head { padding-bottom: 0; }
+
+/* ── Consent gate + health-data policy ───────────────────────────────────
+   The disclosure sheet in front of "Find patterns", the Privacy block in
+   Settings, and the Consumer Health Data Privacy document. All three are
+   read-then-decide surfaces, so they favour legibility over density. */
+.btn.small {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.btn.ghost:hover:not(:disabled) {
+  color: var(--text);
+}
+.consent-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.consent-list.withheld {
+  color: var(--muted);
+}
+/* A real sample of the payload, not a paraphrase — it wraps rather than
+   scrolls so nothing about what is sent is hidden off the right edge. */
+.consent-sample {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--cui-bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.consent-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+.consent-toggle input {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+.consent-foot .btn {
+  flex: 1;
+}
+.privacy-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.privacy-block .consent-toggle,
+.privacy-block p {
+  margin: 0;
+}
+.policy-body h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 6px 0 0;
+}
+.policy-body p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}

@@ -113,6 +113,8 @@ export function SymptomSheet({
 
           <div className="muted small">
             Recorded at the current time, so it lands on your journal where it happened.
+            Notes stay on your device — the AI pattern-finder only sees them if you turn
+            that on in Settings.
           </div>
         </div>
 

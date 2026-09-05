@@ -6,6 +6,14 @@ import { ProgramEditor } from "../components/ProgramEditor";
 import { CloseIcon } from "../components/icons";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { clearAllHistories, clearHistory, visibleHistoryItems } from "../features/resetData";
+import { HealthDataPolicy } from "../components/HealthDataPolicy";
+import {
+  consentIsCurrent,
+  readAiJournalConsent,
+  setAiJournalNotes,
+  withdrawAiJournalConsent,
+} from "../features/aiConsent";
+import type { AiJournalConsent } from "../types";
 
 /** Which surface the settings sheet opens on. "program" deep-links straight to
  *  the workout-program editor (e.g. from the Plan tab's "Edit workouts"). */
@@ -44,7 +52,16 @@ export function SettingsSheet({
   // initialView; the cog itself no longer links to it, so this never changes
   // after mount — closing the editor closes the whole sheet.
   const view: SettingsView = initialView === "program" && plan?.program ? "program" : "main";
+  const [consent, setConsent] = useState<AiJournalConsent | undefined>(undefined);
+  const [policyOpen, setPolicyOpen] = useState(false);
   useScrollLock();
+
+  // The agreement on file for sending journal data to the AI. Re-read on open
+  // rather than passed in, so it reflects an accept made on the Journal tab
+  // in this same session.
+  useEffect(() => {
+    void readAiJournalConsent().then(setConsent);
+  }, []);
 
   // Units is a display preference — apply + persist it the instant it's tapped
   // (not only on Save, which is easy to miss), so the choice can never be lost
@@ -108,6 +125,51 @@ export function SettingsSheet({
             <strong>Edit plan</strong> on the Plan tab. Changing them there recalculates your targets.
           </p>
 
+          <div className="section-label">Privacy</div>
+          <div className="privacy-block">
+            <p className="muted small">
+              Your journal stays on your device and in your ConjureOS account. One feature
+              sends part of it out: <strong>Find patterns</strong> on the Journal tab.
+            </p>
+            {consentIsCurrent(consent) ? (
+              <>
+                <p className="muted small">
+                  You agreed on {new Date(consent!.acceptedAt).toLocaleDateString()}. Symptom
+                  notes are <strong>{consent!.includeNotes ? "included" : "not included"}</strong>.
+                </p>
+                <label className="consent-toggle">
+                  <input
+                    type="checkbox"
+                    checked={consent!.includeNotes}
+                    onChange={async (e) => {
+                      const includeNotes = e.target.checked;
+                      await setAiJournalNotes(includeNotes);
+                      setConsent(await readAiJournalConsent());
+                    }}
+                  />
+                  <span>Send the notes I type on symptoms</span>
+                </label>
+                <button
+                  className="btn small ghost"
+                  onClick={async () => {
+                    await withdrawAiJournalConsent();
+                    setConsent(undefined);
+                  }}
+                >
+                  Withdraw agreement
+                </button>
+              </>
+            ) : (
+              <p className="muted small">
+                Nothing is sent. You will be asked, and shown exactly what would go, the first
+                time you use Find patterns.
+              </p>
+            )}
+            <button className="btn small ghost" onClick={() => setPolicyOpen(true)}>
+              Consumer Health Data Privacy
+            </button>
+          </div>
+
           {/* Reset shown inline (no expand-in-place): the sheet is bottom-anchored,
               so a growing dropdown pushed the whole sheet up — jarring. */}
           <div className="section-label">Reset health data</div>
@@ -144,6 +206,7 @@ export function SettingsSheet({
           </button>
         </footer>
       </div>
+      {policyOpen && <HealthDataPolicy onClose={() => setPolicyOpen(false)} />}
     </div>
   );
 }

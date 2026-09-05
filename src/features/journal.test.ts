@@ -29,6 +29,37 @@ describe("datesBetween", () => {
   });
 });
 
+describe("summarizeRange and symptom notes", () => {
+  const withNote = (): DayJournal =>
+    day({
+      date: "2026-08-09",
+      events: [
+        {
+          id: "s1",
+          kind: "symptom",
+          label: "Heartburn",
+          detail: "3/5",
+          note: "after the antibiotics",
+          at: Date.parse("2026-08-09T21:40:00.000Z"),
+          timed: true,
+          editable: true,
+        },
+      ],
+    });
+
+  it("holds back the free-text note by default, but keeps the severity", () => {
+    const out = summarizeRange([withNote()]);
+    expect(out).toContain("Heartburn at");
+    expect(out).toContain("(3/5)");
+    expect(out).not.toContain("antibiotics");
+  });
+
+  it("includes the note only when the user opted in", () => {
+    const out = summarizeRange([withNote()], { includeNotes: true });
+    expect(out).toContain("antibiotics");
+  });
+});
+
 describe("summarizeRange", () => {
   beforeEach(() => vi.useRealTimers());
 

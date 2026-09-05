@@ -21,6 +21,12 @@ import { shiftDate, todayISO } from "../features/diary";
 import { fmtWater } from "../features/water";
 import { formatSleep } from "../features/sleep";
 import { CoachChatModal } from "../components/CoachChatModal";
+import { AiConsentSheet } from "../components/AiConsentSheet";
+import {
+  hasAiJournalConsent,
+  readAiJournalConsent,
+  recordAiJournalConsent,
+} from "../features/aiConsent";
 import { JournalEntrySheet } from "../components/JournalEntrySheet";
 import { ChevronLeft, ChevronRight, CoachIcon } from "../components/icons";
 
@@ -69,6 +75,8 @@ export function JournalScreen({ units, nonce }: { units: Units; nonce: number })
   const [day, setDay] = useState<DayJournal | null>(null);
   const [printOpen, setPrintOpen] = useState(false);
   const [asking, setAsking] = useState<string | null>(null);
+  // Open when "Find patterns" was pressed without a current agreement on file.
+  const [consenting, setConsenting] = useState(false);
   const [editing, setEditing] = useState<JournalEvent | null>(null);
   // Bumped after an edit so both the day and the month grid re-read.
   const [localNonce, setLocalNonce] = useState(0);
@@ -107,15 +115,30 @@ export function JournalScreen({ units, nonce }: { units: Units; nonce: number })
     ...datesBetween(from, to),
   ];
 
-  const askPatterns = async () => {
+  /**
+   * Build the prompt and open the chat. Split out from the button so the
+   * consent sheet can call it on accept without duplicating the wording.
+   * Never call this without checking consent first — it is the step that
+   * performs the disclosure.
+   */
+  const runPatterns = (includeNotes: boolean) => {
     const days = month ?? [];
-    const summary = summarizeRange(days);
+    const summary = summarizeRange(days, { includeNotes });
     const range = `${from} to ${to}`;
     setAsking(
       summary
         ? `Here is my journal for ${range}. What patterns do you notice — anything that seems to go together?\n\n${summary}`
         : `I have nothing recorded for ${range} yet. What would be worth tracking to spot patterns?`,
     );
+  };
+
+  const askPatterns = async () => {
+    if (!(await hasAiJournalConsent())) {
+      setConsenting(true);
+      return;
+    }
+    const consent = await readAiJournalConsent();
+    runPatterns(consent?.includeNotes === true);
   };
 
   return (
@@ -184,6 +207,19 @@ export function JournalScreen({ units, nonce }: { units: Units; nonce: number })
       <DayDetail day={day} units={units} onPick={setEditing} />
 
       {printOpen && <PrintSheet defaultFrom={from} defaultTo={to} units={units} onClose={() => setPrintOpen(false)} />}
+      {consenting && (
+        <AiConsentSheet
+          onCancel={() => setConsenting(false)}
+          onAccept={async (includeNotes) => {
+            // Persist BEFORE disclosing. If the profile can't be written we
+            // have no record of the agreement, so nothing is sent — an
+            // agreement that survives only in memory is not a record.
+            const stored = await recordAiJournalConsent(includeNotes);
+            setConsenting(false);
+            if (stored) runPatterns(includeNotes);
+          }}
+        />
+      )}
       {asking !== null && <CoachChatModal initialQuestion={asking} onClose={() => setAsking(null)} />}
       {editing && (
         <JournalEntrySheet
