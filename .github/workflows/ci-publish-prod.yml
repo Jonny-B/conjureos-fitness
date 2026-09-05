@@ -1,0 +1,45 @@
+name: CI Publish Prod (temp 1.32.0)
+
+on:
+  push:
+    branches: [ci/publish-prod-1.32.0]
+
+concurrency:
+  group: ci-publish-prod-1.32.0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout app source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install deps
+        run: npm ci
+      - name: Checkout ConjureOS (shared publish action)
+        uses: actions/checkout@v4
+        with:
+          repository: Jonny-B/ConjureOS
+          ref: dev
+          token: ${{ secrets.CONJUREOS_REPO_TOKEN }}
+          path: .conjureos
+      - name: Build single-file HTML (prod project)
+        env:
+          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50Z2VsYnRlcGVjcXNxbG94bWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTkzMzEsImV4cCI6MjA5MzY3NTMzMX0.fgRCszkeAbHANaK-JJAGmTwWHyOh-3b6-od1c3s3V0w
+        run: npm run build:inline
+      - name: Publish to App Store (prod)
+        uses: ./.conjureos/.github/actions/publish-anchor-app
+        with:
+          supabase-url: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
+          supabase-anon-key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50Z2VsYnRlcGVjcXNxbG94bWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTkzMzEsImV4cCI6MjA5MzY3NTMzMX0.fgRCszkeAbHANaK-JJAGmTwWHyOh-3b6-od1c3s3V0w
+          bot-email: conjureosbot@gmail.com
+          bot-password: ${{ secrets.PUBLISH_BOT_PROD_PASSWORD }}
+          html-path: dist/index.html
+          slug: fitness
+          changelog: "Find patterns now asks first. Before anything leaves your device it shows you exactly what would be sent to the AI, holds back the notes you type on symptoms unless you say otherwise, and lets you withdraw at any time under Settings, Privacy."
