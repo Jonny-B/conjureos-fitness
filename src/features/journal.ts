@@ -261,7 +261,15 @@ export function isEmptyDay(day: DayJournal): boolean {
  * the whole point of asking is usually "why do I keep getting X", so the
  * symptom times have to survive summarisation even though the food does not.
  */
-export function summarizeRange(days: DayJournal[]): string {
+export function summarizeRange(
+  days: DayJournal[],
+  opts: { includeNotes?: boolean } = {},
+): string {
+  // The free-text note on a symptom is held back unless the user opted in on
+  // the consent sheet — that is the field where someone writes the sentence
+  // they would not want sent anywhere. Severity and time always travel; they
+  // are what pattern-finding actually needs. See features/aiConsent.ts.
+  const includeNotes = opts.includeNotes === true;
   const lines: string[] = [];
   for (const d of days) {
     if (isEmptyDay(d)) continue;
@@ -280,7 +288,12 @@ export function summarizeRange(days: DayJournal[]): string {
       const detail = symptoms
         .map((s) => {
           const t = new Date(s.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-          return `${s.label} at ${t}${s.detail ? ` (${s.detail})` : ""}`;
+          // `detail` is the severity ("3/5") — a number the user picked from a
+          // scale, and the most useful half of a symptom for pattern-finding.
+          // `note` is the free-text field, and is held back unless opted in.
+          const severity = s.detail ? ` (${s.detail})` : "";
+          const note = includeNotes && s.note ? ` — ${s.note}` : "";
+          return `${s.label} at ${t}${severity}${note}`;
         })
         .join(", ");
       bits.push(`symptoms: ${detail}`);

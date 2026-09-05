@@ -249,6 +249,29 @@ export interface Profile {
   /** Guided-setup progress. Absent ⇒ setup never started. Additive; rides
    *  saveProfile, so it works on both the mock and Supabase backends. */
   setup?: ProfileSetup;
+  /** Agreement to send journal data to the AI for pattern analysis. Absent
+   *  ⇒ never asked, and nothing may be sent. */
+  aiJournalConsent?: AiJournalConsent;
+}
+
+/**
+ * The user's recorded agreement to send journal data off-device for AI
+ * analysis.
+ *
+ * Kept as a stored RECORD rather than inferred from a setting, because it is
+ * the app's authorization for a disclosure of health data: what they agreed
+ * to, and when. Absent means never asked — which must block the disclosure,
+ * not default to allowing it.
+ */
+export interface AiJournalConsent {
+  /** ISO timestamp of the accept. */
+  acceptedAt: string;
+  /** Which disclosure wording they saw. A reworded disclosure re-asks rather
+   *  than silently inheriting agreement to different text. */
+  version: number;
+  /** Opt-in, separate from the main accept: include the free-text notes
+   *  attached to symptoms. Off unless they said yes. */
+  includeNotes: boolean;
 }
 
 /** Which steps of the guided profile/goals setup the user has completed. */
