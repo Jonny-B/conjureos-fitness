@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "1.32.0",
+  "version": "1.33.0",
   "description": "Conjure Health: calorie + nutrition logging, daily targets, weight tracking, and a simple weight-loss plan for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -433,6 +433,372 @@
             }
           }
         }
+      },
+      "logWater": {
+        "permission": "actions.write",
+        "description": "Log a drink. Pass ml OR oz (fluid ounces), not both \u2014 storage is always metric, so the app converts. date is YYYY-MM-DD and defaults to today. Use when the user says they drank something.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "ml": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 4000,
+              "description": "Millilitres. Pass this or oz."
+            },
+            "oz": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 135,
+              "description": "US fluid ounces. Pass this or ml."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD; defaults to today."
+            }
+          }
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "ml": {
+              "type": "integer",
+              "description": "What was stored, in millilitres."
+            }
+          },
+          "required": [
+            "id",
+            "ml"
+          ]
+        }
+      },
+      "logSleep": {
+        "permission": "actions.write",
+        "description": "Log a night's sleep from the clock times the user gives. bedTime and wakeTime are HH:MM on a 24-hour clock; a bedTime after wakeTime is read as the night before, so 23:30 to 07:00 works. date is the morning they GOT UP and defaults to today. Optional quality is 1 (awful) to 5 (great).",
+        "params": {
+          "type": "object",
+          "properties": {
+            "bedTime": {
+              "type": "string",
+              "description": "HH:MM, 24-hour."
+            },
+            "wakeTime": {
+              "type": "string",
+              "description": "HH:MM, 24-hour."
+            },
+            "quality": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD of the morning they woke; defaults to today."
+            }
+          },
+          "required": [
+            "bedTime",
+            "wakeTime"
+          ]
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "date": {
+              "type": "string"
+            },
+            "minutes": {
+              "type": "integer",
+              "description": "Length of the night in minutes."
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "minutes"
+          ]
+        }
+      },
+      "logSymptom": {
+        "permission": "actions.write",
+        "description": "Record something the user felt \u2014 a headache, heartburn, anything they describe. label is free text. Optional severity is 1 (barely) to 5 (severe), and note is a short free-text detail. Lands on the journal at the current time. Notes written this way are never readable back through the API.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "severity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD; defaults to today."
+            }
+          },
+          "required": [
+            "label"
+          ]
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "logWeight": {
+        "permission": "actions.write",
+        "description": "Record the user's weight for a day. Pass kg OR lb, not both. There is one weight per day, so logging again for the same date replaces it. date defaults to today.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "kg": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 500,
+              "description": "Kilograms. Pass this or lb."
+            },
+            "lb": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 1100,
+              "description": "Pounds. Pass this or kg."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD; defaults to today."
+            }
+          }
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "type": "string"
+            },
+            "weightKg": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "date",
+            "weightKg"
+          ]
+        }
+      },
+      "setFoodQuantity": {
+        "permission": "actions.write",
+        "description": "Change how many servings of an already-logged food the user had \u2014 'make that two'. Takes the diary entry id returned by logFood or listed by dayNutrition.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "quantity": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 50
+            }
+          },
+          "required": [
+            "id",
+            "quantity"
+          ]
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "quantity": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "id",
+            "quantity"
+          ]
+        }
+      },
+      "deleteEntry": {
+        "permission": "actions.write",
+        "description": "Remove ONE record the user logged by mistake \u2014 the undo for a double-log. kind says which log it is; id is that record's id, except for weight where id is the date (YYYY-MM-DD), since there is one weight per day. There is deliberately no bulk delete: clearing a whole history is done by the user in Settings.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "food",
+                "water",
+                "sleep",
+                "symptom",
+                "weight",
+                "workout"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "The record's id, or the date for kind=weight."
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "deleted": {
+              "type": "boolean"
+            },
+            "kind": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "deleted",
+            "kind"
+          ]
+        }
+      },
+      "dayWellbeing": {
+        "permission": "actions.read",
+        "description": "Return the non-food side of a day: water drunk, sleep length, weight if recorded, and symptoms with their severity and time. Defaults to today. The free-text note on a symptom is never returned \u2014 only the label, severity and time. For food use dayNutrition.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD. Defaults to today."
+            }
+          }
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "type": "string"
+            },
+            "waterMl": {
+              "type": "integer"
+            },
+            "sleepMinutes": {
+              "type": "integer"
+            },
+            "weightKg": {
+              "type": "number",
+              "description": "Absent on days with no weight recorded."
+            },
+            "symptoms": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "severity": {
+                    "type": "integer",
+                    "description": "1-5, when the user picked one."
+                  },
+                  "at": {
+                    "type": "string",
+                    "description": "HH:MM local."
+                  }
+                }
+              },
+              "description": "Free-text notes on a symptom are never included."
+            }
+          }
+        }
+      },
+      "recentWellbeing": {
+        "permission": "actions.read",
+        "description": "Return the same non-food day summary for the last N days, oldest first, for trends in sleep, water, weight and symptoms. N defaults to 7 and is capped at 14. Symptom notes are never included.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 14
+            }
+          }
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "days": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string"
+                  },
+                  "waterMl": {
+                    "type": "integer"
+                  },
+                  "sleepMinutes": {
+                    "type": "integer"
+                  },
+                  "weightKg": {
+                    "type": "number",
+                    "description": "Absent on days with no weight recorded."
+                  },
+                  "symptoms": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "type": "integer",
+                          "description": "1-5, when the user picked one."
+                        },
+                        "at": {
+                          "type": "string",
+                          "description": "HH:MM local."
+                        }
+                      }
+                    },
+                    "description": "Free-text notes on a symptom are never included."
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "days"
+          ]
+        }
       }
     },
     "needs": [
@@ -485,7 +851,8 @@
     "promptSuggestions": [
       "Log a chicken sandwich and a beer for lunch",
       "How many calories do I have left today?",
-      "Log the recipe I cooked tonight"
+      "I slept from 11:30 to 6:45, log that",
+      "Log a 16 oz water and that I have a headache"
     ]
   },
   "scripts": {
