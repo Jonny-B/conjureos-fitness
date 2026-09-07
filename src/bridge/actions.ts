@@ -8,6 +8,29 @@
  *   dayNutrition({ date? })                                            → read
  *   recentNutrition({ days? })                                         → read
  *   logRecipeMeal({ slug, servings?, meal?, date? })                   → write
+ *   logWater({ ml? | oz?, date? })                                     → write
+ *   logSleep({ bedTime, wakeTime, date?, quality? })                   → write
+ *   logSymptom({ label, severity?, note?, date? })                     → write
+ *   logWeight({ kg? | lb?, date? })                                    → write
+ *   setFoodQuantity({ id, quantity })                                  → write
+ *   deleteEntry({ kind, id })                                          → write
+ *   dayWellbeing({ date? })                                            → read
+ *   recentWellbeing({ days? })                                         → read
+ *
+ * Deliberately NOT exposed, and not an oversight:
+ *
+ *   - Granting AI-journal consent. An agent cannot agree to a health-data
+ *     disclosure on the user's behalf; the record only means anything because
+ *     a person read the disclosure and said yes (features/aiConsent.ts).
+ *   - Running the journal pattern-finder. That call IS the disclosure, and it
+ *     is defensible because a human pressed a button, not a schedule.
+ *   - Bulk clears (clearDiary / clearAllHistories / …). Irreversible, and no
+ *     caller need outweighs an agent wiping months of health data by mistake.
+ *     `deleteEntry` removes exactly one record, by id.
+ *   - Goals / profile / plan writes. Changing a calorie target silently
+ *     re-bases every number in the app and the user may never notice.
+ *   - Symptom NOTES on read. Labels, severity and time go out; the free text
+ *     stays on device, the same rule the AI summary follows.
  *
  * Params come from other (untrusted) apps, so every field is type-checked,
  * length-capped, and range-clamped before it reaches the repository. Reads are
@@ -18,7 +41,10 @@ import type { Macros, MealType, WorkoutSession } from "../types";
 import { MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { parseMeal } from "../features/naturalLanguage";
-import { buildDayView, todayISO } from "../features/diary";
+import { buildDayView, shiftDate, todayISO } from "../features/diary";
+import { buildSleepEntry, isImplausible, parseClock, sleepMinutes } from "../features/sleep";
+import { flOzToMl } from "../features/water";
+import { lbToKg } from "../features/units";
 import { getRecipe, markCooked, RecipesAppClosedError, type ListedRecipe } from "./recipeBridge";
 import { exerciseCaloriesForDate } from "../features/exercise";
 import { daySnapshot, recentSnapshots } from "../features/dataApi";
@@ -59,6 +85,51 @@ function asDate(v: unknown): string {
   if (v === undefined || v === null) return todayISO();
   const s = asString(v, "date", 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error("params.date must be YYYY-MM-DD");
+  return s;
+}
+
+/** An id from a caller: non-empty, bounded, control characters stripped. */
+function asId(v: unknown): string {
+  return asString(v, "id", 64);
+}
+
+/**
+ * A positive amount in one of two units, exactly one of which must be given.
+ * Callers speak the user's units ("16 oz of water", "184 lb"), and storage is
+ * always metric, so the conversion belongs here rather than in six call sites.
+ */
+function asMetricAmount(
+  raw: Record<string, unknown>,
+  metricField: string,
+  imperialField: string,
+  toMetric: (v: number) => number,
+  max: number,
+): number {
+  const m = raw[metricField];
+  const i = raw[imperialField];
+  const given = [m, i].filter((v) => v !== undefined && v !== null);
+  if (given.length === 0) throw new Error(`params.${metricField} or params.${imperialField} is required`);
+  if (given.length > 1) throw new Error(`pass params.${metricField} OR params.${imperialField}, not both`);
+  const isMetric = m !== undefined && m !== null;
+  const n = Number(isMetric ? m : i);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`params.${isMetric ? metricField : imperialField} must be a positive number`);
+  }
+  const metric = isMetric ? n : toMetric(n);
+  if (metric > max) throw new Error(`params.${isMetric ? metricField : imperialField} is implausibly large`);
+  return metric;
+}
+
+/**
+ * A clock face, "HH:MM" on a 24-hour clock.
+ *
+ * Deliberately capped generously rather than at 5, so "half nine" fails with
+ * the format error a caller can act on instead of a length complaint about a
+ * field whose length was never the point.
+ */
+function asClock(v: unknown, field: string): string {
+  const s = asString(v, field, 40);
+  if (parseClock(s) === null) throw new Error(`params.${field} must be HH:MM on a 24-hour clock`);
   return s;
 }
 
@@ -283,6 +354,201 @@ async function logRecipeMeal(raw?: unknown): Promise<{ id: string; logged: boole
   return { id: entry.id, logged: true };
 }
 
+// ── Wellbeing writes ──────────────────────────────────────────────────
+// Each adds exactly one record and is individually reversible via
+// deleteEntry, which is what makes them safe for an agent to call.
+
+async function logWater(raw?: unknown): Promise<{ id: string; ml: number }> {
+  const p = asObject(raw ?? {});
+  // 4 L in one go is already well past a real drink; anything above is a
+  // caller bug, not a big glass.
+  const ml = Math.round(asMetricAmount(p, "ml", "oz", flOzToMl, 4000));
+  const date = asDate(p.date);
+  const repo = await getRepository();
+  const entry = await repo.addWater({ date, ml, loggedAt: new Date().toISOString() });
+  return { id: entry.id, ml: entry.ml };
+}
+
+async function logSleep(raw?: unknown): Promise<{
+  id: string;
+  date: string;
+  minutes: number;
+}> {
+  const p = asObject(raw);
+  const bedTime = asClock(p.bedTime, "bedTime");
+  const wakeTime = asClock(p.wakeTime, "wakeTime");
+  // `date` is the morning they GOT UP, which is how a night is filed —
+  // buildSleepEntry re-derives it from the resolved instants anyway, so a
+  // caller passing the bedtime's date cannot misfile the night.
+  const wakeDate = asDate(p.date);
+  const quality =
+    p.quality === undefined || p.quality === null
+      ? undefined
+      : Math.min(5, Math.max(1, asNonNegInt(p.quality, "quality", 5, 1)));
+  const entry = buildSleepEntry(newId(), wakeDate, bedTime, wakeTime, {
+    ...(quality !== undefined ? { quality } : {}),
+  });
+  if (!entry) throw new Error("could not resolve a night from those times");
+  const minutes = sleepMinutes(entry);
+  if (isImplausible(minutes)) {
+    throw new Error(`that is ${Math.round(minutes / 60)}h of sleep — check bedTime and wakeTime`);
+  }
+  const repo = await getRepository();
+  await repo.saveSleep(entry);
+  return { id: entry.id, date: entry.date, minutes };
+}
+
+async function logSymptom(raw?: unknown): Promise<{ id: string }> {
+  const p = asObject(raw);
+  const label = asString(p.label, "label", 60);
+  const date = asDate(p.date);
+  const severity =
+    p.severity === undefined || p.severity === null
+      ? undefined
+      : Math.min(5, Math.max(1, asNonNegInt(p.severity, "severity", 5, 1)));
+  // A note may be WRITTEN through the API — the user dictating "log a headache,
+  // it started after lunch" is the obvious case. It is never READ back out;
+  // see dayWellbeing.
+  const note =
+    p.note === undefined || p.note === null ? undefined : asString(p.note, "note", 200);
+  const repo = await getRepository();
+  const entry = await repo.addSymptom({
+    date,
+    loggedAt: new Date().toISOString(),
+    label,
+    ...(severity !== undefined ? { severity } : {}),
+    ...(note !== undefined ? { note } : {}),
+  });
+  return { id: entry.id };
+}
+
+async function logWeight(raw?: unknown): Promise<{ date: string; weightKg: number }> {
+  const p = asObject(raw ?? {});
+  const weightKg = Math.round(asMetricAmount(p, "kg", "lb", lbToKg, 500) * 10) / 10;
+  const date = asDate(p.date);
+  const repo = await getRepository();
+  // One canonical weight per day: this replaces the day's entry rather than
+  // appending, matching what the weight card does.
+  await repo.upsertWeight({ date, weightKg });
+  return { date, weightKg };
+}
+
+// ── Corrections ───────────────────────────────────────────────────────
+
+async function setFoodQuantity(raw?: unknown): Promise<{ id: string; quantity: number }> {
+  const p = asObject(raw);
+  const id = asId(p.id);
+  const n = Number(p.quantity);
+  if (!Number.isFinite(n) || n <= 0) throw new Error("params.quantity must be a positive number");
+  const quantity = Math.min(50, Math.round(n * 100) / 100);
+  const repo = await getRepository();
+  await repo.updateDiaryEntry(id, { quantity });
+  return { id, quantity };
+}
+
+/** What `deleteEntry` will remove. One record, by id, per call. */
+const DELETABLE = ["food", "water", "sleep", "symptom", "weight", "workout"] as const;
+type Deletable = (typeof DELETABLE)[number];
+
+async function deleteEntry(raw?: unknown): Promise<{ deleted: true; kind: Deletable }> {
+  const p = asObject(raw);
+  const kind = asString(p.kind, "kind", 20);
+  if (!(DELETABLE as readonly string[]).includes(kind)) {
+    throw new Error(`params.kind must be one of: ${DELETABLE.join(", ")}`);
+  }
+  // Weight is keyed by date (one per day), everything else by row id.
+  const id = kind === "weight" ? asDate(p.id) : asId(p.id);
+  const repo = await getRepository();
+  switch (kind as Deletable) {
+    case "food":
+      await repo.removeDiaryEntry(id);
+      break;
+    case "water":
+      await repo.removeWater(id);
+      break;
+    case "sleep":
+      await repo.removeSleep(id);
+      break;
+    case "symptom":
+      await repo.removeSymptom(id);
+      break;
+    case "weight":
+      await repo.removeWeight(id);
+      break;
+    case "workout":
+      await repo.removeWorkoutSession(id);
+      break;
+  }
+  return { deleted: true, kind: kind as Deletable };
+}
+
+// ── Wellbeing reads ───────────────────────────────────────────────────
+
+interface WellbeingSymptom {
+  label: string;
+  /** 1-5, when the user picked one. */
+  severity?: number;
+  /** HH:MM local, so "always in the evening" is answerable. */
+  at: string;
+}
+
+interface WellbeingDay {
+  date: string;
+  waterMl: number;
+  sleepMinutes: number;
+  weightKg?: number;
+  symptoms: WellbeingSymptom[];
+}
+
+/**
+ * One day of everything the journal holds that is not food.
+ *
+ * Symptom NOTES are never included. The label, the severity and the time are
+ * what a pattern question needs; the free text is where someone writes the
+ * thing they would not want handed to another app, and it stays on device —
+ * the same line features/journal.ts draws for the AI summary.
+ */
+async function wellbeingFor(date: string): Promise<WellbeingDay> {
+  const repo = await getRepository();
+  const [water, sleep, symptoms, weights] = await Promise.all([
+    repo.listWater(date),
+    repo.listSleep(date),
+    repo.listSymptoms(date),
+    repo.listWeights(),
+  ]);
+  const weight = weights.find((w) => w.date === date);
+  const day: WellbeingDay = {
+    date,
+    waterMl: water.reduce((sum, w) => sum + w.ml, 0),
+    sleepMinutes: sleep.reduce((sum, n) => sum + sleepMinutes(n), 0),
+    symptoms: symptoms.slice(0, 20).map((sym) => {
+      const at = new Date(sym.loggedAt);
+      const out: WellbeingSymptom = {
+        label: sym.label,
+        at: `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`,
+      };
+      if (sym.severity !== undefined) out.severity = sym.severity;
+      return out;
+    }),
+  };
+  if (weight) day.weightKg = weight.weightKg;
+  return day;
+}
+
+async function dayWellbeing(raw?: unknown): Promise<WellbeingDay> {
+  const p = asObject(raw ?? {});
+  return wellbeingFor(asDate(p.date));
+}
+
+async function recentWellbeing(raw?: unknown): Promise<{ days: WellbeingDay[] }> {
+  const p = asObject(raw ?? {});
+  const n = Math.min(14, Math.max(1, asNonNegInt(p.days, "days", 14, 7) || 7));
+  const today = todayISO();
+  const dates: string[] = [];
+  for (let i = n - 1; i >= 0; i--) dates.push(shiftDate(today, -i));
+  return { days: await Promise.all(dates.map(wellbeingFor)) };
+}
+
 /**
  * Publish this app's actions (logFood, todayTotals, dayNutrition,
  * recentNutrition, logRecipeMeal, logWorkout) to ConjureOS so the assistant and other apps can call them.
@@ -300,5 +566,13 @@ export async function registerActions(): Promise<void> {
     recentNutrition,
     logRecipeMeal,
     logWorkout,
+    logWater,
+    logSleep,
+    logSymptom,
+    logWeight,
+    setFoodQuantity,
+    deleteEntry,
+    dayWellbeing,
+    recentWellbeing,
   });
 }
