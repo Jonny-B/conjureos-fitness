@@ -44,3 +44,34 @@ describe("nextWaterMl — open, don't touch, save must be a no-op", () => {
     expect(mlToFlOz(flOzToMl(34))).toBeCloseTo(34, 9);
   });
 });
+
+describe("editing the true stored value, not a rounding of it", () => {
+  // The band-aid (write nothing unless touched) narrowed the corruption but
+  // did not remove it: merely touching the amount field on an imperial entry
+  // still cost 13ml on a 250ml drink. With the real stored value in hand, a
+  // touch that leaves the displayed number alone is now also a no-op.
+  const cases: [number, number][] = [
+    [1000, 34],
+    [250, 8],
+    [50, 2],
+    [473, 16],
+  ];
+
+  it.each(cases)("keeps %ims when the shown %i oz is untouched but focused", (ml, shownOz) => {
+    expect(nextWaterMl(shownOz, true, "imperial", ml)).toBe(ml);
+  });
+
+  it("still converts when the user actually changes the number", () => {
+    // 250ml shows as 8 oz; typing 12 is a real change and must convert.
+    expect(nextWaterMl(12, true, "imperial", 250)).toBe(355);
+  });
+
+  it("is unaffected in metric", () => {
+    expect(nextWaterMl(250, true, "metric", 250)).toBe(250);
+    expect(nextWaterMl(300, true, "metric", 250)).toBe(300);
+  });
+
+  it("falls back to conversion for a legacy event with no stored value", () => {
+    expect(nextWaterMl(8, true, "imperial", undefined)).toBe(237);
+  });
+});

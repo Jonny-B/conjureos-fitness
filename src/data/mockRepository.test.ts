@@ -87,7 +87,100 @@ describe("MockRepository device-local persistence", () => {
     await reopened.init();
     expect((await reopened.getProfile())?.units).toBe("imperial");
   });
+
+  // ── Bug 1: two-tab clobber ───────────────────────────────────────────
+
+  it("a write from one tab does not erase a write another tab already persisted", async () => {
+    // Two live instances against the SAME localStorage (two browser tabs).
+    const tabA = new MockRepository();
+    await tabA.init();
+    const tabB = new MockRepository();
+    await tabB.init();
+
+    // Tab A logs a diary entry and flushes.
+    await tabA.addDiaryEntry({
+      date: "2026-01-01",
+      meal: "breakfast",
+      quantity: 1,
+      food: aFood(),
+    });
+
+    // Tab B, still holding its OLDER in-memory snapshot (without A's entry),
+    // now saves an unrelated profile change and flushes.
+    await tabB.saveProfile(imperial());
+
+    // Both writes must survive: B's flush must not have blind-overwritten the
+    // whole document with its stale pre-A snapshot.
+    const reopened = new MockRepository();
+    await reopened.init();
+    expect(await reopened.listDiary("2026-01-01")).toHaveLength(1);
+    expect((await reopened.getProfile())?.units).toBe("imperial");
+  });
+
+  it("tab A's own diary entry survives even when read back through tab B", async () => {
+    // Same setup as above, but assert on tabB directly (no reopen) — the
+    // storage-event listener should also keep tabB's in-memory copy fresh.
+    const tabA = new MockRepository();
+    await tabA.init();
+    const tabB = new MockRepository();
+    await tabB.init();
+
+    await tabA.addDiaryEntry({
+      date: "2026-01-02",
+      meal: "lunch",
+      quantity: 1,
+      food: aFood(),
+    });
+    await tabB.saveProfile(imperial());
+
+    // tabB's own flush() re-reads localStorage immediately beforehand, so its
+    // in-memory copy (and anything persisted) reflects A's entry too.
+    expect(await tabB.listDiary("2026-01-02")).toHaveLength(1);
+  });
+
+  // ── Bug 2: a failed write must not resolve as success ───────────────
+
+  it("rejects a mutation when both localStorage and the VFS mirror fail to persist", async () => {
+    failNextLocalStorageWrites();
+    const originalWrite = vfs.write;
+    vfs.write = async () => {
+      throw new Error("VFS mirror unavailable");
+    };
+    try {
+      const repo = new MockRepository();
+      await repo.init();
+      await expect(repo.saveProfile(imperial())).rejects.toThrow();
+    } finally {
+      vfs.write = originalWrite;
+    }
+  });
+
+  it("still resolves when localStorage fails but the VFS mirror succeeds", async () => {
+    const repo = new MockRepository();
+    await repo.init();
+    failNextLocalStorageWrites();
+    await expect(repo.saveProfile(imperial())).resolves.toBeUndefined();
+  });
 });
+
+/** Make every subsequent `localStorage.setItem` throw, simulating a full
+ *  quota or a browser with storage disabled mid-session. */
+function failNextLocalStorageWrites(): void {
+  const w = (globalThis as unknown as { window: { localStorage: Storage } }).window;
+  w.localStorage.setItem = () => {
+    throw new Error("QuotaExceededError");
+  };
+}
+
+function aFood() {
+  return {
+    id: "egg",
+    source: "custom" as const,
+    name: "Egg",
+    perServing: { calories: 70, protein: 6, carbs: 1, fat: 5 },
+    servingSize: "1 egg",
+  };
+}
 
 const EMPTY_STORE = {
   v: 2 as const,

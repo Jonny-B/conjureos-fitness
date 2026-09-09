@@ -50,6 +50,14 @@ export interface JournalEvent {
   note?: string;
   /** Meal bucket, for food only. */
   meal?: string;
+  /**
+   * The entry's true stored value, for kinds whose `detail` is a ROUNDED
+   * rendering of it — water is stored in ml but shown in oz, and reading the
+   * amount back off the display string cost 13ml on a 250ml entry every time
+   * it was edited. The editor reads this instead, so a save writes what the
+   * user actually sees plus their change, not a re-derivation of it.
+   */
+  rawValue?: number;
 }
 
 /** Everything recorded for one calendar date. */
@@ -142,6 +150,7 @@ export async function loadDayJournal(date: string, units: Units = "metric"): Pro
       at: ms(w.loggedAt),
       timed: true,
       kind: "water",
+      rawValue: w.ml,
       label: "Water",
       detail: fmtWater(w.ml, units),
     });

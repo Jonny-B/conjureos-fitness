@@ -17,7 +17,7 @@ import type { MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { removeSession } from "../features/exercise";
-import { flOzToMl } from "../features/water";
+import { flOzToMl, mlToFlOz } from "../features/water";
 import type { Profile } from "../types";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { NumberField } from "./NumberField";
@@ -40,10 +40,28 @@ const SEVERITY = [1, 2, 3, 4, 5];
  * omit `ml` from the patch entirely and the repository leaves the existing
  * value exactly as it was, no drift possible.
  */
-export function nextWaterMl(amount: number | undefined, edited: boolean, units: Units): number | undefined {
+export function nextWaterMl(
+  amount: number | undefined,
+  edited: boolean,
+  units: Units,
+  storedMl?: number,
+): number | undefined {
   if (!edited) return undefined;
   if (!amount || amount <= 0) return undefined;
-  return units === "imperial" ? Math.round(flOzToMl(amount)) : Math.round(amount);
+  const next = units === "imperial" ? Math.round(flOzToMl(amount)) : Math.round(amount);
+  // The displayed amount is a ROUNDED view of `storedMl`, so re-converting it
+  // moves the value even when the user changed nothing meaningful: 250ml shows
+  // as "8 oz" and converts back to 237ml. When the number on screen still
+  // renders the value already on disk, the user did not actually change the
+  // amount — keep what is stored rather than the lossy round-trip of it.
+  if (storedMl !== undefined && displaysAs(storedMl, amount, units)) return storedMl;
+  return next;
+}
+
+/** Whether `stored` (ml) is what produced the amount currently on screen. */
+function displaysAs(storedMl: number, shown: number, units: Units): boolean {
+  const asShown = units === "imperial" ? mlToFlOz(storedMl) : storedMl;
+  return Math.round(asShown) === Math.round(shown);
 }
 
 const TITLES: Record<JournalEvent["kind"], string> = {
@@ -75,7 +93,14 @@ export function JournalEntrySheet({
   const [qty, setQty] = useState<number | undefined>(1);
   const [meal, setMeal] = useState<MealType>((event.meal as MealType) ?? "snacks");
   // Water — edited in the user's own units, converted on save.
-  const startAmount = Number(/[\d.]+/.exec(event.detail ?? "")?.[0] ?? 0);
+  // Prefer the entry's TRUE stored value over the rounded display string; the
+  // regex fallback only covers events that predate `rawValue`.
+  const startAmount =
+    event.rawValue !== undefined
+      ? units === "imperial"
+        ? Math.round(mlToFlOz(event.rawValue))
+        : event.rawValue
+      : Number(/[\d.]+/.exec(event.detail ?? "")?.[0] ?? 0);
   const [amount, setAmount] = useState<number | undefined>(startAmount || undefined);
   // Whether the user actually touched the amount field. `amount` is seeded
   // from the rounded display string, not the true stored ml, so we must not
@@ -100,7 +125,7 @@ export function JournalEntrySheet({
           meal,
         });
       } else if (event.kind === "water") {
-        const ml = nextWaterMl(amount, amountEdited, units);
+        const ml = nextWaterMl(amount, amountEdited, units, event.rawValue);
         if (ml !== undefined) await repo.updateWater(event.id, { ml });
       } else if (event.kind === "symptom") {
         const text = label.trim();

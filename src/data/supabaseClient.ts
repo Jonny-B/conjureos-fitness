@@ -97,7 +97,11 @@ export class SupabaseRestClient {
   async remove(table: string, filter: string): Promise<void> {
     const resp = await fetch(this.endpoint(table, filter), {
       method: "DELETE",
-      headers: await this.headers(false),
+      // DELETE is a write verb: PostgREST needs Content-Profile (not just
+      // Accept-Profile) to route it at the non-public `fitness` schema, same
+      // as insert/upsert/patch below. headers(false) would silently target
+      // `public` instead, so this must pass true like every other write call.
+      headers: await this.headers(true),
     });
     if (!resp.ok) throw new Error(`delete ${table} failed: ${resp.status}`);
   }
