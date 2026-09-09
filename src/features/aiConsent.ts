@@ -10,6 +10,14 @@
  * Logging a headache is collection; asking the AI to find patterns in it is a
  * disclosure to a processor.
  *
+ * Two features gate on this, sharing one consent: "Find patterns" in the
+ * journal (a chosen date range), and asking the coach a question (today plus
+ * the two days before, always — see features/coach/ask.ts, which is the one
+ * chokepoint both the "Ask about food" card and the journal's coach chat run
+ * through). One agreement, one wording, because a user who consents to the
+ * AI reading their journal is consenting to the same disclosure regardless of
+ * which button triggered it.
+ *
  * So this module exists to make that disclosure deliberate:
  *
  *   - It never happens without a stored, dated agreement to specific wording.
@@ -28,33 +36,47 @@
 import type { AiJournalConsent, Profile } from "../types";
 import { getRepository } from "../data/repository";
 
-/** Current disclosure wording. Bump on any material change to `DISCLOSURE`. */
-export const DISCLOSURE_VERSION = 1;
+/**
+ * Current disclosure wording. Bump on any material change to `DISCLOSURE_*`
+ * below — v2 (2026-09) added the coach path (it was disclosing today's data
+ * and the user's goal direction with no wording covering either).
+ */
+export const DISCLOSURE_VERSION = 2;
 
 /**
  * Exactly what leaves the device, in the order the sheet shows it. Kept as
  * data so the consent sheet and the privacy policy cannot drift apart — both
  * render this list, so there is one description of the disclosure, not two.
+ *
+ * Two different scopes share this one list, called out explicitly rather than
+ * averaged into something vaguer than either: "Find patterns" sends a range
+ * you pick, the coach (both "Ask about food" and the journal's coach chat)
+ * always sends today plus the 2 days before. See features/coach/ask.ts.
  */
 export const DISCLOSURE_SENDS: string[] = [
-  "The dates in the range you are asking about",
+  "Find patterns: the dates in the range you asked about",
+  "Asking the coach: today in full, plus daily totals from the 2 days before",
   "Daily totals: calories, protein, water, sleep length, exercise calories",
-  "Your weight on days you recorded one",
-  "Symptoms you logged, with the time of day and the severity you picked",
-  "The names of foods you ate (up to 12 a day)",
+  "Your weight on days you recorded one, and your goal (losing, gaining, or maintaining)",
+  "Symptoms you logged, with the severity you picked (Find patterns also sends the time of day)",
+  "The names of foods you ate (up to 12 a day for Find patterns; up to 25 for today, when asking the coach)",
 ];
 
 /** What is held back regardless, so the sheet can be specific about limits. */
 export const DISCLOSURE_WITHHOLDS: string[] = [
   "Your name, email, or account details",
   "The free-text note on a symptom, unless you turn that on below",
-  "Anything outside the range you asked about",
+  "Find patterns: anything outside the range you asked about",
+  "Asking the coach: anything from more than 2 days before today",
 ];
 
 /**
  * A realistic sample of one line, so the user can see the shape of what they
  * are agreeing to rather than trusting a description of it. Matches what
- * `summarizeRange` actually produces.
+ * `summarizeRange` actually produces for "Find patterns" — the coach path
+ * renders its own day differently (see `renderDayForPrompt`), but sends the
+ * same underlying fields, so one honest sample stands in for both rather than
+ * the sheet showing two blocks nobody reads in full.
  */
 export const DISCLOSURE_SAMPLE =
   "2026-09-03: 2140 cal from 9 items; 118g protein; 1900ml water; " +

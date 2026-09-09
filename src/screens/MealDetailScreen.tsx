@@ -435,12 +435,18 @@ function EntryEditModal({
   const [carbs, setCarbs] = useState(entry.food.perServing.carbs);
   const [fat, setFat] = useState(entry.food.perServing.fat);
   const [busy, setBusy] = useState(false);
+  // A thrown write (transient backend hiccup) used to leave `busy` stuck
+  // true forever, since save()/remove() had no catch — Save and Delete
+  // stayed disabled with nothing on screen to explain why, and Cancel (the
+  // only live control) discards the edit instead of letting you retry it.
+  const [error, setError] = useState<string | null>(null);
   useScrollLock();
 
   const save = async () => {
     const trimmed = name.trim();
     if (!trimmed || busy) return;
     setBusy(true);
+    setError(null);
     const food: FoodItem = {
       ...entry.food,
       name: trimmed.slice(0, 80),
@@ -452,23 +458,34 @@ function EntryEditModal({
         fat: Math.max(0, Math.round(fat)),
       },
     };
-    const repo = await getRepository();
-    await repo.updateDiaryEntry(entry.id, {
-      food,
-      meal,
-      // 2dp, not quarters: the steppers move in 0.25s but a TYPED 0.3 or 1.75
-      // should survive the save rather than snapping to the nearest quarter.
-      quantity: Math.max(MIN_QTY, Math.round((qty ?? MIN_QTY) * 100) / 100),
-    });
-    onSaved();
+    try {
+      const repo = await getRepository();
+      await repo.updateDiaryEntry(entry.id, {
+        food,
+        meal,
+        // 2dp, not quarters: the steppers move in 0.25s but a TYPED 0.3 or 1.75
+        // should survive the save rather than snapping to the nearest quarter.
+        quantity: Math.max(MIN_QTY, Math.round((qty ?? MIN_QTY) * 100) / 100),
+      });
+      onSaved();
+    } catch {
+      setError("Couldn't save. Try again.");
+      setBusy(false);
+    }
   };
 
   const remove = async () => {
     if (busy) return;
     setBusy(true);
-    const repo = await getRepository();
-    await repo.removeDiaryEntry(entry.id);
-    onSaved();
+    setError(null);
+    try {
+      const repo = await getRepository();
+      await repo.removeDiaryEntry(entry.id);
+      onSaved();
+    } catch {
+      setError("Couldn't delete. Try again.");
+      setBusy(false);
+    }
   };
 
   return (
@@ -531,6 +548,7 @@ function EntryEditModal({
             <MacroBox label="Fat (g)" value={fat} onChange={setFat} />
           </div>
           <div className="muted small">Macros are per one serving.</div>
+          {error && <div className="notice notice-error">{error}</div>}
         </div>
 
         <footer className="sheet-foot entry-edit-foot">

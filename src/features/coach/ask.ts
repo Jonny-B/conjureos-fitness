@@ -16,6 +16,7 @@ import { aiErrorMessage, complete, isAiAvailable, type ChatMessage } from "../..
 import { readJson, writeJson } from "../../bridge/vfs";
 import { getRepository } from "../../data/repository";
 import { daySnapshot, recentSnapshots, renderDayForPrompt, renderRecentForPrompt } from "../dataApi";
+import { hasAiJournalConsent } from "../aiConsent";
 import { fmtWeight } from "../units";
 import type { CoachChatItem } from "./model";
 
@@ -80,8 +81,23 @@ LIMITS
  *
  * Now: today in full, plus a few days of context for trends. Silently
  * degrades to whatever it could read.
+ *
+ * THE CHOKEPOINT: today's symptoms, weight and goal direction are consumer
+ * health data, and handing them to the AI is a disclosure exactly like
+ * "Find patterns" — same consent, same DISCLOSURE_* wording (see
+ * features/aiConsent.ts). askContext is the only place that builds this
+ * string, and every caller of askCoach (the journal's coach chat, the
+ * always-on "Ask about food" card, and whatever calls it next) goes through
+ * askCoach, so gating here — instead of in each caller — is what makes it
+ * impossible for a future caller to route around consent by forgetting to
+ * check it. No consent, no context: not a trimmed-down context, because
+ * deciding what's "safe enough" to leak without asking is the same mistake
+ * with extra steps. Fails CLOSED like `hasAiJournalConsent` itself: any
+ * failure to confirm consent is treated as no consent.
  */
 async function askContext(): Promise<string> {
+  if (!(await hasAiJournalConsent())) return "";
+
   try {
     const repo = await getRepository();
     const profile = await repo.getProfile().catch(() => null);
@@ -116,6 +132,21 @@ async function askContext(): Promise<string> {
   } catch {
     return "";
   }
+}
+
+/**
+ * Whether the next `askCoach()` call will run WITHOUT personal context,
+ * because there's no current consent on file — so a caller can show
+ * `AiConsentSheet` first instead of silently getting a generic answer.
+ *
+ * `askContext()` enforces the actual rule (see above); this just exposes the
+ * same check under a name that makes sense to a caller who has never heard of
+ * `aiConsent.ts`. `JournalScreen.askPatterns` checks the lower-level
+ * `hasAiJournalConsent()` directly for the same reason — either is fine, this
+ * one just lives next to `askCoach` for callers that only import from here.
+ */
+export async function coachNeedsConsent(): Promise<boolean> {
+  return !(await hasAiJournalConsent());
 }
 
 /** Read the stored conversation, oldest first. Never throws. */

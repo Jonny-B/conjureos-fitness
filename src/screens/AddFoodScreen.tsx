@@ -152,7 +152,12 @@ export function AddFoodScreen({
 
       {mode === "search" && <SearchMode meal={meal} onPick={pick} />}
       {mode === "scan" && <ScanMode onPick={(food) => pick(food)} />}
-      {mode === "ai" && <AiMode date={date} defaultMeal={meal} onLogged={onLogged} />}
+      {/* `meal` is passed straight through (not as a "default") — the toolbar
+          picker above is the single source of truth for all three modes, AI
+          included. AiMode used to keep its own copy seeded from this value,
+          which is how the meal a photo/description logged to could silently
+          diverge from what the toolbar showed. */}
+      {mode === "ai" && <AiMode date={date} meal={meal} onLogged={onLogged} />}
     </div>
   );
 }
@@ -499,16 +504,17 @@ type AiTab = "photo" | "text";
 
 function AiMode({
   date,
-  defaultMeal,
+  meal,
   onLogged,
 }: {
   date: string;
-  defaultMeal: MealType;
+  /** Owned by the parent toolbar's MealPicker — AiMode has no meal state of
+   *  its own so there is exactly one control that can retarget a log. */
+  meal: MealType;
   onLogged: () => void;
 }) {
   const [tab, setTab] = useState<AiTab>("photo");
   const [text, setText] = useState("");
-  const [meal, setMeal] = useState<MealType>(defaultMeal);
   const [items, setItems] = useState<FoodItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Set when the estimator answered with nothing we could read. Kept apart
@@ -535,7 +541,14 @@ function AiMode({
   const replaceItem = (i: number, food: FoodItem) =>
     setItems((prev) => (prev ? prev.map((f, idx) => (idx === i ? food : f)) : prev));
 
+  // Guards against a stale estimate landing after a newer one: retake() and
+  // the tab switch both bump this, so a run() that was already in flight
+  // recognises on resolution that it's no longer the current one and drops
+  // its result instead of overwriting whatever the newer run produced.
+  const runIdRef = useRef(0);
+
   const run = async (input: { text?: string; image?: ChatImage }) => {
+    const myRunId = ++runIdRef.current;
     setBusy(true);
     setError(null);
     setUnreadable(false);
@@ -543,6 +556,7 @@ function AiMode({
     setLastInput(input);
     try {
       const res = await parseMealWithGroup(input);
+      if (runIdRef.current !== myRunId) return; // superseded — a retake/newer run already took over
       if (res.outcome === "unreadable") {
         setUnreadable(true);
         setItems(null);
@@ -555,9 +569,10 @@ function AiMode({
       setGrouped(res.items.length >= GROUP_BY_DEFAULT_AT);
       setToHistory(res.items.length < GROUP_BY_DEFAULT_AT);
     } catch (err) {
+      if (runIdRef.current !== myRunId) return;
       setError(aiErrorMessage(err, "Couldn’t reach the estimator. Try again."));
     } finally {
-      setBusy(false);
+      if (runIdRef.current === myRunId) setBusy(false);
     }
   };
 
@@ -567,6 +582,11 @@ function AiMode({
   };
 
   const retake = () => {
+    // Invalidate whatever run() is in flight — without this a slow response
+    // for the photo being replaced can still resolve after the retake and
+    // overwrite the (or a newer) screen with its stale items.
+    runIdRef.current++;
+    setBusy(false);
     setShotUrl(null);
     setItems(null);
     setError(null);
@@ -635,7 +655,6 @@ function AiMode({
             onChange={(e) => setText(e.target.value)}
           />
           <div className="row gap">
-            <MealPicker meal={meal} onChange={setMeal} />
             <button className="btn" disabled={busy || !text.trim()} onClick={() => run({ text })}>
               {busy ? "Estimating…" : "Estimate"}
             </button>
@@ -671,12 +690,6 @@ function AiMode({
 
       {items && items.length > 0 && (
         <>
-          {tab === "photo" && (
-            <label className="field">
-              <span>Meal</span>
-              <MealPicker meal={meal} onChange={setMeal} />
-            </label>
-          )}
           <div className="ai-toggles">
             <ToggleRow
               label="Log as one item"
