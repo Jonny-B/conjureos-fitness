@@ -50,6 +50,14 @@ export interface JournalEvent {
   note?: string;
   /** Meal bucket, for food only. */
   meal?: string;
+  /**
+   * The entry's true stored value, for kinds whose `detail` is a ROUNDED
+   * rendering of it — water is stored in ml but shown in oz, and reading the
+   * amount back off the display string cost 13ml on a 250ml entry every time
+   * it was edited. The editor reads this instead, so a save writes what the
+   * user actually sees plus their change, not a re-derivation of it.
+   */
+  rawValue?: number;
 }
 
 /** Everything recorded for one calendar date. */
@@ -142,6 +150,7 @@ export async function loadDayJournal(date: string, units: Units = "metric"): Pro
       at: ms(w.loggedAt),
       timed: true,
       kind: "water",
+      rawValue: w.ml,
       label: "Water",
       detail: fmtWater(w.ml, units),
     });
@@ -287,7 +296,16 @@ export function summarizeRange(
     if (symptoms.length) {
       const detail = symptoms
         .map((s) => {
-          const t = new Date(s.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          // Force 24-hour time: this string goes to the AI (and into
+          // DISCLOSURE_SAMPLE, which the consent sheet shows verbatim), so it
+          // must be unambiguous regardless of the user's locale. Left to the
+          // default, en-US renders "09:40 PM" — a mismatch with the sample
+          // that promised "21:40" and a needless ambiguity for the model.
+          const t = new Date(s.at).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
           // `detail` is the severity ("3/5") — a number the user picked from a
           // scale, and the most useful half of a symptom for pattern-finding.
           // `note` is the free-text field, and is held back unless opted in.

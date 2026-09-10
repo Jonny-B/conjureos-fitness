@@ -45,7 +45,7 @@ import type {
   WorkoutSession,
 } from "../types";
 import { DEFAULT_GOALS } from "../types";
-import { readJson, writeJson } from "../bridge/vfs";
+import { readJson, vfs, writeJson } from "../bridge/vfs";
 import type {
   DayLogPatch,
   NewDiaryEntry,
@@ -125,15 +125,59 @@ function readLocal(): StoreShape | null {
   }
 }
 
-/** Persist the device-local authoritative copy. Best-effort — a quota error or
- *  disabled storage must never throw into a caller mid-save. */
-function writeLocal(store: StoreShape): void {
+/** Persist the device-local authoritative copy. Returns whether it actually
+ *  landed — a quota error or disabled storage must never THROW into a caller
+ *  mid-save (see flush(), which decides success from this return value plus
+ *  the VFS mirror's), but the failure can no longer be silently swallowed. */
+function writeLocal(store: StoreShape): boolean {
   const ls = localStore();
-  if (!ls) return;
+  if (!ls) return false;
   try {
     ls.setItem(LOCAL_KEY, JSON.stringify(store));
+    return true;
   } catch {
-    /* quota / disabled — the VFS mirror is the fallback */
+    return false; // quota / disabled — the VFS mirror is the fallback
+  }
+}
+
+/** Mirror write with the same "tell me if it actually landed" contract as
+ *  writeLocal(). `writeJson` (used for the best-effort migration write in
+ *  init()) intentionally never reports failure; flush() needs to, because a
+ *  write is only truly lost when BOTH copies fail. */
+async function writeMirror(store: StoreShape): Promise<boolean> {
+  try {
+    await vfs.write(STORE_PATH, JSON.stringify(store));
+    return true;
+  } catch {
+    // No `window` at all (as opposed to a window with no `__vfs` mounted)
+    // means we're not running in a browser tab or WebView at all — every real
+    // deployment target of this app has one, so this is specifically the
+    // headless/test-harness case, which `vfs`'s own in-memory fallback exists
+    // to serve and cannot actually fail (a Map.set can't throw). Report
+    // success there rather than letting an unrelated environment gap read as
+    // a genuine on-device persistence failure.
+    return typeof window === "undefined";
+  }
+}
+
+/** Subscribe to cross-tab writes of LOCAL_KEY. The `storage` event only fires
+ *  in tabs OTHER than the one that wrote, which is exactly what we want: our
+ *  own writes already update `this.store` directly. Best-effort — no
+ *  `window`/`addEventListener` (SSR, tests, a host without either) just means
+ *  this tab's reads go stale until its next mutate(), which re-reads anyway. */
+function watchLocalStorage(onChange: (fresh: StoreShape) => void): void {
+  try {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return;
+    window.addEventListener("storage", (e: StorageEvent) => {
+      if (e.key !== LOCAL_KEY || e.newValue == null) return;
+      try {
+        onChange(migrate(JSON.parse(e.newValue)));
+      } catch {
+        /* corrupt payload from the other tab — ignore; next mutate() re-reads */
+      }
+    });
+  } catch {
+    /* no window / addEventListener unsupported */
   }
 }
 
@@ -245,19 +289,72 @@ export class MockRepository implements Repository {
     const before = (loaded as { v?: number } | null)?.v;
     this.store = migrate(loaded);
     writeLocal(this.store);
-    // Persist the upgrade immediately so a v1 doc doesn't re-migrate every load.
-    if (before !== 2) await writeJson(STORE_PATH, this.store);
+    // Persist the upgrade immediately so a doc already on the current version
+    // doesn't get rewritten every load. Compared against EMPTY.v (the current
+    // schema version), not a hardcoded old number, so the next version bump
+    // doesn't leave this check silently stale again.
+    if (before !== EMPTY.v) await writeJson(STORE_PATH, this.store);
+
+    // Keep the in-memory copy from going stale while this tab sits idle: the
+    // `storage` event fires in OTHER tabs whenever one of them writes our key.
+    // This only helps reads between mutations — every mutate() call below
+    // re-reads localStorage itself regardless, which is what actually
+    // prevents one tab's write from clobbering another's (see mutate()).
+    watchLocalStorage((fresh) => {
+      this.store = fresh;
+    });
+  }
+
+  /**
+   * Apply a mutation and persist it — the single path every mutator method
+   * below goes through instead of poking `this.store` directly and flushing.
+   *
+   * Two tabs share one localStorage document with no coordination. If a
+   * mutator just edited our own (possibly stale) in-memory `this.store` and
+   * blind-wrote it, a tab holding an older snapshot could silently erase
+   * writes another tab already persisted — e.g. tab A logs a diary entry and
+   * flushes, then tab B, still holding its pre-A snapshot, saves a profile
+   * change and flushes ITS snapshot, wiping A's entry with no error. Re-reading
+   * the freshest local copy right before applying `fn`, and running `fn`
+   * against THAT copy instead of `this.store`, means whatever the other tab
+   * already saved is still there when we write — every other slice of the
+   * document passes through untouched, and `fn` only edits the slice this call
+   * actually cares about. That's last-write-wins per mutation rather than per
+   * whole-document, which is all a single-user app opened in two tabs needs;
+   * it is deliberately not a CRDT, so two tabs racing to edit the exact same
+   * field can still overwrite each other — acceptable for this app.
+   *
+   * Reads only localStorage here, never the VFS mirror — same reasoning as
+   * init(): the synced mirror must never be treated as authoritative.
+   */
+  private async mutate<T>(fn: (s: StoreShape) => T): Promise<T> {
+    const fresh = readLocal() ?? this.store;
+    const result = fn(fresh);
+    this.store = fresh;
+    await this.flush();
+    return result;
   }
 
   /**
    * Persist the whole store. localStorage is the durable, synchronous,
    * un-syncable source of truth; the VFS write is a best-effort export/mirror
    * (and the dev-server persistence when localStorage is unavailable).
+   *
+   * A write is only genuinely lost when BOTH copies fail — the VFS mirror is
+   * documented (see the class-level comment) as the fallback for exactly this
+   * case — so that's the only time this throws. Silently resolving a mutation
+   * that landed nowhere was the bug: callers reasonably treat resolution as
+   * "this is saved," and it wasn't.
    */
   private async flush(): Promise<void> {
     this.store.updatedAt = new Date().toISOString();
-    writeLocal(this.store);
-    await writeJson(STORE_PATH, this.store);
+    const localOk = writeLocal(this.store);
+    const mirrorOk = await writeMirror(this.store);
+    if (!localOk && !mirrorOk) {
+      throw new Error(
+        "MockRepository: failed to persist — both localStorage and the VFS mirror write failed.",
+      );
+    }
   }
 
   async getProfile(): Promise<Profile | null> {
@@ -265,8 +362,9 @@ export class MockRepository implements Repository {
   }
 
   async saveProfile(profile: Profile): Promise<void> {
-    this.store.profile = profile;
-    await this.flush();
+    await this.mutate((s) => {
+      s.profile = profile;
+    });
   }
 
   async getGoals(): Promise<Goals> {
@@ -274,8 +372,9 @@ export class MockRepository implements Repository {
   }
 
   async saveGoals(goals: Goals): Promise<void> {
-    this.store.goals = goals;
-    await this.flush();
+    await this.mutate((s) => {
+      s.goals = goals;
+    });
   }
 
   async listDiary(date: string): Promise<DiaryEntry[]> {
@@ -286,26 +385,29 @@ export class MockRepository implements Repository {
 
   async addDiaryEntry(entry: NewDiaryEntry): Promise<DiaryEntry> {
     const full: DiaryEntry = { ...entry, id: newId(), loggedAt: new Date().toISOString() };
-    this.store.diary.push(full);
-    await this.flush();
-    return full;
+    return this.mutate((s) => {
+      s.diary.push(full);
+      return full;
+    });
   }
 
   async updateDiaryEntry(
     id: string,
     patch: Partial<Pick<DiaryEntry, "quantity" | "meal" | "food">>,
   ): Promise<void> {
-    const e = this.store.diary.find((x) => x.id === id);
-    if (!e) return;
-    if (patch.quantity !== undefined) e.quantity = patch.quantity;
-    if (patch.meal !== undefined) e.meal = patch.meal;
-    if (patch.food !== undefined) e.food = patch.food;
-    await this.flush();
+    await this.mutate((s) => {
+      const e = s.diary.find((x) => x.id === id);
+      if (!e) return;
+      if (patch.quantity !== undefined) e.quantity = patch.quantity;
+      if (patch.meal !== undefined) e.meal = patch.meal;
+      if (patch.food !== undefined) e.food = patch.food;
+    });
   }
 
   async removeDiaryEntry(id: string): Promise<void> {
-    this.store.diary = this.store.diary.filter((x) => x.id !== id);
-    await this.flush();
+    await this.mutate((s) => {
+      s.diary = s.diary.filter((x) => x.id !== id);
+    });
   }
 
   async listWeights(): Promise<WeightEntry[]> {
@@ -313,46 +415,54 @@ export class MockRepository implements Repository {
   }
 
   async upsertWeight(entry: WeightEntry): Promise<void> {
-    const existing = this.store.weights.find((w) => w.date === entry.date);
-    if (existing) existing.weightKg = entry.weightKg;
-    else this.store.weights.push(entry);
-    await this.flush();
+    await this.mutate((s) => {
+      const existing = s.weights.find((w) => w.date === entry.date);
+      if (existing) existing.weightKg = entry.weightKg;
+      else s.weights.push(entry);
+    });
   }
 
   async removeWeight(date: string): Promise<void> {
-    this.store.weights = this.store.weights.filter((w) => w.date !== date);
-    await this.flush();
+    await this.mutate((s) => {
+      s.weights = s.weights.filter((w) => w.date !== date);
+    });
   }
 
   async clearDiary(): Promise<void> {
-    this.store.diary = [];
-    await this.flush();
+    await this.mutate((s) => {
+      s.diary = [];
+    });
   }
 
   async clearWeights(): Promise<void> {
-    this.store.weights = [];
-    await this.flush();
+    await this.mutate((s) => {
+      s.weights = [];
+    });
   }
 
   async clearWorkoutHistory(): Promise<void> {
-    this.store.workoutSessions = [];
-    this.store.dayLogs = {};
-    await this.flush();
+    await this.mutate((s) => {
+      s.workoutSessions = [];
+      s.dayLogs = {};
+    });
   }
 
   async clearSleep(): Promise<void> {
-    this.store.sleep = [];
-    await this.flush();
+    await this.mutate((s) => {
+      s.sleep = [];
+    });
   }
 
   async clearWater(): Promise<void> {
-    this.store.water = [];
-    await this.flush();
+    await this.mutate((s) => {
+      s.water = [];
+    });
   }
 
   async clearSymptoms(): Promise<void> {
-    this.store.symptoms = [];
-    await this.flush();
+    await this.mutate((s) => {
+      s.symptoms = [];
+    });
   }
 
   // ── Sleep, water & symptoms ────────────────────────────────────────
@@ -373,15 +483,17 @@ export class MockRepository implements Repository {
   }
 
   async saveSleep(entry: SleepEntry): Promise<void> {
-    const idx = this.store.sleep.findIndex((e) => e.id === entry.id);
-    if (idx >= 0) this.store.sleep[idx] = entry;
-    else this.store.sleep.push(entry);
-    await this.flush();
+    await this.mutate((s) => {
+      const idx = s.sleep.findIndex((e) => e.id === entry.id);
+      if (idx >= 0) s.sleep[idx] = entry;
+      else s.sleep.push(entry);
+    });
   }
 
   async removeSleep(id: string): Promise<void> {
-    this.store.sleep = this.store.sleep.filter((e) => e.id !== id);
-    await this.flush();
+    await this.mutate((s) => {
+      s.sleep = s.sleep.filter((e) => e.id !== id);
+    });
   }
 
   async listWater(date: string): Promise<WaterEntry[]> {
@@ -402,21 +514,24 @@ export class MockRepository implements Repository {
       id: newId(),
       loggedAt: entry.loggedAt ?? new Date().toISOString(),
     };
-    this.store.water.push(stored);
-    await this.flush();
-    return stored;
+    return this.mutate((s) => {
+      s.water.push(stored);
+      return stored;
+    });
   }
 
   async updateWater(id: string, patch: Partial<Pick<WaterEntry, "ml" | "loggedAt">>): Promise<void> {
-    const idx = this.store.water.findIndex((e) => e.id === id);
-    if (idx < 0) return;
-    this.store.water[idx] = { ...this.store.water[idx]!, ...patch };
-    await this.flush();
+    await this.mutate((s) => {
+      const idx = s.water.findIndex((e) => e.id === id);
+      if (idx < 0) return;
+      s.water[idx] = { ...s.water[idx]!, ...patch };
+    });
   }
 
   async removeWater(id: string): Promise<void> {
-    this.store.water = this.store.water.filter((e) => e.id !== id);
-    await this.flush();
+    await this.mutate((s) => {
+      s.water = s.water.filter((e) => e.id !== id);
+    });
   }
 
   async listSymptoms(date: string): Promise<SymptomEntry[]> {
@@ -437,29 +552,32 @@ export class MockRepository implements Repository {
       id: newId(),
       loggedAt: entry.loggedAt ?? new Date().toISOString(),
     };
-    this.store.symptoms.push(stored);
-    await this.flush();
-    return stored;
+    return this.mutate((s) => {
+      s.symptoms.push(stored);
+      return stored;
+    });
   }
 
   async updateSymptom(
     id: string,
     patch: Partial<Pick<SymptomEntry, "label" | "severity" | "note" | "loggedAt">>,
   ): Promise<void> {
-    const idx = this.store.symptoms.findIndex((e) => e.id === id);
-    if (idx < 0) return;
-    const next = { ...this.store.symptoms[idx]!, ...patch };
-    // An explicitly cleared severity/note must actually go away, not linger as
-    // a stale value the user can no longer see.
-    if (patch.severity === undefined && "severity" in patch) delete next.severity;
-    if (patch.note === undefined && "note" in patch) delete next.note;
-    this.store.symptoms[idx] = next;
-    await this.flush();
+    await this.mutate((s) => {
+      const idx = s.symptoms.findIndex((e) => e.id === id);
+      if (idx < 0) return;
+      const next = { ...s.symptoms[idx]!, ...patch };
+      // An explicitly cleared severity/note must actually go away, not linger as
+      // a stale value the user can no longer see.
+      if (patch.severity === undefined && "severity" in patch) delete next.severity;
+      if (patch.note === undefined && "note" in patch) delete next.note;
+      s.symptoms[idx] = next;
+    });
   }
 
   async removeSymptom(id: string): Promise<void> {
-    this.store.symptoms = this.store.symptoms.filter((e) => e.id !== id);
-    await this.flush();
+    await this.mutate((s) => {
+      s.symptoms = s.symptoms.filter((e) => e.id !== id);
+    });
   }
 
   // ── v2: plans + daily check-off + coached sessions ──────────────────
@@ -469,13 +587,15 @@ export class MockRepository implements Repository {
   }
 
   async savePlan(plan: Plan): Promise<void> {
-    this.store.plan = plan;
-    await this.flush();
+    await this.mutate((s) => {
+      s.plan = plan;
+    });
   }
 
   async clearPlan(): Promise<void> {
-    this.store.plan = null;
-    await this.flush();
+    await this.mutate((s) => {
+      s.plan = null;
+    });
   }
 
   async getDayLog(date: string): Promise<DailyCheckoff | null> {
@@ -483,18 +603,20 @@ export class MockRepository implements Repository {
   }
 
   async saveDayLog(date: string, patch: DayLogPatch): Promise<void> {
-    const current = this.store.dayLogs[date] ?? { date, goalsCompleted: [] };
-    this.store.dayLogs[date] = { ...current, ...patch, date };
-    await this.flush();
+    await this.mutate((s) => {
+      const current = s.dayLogs[date] ?? { date, goalsCompleted: [] };
+      s.dayLogs[date] = { ...current, ...patch, date };
+    });
   }
 
   async markCheckoff(goalId: string, date: string, done: boolean): Promise<void> {
-    const current = this.store.dayLogs[date] ?? { date, goalsCompleted: [] };
-    const set = new Set(current.goalsCompleted);
-    if (done) set.add(goalId);
-    else set.delete(goalId);
-    this.store.dayLogs[date] = { ...current, date, goalsCompleted: [...set] };
-    await this.flush();
+    await this.mutate((s) => {
+      const current = s.dayLogs[date] ?? { date, goalsCompleted: [] };
+      const set = new Set(current.goalsCompleted);
+      if (done) set.add(goalId);
+      else set.delete(goalId);
+      s.dayLogs[date] = { ...current, date, goalsCompleted: [...set] };
+    });
   }
 
   async listWorkoutSessions(limit?: number): Promise<WorkoutSession[]> {
@@ -505,14 +627,16 @@ export class MockRepository implements Repository {
   }
 
   async saveWorkoutSession(session: WorkoutSession): Promise<void> {
-    const idx = this.store.workoutSessions.findIndex((s) => s.id === session.id);
-    if (idx >= 0) this.store.workoutSessions[idx] = session;
-    else this.store.workoutSessions.push(session);
-    await this.flush();
+    await this.mutate((s) => {
+      const idx = s.workoutSessions.findIndex((w) => w.id === session.id);
+      if (idx >= 0) s.workoutSessions[idx] = session;
+      else s.workoutSessions.push(session);
+    });
   }
 
   async removeWorkoutSession(id: string): Promise<void> {
-    this.store.workoutSessions = this.store.workoutSessions.filter((s) => s.id !== id);
-    await this.flush();
+    await this.mutate((s) => {
+      s.workoutSessions = s.workoutSessions.filter((w) => w.id !== id);
+    });
   }
 }

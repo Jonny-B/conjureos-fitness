@@ -173,7 +173,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async removeWeight(date: string): Promise<void> {
-    await this.client.remove("weights", `date=eq.${date}`);
+    await this.client.remove("weights", `date=eq.${encodeURIComponent(date)}`);
   }
 
   // RLS scopes deletes to the caller's rows; the always-true filter satisfies

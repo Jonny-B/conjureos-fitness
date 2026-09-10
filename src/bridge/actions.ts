@@ -9,7 +9,7 @@
  *   recentNutrition({ days? })                                         → read
  *   logRecipeMeal({ slug, servings?, meal?, date? })                   → write
  *   logWater({ ml? | oz?, date? })                                     → write
- *   logSleep({ bedTime, wakeTime, date?, quality? })                   → write
+ *   logSleep({ bedTime, wakeTime, wakeDate?, quality? })                → write
  *   logSymptom({ label, severity?, note?, date? })                     → write
  *   logWeight({ kg? | lb?, date? })                                    → write
  *   setFoodQuantity({ id, quantity })                                  → write
@@ -75,6 +75,35 @@ function asNonNegInt(v: unknown, field: string, max: number, dflt = 0): number {
   if (!Number.isFinite(n) || n < 0) throw new Error(`params.${field} must be a non-negative number`);
   return Math.min(max, Math.round(n));
 }
+/**
+ * A caller-stated amount, validated against a schema's [min, max].
+ *
+ * Zero or negative is always REJECTED, never clamped up: for a field that
+ * counts or measures something (days of history, servings, a corrected
+ * quantity), "none" is a different request than "a little" — the caller
+ * should just not make the call, or use deleteEntry — so it must never be
+ * silently reinterpreted as a default or a minimum. A positive value that
+ * falls outside the bound, on the other hand, is safe to clamp to the nearer
+ * edge: capping an excessive "days: 999" or rounding "servings: 0.02" up to
+ * the smallest representable amount doesn't invent an amount the caller never
+ * stated, it just refuses to honor an amount stated too precisely or too
+ * generously. Applied consistently at every "explicit but out of range"
+ * numeric field on this surface — see recentNutrition/recentWellbeing (days),
+ * logRecipeMeal (servings), and setFoodQuantity (quantity).
+ */
+function asPositiveAmount(
+  v: unknown,
+  field: string,
+  min: number,
+  max: number,
+  integer = false,
+): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`params.${field} must be a positive number`);
+  const clamped = Math.min(max, Math.max(min, n));
+  return integer ? Math.round(clamped) : clamped;
+}
+
 function asMeal(v: unknown): MealType {
   if (typeof v === "string" && (MEAL_TYPES as string[]).includes(v)) return v as MealType;
   // Default by time of day if unspecified.
@@ -84,7 +113,22 @@ function asMeal(v: unknown): MealType {
 function asDate(v: unknown): string {
   if (v === undefined || v === null) return todayISO();
   const s = asString(v, "date", 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error("params.date must be YYYY-MM-DD");
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) throw new Error("params.date must be YYYY-MM-DD");
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  // The regex only checks SHAPE. `new Date("2026-02-30")` rolls over to March
+  // 2nd instead of failing, so the only reliable check is to construct the
+  // date from its parts and read it back: a date that doesn't exist comes
+  // back on a different day/month than the one asked for. This matters
+  // because a written entry under a date the app's own UI can never navigate
+  // to (recentNutrition/recentWellbeing walk real calendar days) is written
+  // and then permanently invisible.
+  const roundTrip = new Date(y, mo - 1, d);
+  if (roundTrip.getFullYear() !== y || roundTrip.getMonth() !== mo - 1 || roundTrip.getDate() !== d) {
+    throw new Error("params.date must be a real calendar date (YYYY-MM-DD)");
+  }
   return s;
 }
 
@@ -268,8 +312,11 @@ async function recentNutrition(raw?: unknown): Promise<{
   days: { date: string; consumed: Macros; exerciseCalories: number }[];
 }> {
   const p = asObject(raw);
-  const days = p.days === undefined ? 7 : asNonNegInt(p.days, "days", 14) || 7;
-  const snaps = await recentSnapshots(Math.max(1, days));
+  // An explicit 0 is rejected, not silently turned into the 7-day default —
+  // see asPositiveAmount.
+  const days =
+    p.days === undefined || p.days === null ? 7 : asPositiveAmount(p.days, "days", 1, 14, true);
+  const snaps = await recentSnapshots(days);
   return {
     days: snaps.map((s) => ({
       date: s.date,
@@ -316,7 +363,13 @@ async function logRecipeMeal(raw?: unknown): Promise<{ id: string; logged: boole
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "");
   if (!slug) throw new Error("params.slug invalid");
-  const servings = Math.max(0.1, Math.min(20, Number(p.servings) || 1));
+  // `|| 1` used to treat an explicit `servings: 0` as absent and silently log
+  // a full serving. asPositiveAmount rejects 0/negative outright instead —
+  // "I had none of it" isn't a smaller serving, it's not a call to make.
+  const servings =
+    p.servings === undefined || p.servings === null
+      ? 1
+      : asPositiveAmount(p.servings, "servings", 0.1, 20);
   const meal = asMeal(p.meal);
   const date = asDate(p.date);
 
@@ -377,10 +430,31 @@ async function logSleep(raw?: unknown): Promise<{
   const p = asObject(raw);
   const bedTime = asClock(p.bedTime, "bedTime");
   const wakeTime = asClock(p.wakeTime, "wakeTime");
-  // `date` is the morning they GOT UP, which is how a night is filed —
-  // buildSleepEntry re-derives it from the resolved instants anyway, so a
-  // caller passing the bedtime's date cannot misfile the night.
-  const wakeDate = asDate(p.date);
+  // CORRECTION, 2026-09-09: this comment used to claim "buildSleepEntry
+  // re-derives [the date] from the resolved instants anyway, so a caller
+  // passing the bedtime's date cannot misfile the night." That was false.
+  // resolveNight (features/sleep.ts) treats the date it is given as the WAKE
+  // date and places bedTime on the day before it whenever bedTime > wakeTime —
+  // it never looks at which clock face the caller actually meant the date to
+  // go with. A caller who passes the BEDTIME's date (very plausible for an AI
+  // translating "I went to bed at 11:30 on the 4th") files the night a full
+  // day early, silently, with the duration still correct — nothing about the
+  // result looks wrong.
+  //
+  // Fix: the param is named `wakeDate`, not `date`, so the field itself states
+  // what it wants instead of relying on a caller reading the schema
+  // description. We still don't guess: no bed-date param is accepted, so
+  // there is nothing to reconcile or silently prefer.
+  // 1.33.0 shipped this param as `date`, and a caller still passing that name
+  // would now fall through to "defaults to today" — a silently WRONG night,
+  // which is worse than the misfiling this rename set out to fix. Refuse
+  // loudly instead, and name the replacement.
+  if (p.date !== undefined && p.wakeDate === undefined) {
+    throw new Error(
+      "params.date is no longer accepted for logSleep — pass params.wakeDate, the date the user WOKE UP",
+    );
+  }
+  const wakeDate = asDate(p.wakeDate);
   const quality =
     p.quality === undefined || p.quality === null
       ? undefined
@@ -438,9 +512,12 @@ async function logWeight(raw?: unknown): Promise<{ date: string; weightKg: numbe
 async function setFoodQuantity(raw?: unknown): Promise<{ id: string; quantity: number }> {
   const p = asObject(raw);
   const id = asId(p.id);
-  const n = Number(p.quantity);
-  if (!Number.isFinite(n) || n <= 0) throw new Error("params.quantity must be a positive number");
-  const quantity = Math.min(50, Math.round(n * 100) / 100);
+  // Round-then-clamp, not clamp-then-round: rounding a sub-minimum quantity
+  // like 0.004 to 2dp BEFORE re-checking the bound used to store a bare 0
+  // (below the schema's 0.01 minimum) even though the raw value passed the
+  // `> 0` check. asPositiveAmount clamps into [0.01, 50] first, so the value
+  // that gets rounded is never smaller than the minimum in the first place.
+  const quantity = Math.round(asPositiveAmount(p.quantity, "quantity", 0.01, 50) * 100) / 100;
   const repo = await getRepository();
   await repo.updateDiaryEntry(id, { quantity });
   return { id, quantity };
@@ -542,7 +619,10 @@ async function dayWellbeing(raw?: unknown): Promise<WellbeingDay> {
 
 async function recentWellbeing(raw?: unknown): Promise<{ days: WellbeingDay[] }> {
   const p = asObject(raw ?? {});
-  const n = Math.min(14, Math.max(1, asNonNegInt(p.days, "days", 14, 7) || 7));
+  // Same rule as recentNutrition: an explicit 0 is rejected, not folded into
+  // the 7-day default — see asPositiveAmount.
+  const n =
+    p.days === undefined || p.days === null ? 7 : asPositiveAmount(p.days, "days", 1, 14, true);
   const today = todayISO();
   const dates: string[] = [];
   for (let i = n - 1; i >= 0; i--) dates.push(shiftDate(today, -i));

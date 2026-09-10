@@ -16,7 +16,7 @@ import type { ChatImage } from "../bridge/ai";
 import { complete, extractJson } from "../bridge/ai";
 import type { FoodItem } from "../types";
 import { newId } from "../data/id";
-import { toIntInRange } from "./num";
+import { coerceFinite } from "./num";
 import { GROUP_NAME_MAX, suggestGroupName } from "./grouping";
 
 const SYSTEM = `You are a nutrition-estimation assistant for a calorie-tracking app.
@@ -162,9 +162,35 @@ function parseItems(raw: string): FoodItem[] {
 }
 
 /** A macro/calorie field from the model: a non-negative whole number capped at
- *  `max`; anything unparseable reads as 0 rather than poisoning the totals. */
-const macro = (v: unknown, max: number): number => toIntInRange(v, 0, max) ?? 0;
+ *  `max`, or null when it's missing/unparseable/out of range. Out-of-range is
+ *  null, NOT the nearest bound — clamping a hallucinated 15000 kcal down to
+ *  the 5000 cap still hands the diary a confident, plausible-looking number
+ *  nobody measured. `parsedFood.ts`'s `inRange` made the same call for the
+ *  label/barcode parser; this mirrors it so both AI food paths reject the
+ *  same way.
+ *
+ *  Deliberately NOT `toIntInRange`: that helper's contract is to CLAMP an
+ *  out-of-range number (the right call for reps/rest-seconds/Plan-screen
+ *  fields), which is exactly the behaviour that laundered 15000 kcal into a
+ *  believable 5000. `coerceFinite` gives the same non-numeric guard
+ *  (null/""/[]/false all rejected, per num.ts) without the clamp. */
+const macro = (v: unknown, max: number): number | null => {
+  const n = coerceFinite(v);
+  if (n == null || n < 0 || n > max) return null;
+  return Math.round(n);
+};
 
+/**
+ * Build a FoodItem from one model-returned item, or null to drop it entirely.
+ *
+ * `logFood` (bridge/actions.ts) calls the parser HEADLESS for an AI
+ * orchestrator — there's no review screen between the model and the diary —
+ * so an item with even one implausible macro is dropped whole rather than
+ * saved with that field zeroed. Zeroing would silently understate the diary
+ * (a "0g protein" entry that was actually just unparseable) while looking
+ * like a real reading; dropping the item is the failure a user can notice
+ * and re-log instead of one that quietly corrupts their totals.
+ */
 function toFoodItem(v: unknown): FoodItem | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
@@ -174,16 +200,16 @@ function toFoodItem(v: unknown): FoodItem | null {
     typeof o.servingSize === "string" && o.servingSize.trim()
       ? o.servingSize.trim().slice(0, 40)
       : "1 serving";
+  const calories = macro(o.calories, 5000);
+  const protein = macro(o.protein, 500);
+  const carbs = macro(o.carbs, 800);
+  const fat = macro(o.fat, 500);
+  if (calories == null || protein == null || carbs == null || fat == null) return null;
   return {
     id: newId(),
     source: "custom",
     name,
-    perServing: {
-      calories: macro(o.calories, 5000),
-      protein: macro(o.protein, 500),
-      carbs: macro(o.carbs, 800),
-      fat: macro(o.fat, 500),
-    },
+    perServing: { calories, protein, carbs, fat },
     servingSize,
     // Flag the numbers as an unreviewed AI estimate so the diary can warn the
     // user they may be inaccurate (see isAiEstimate + the "AI estimate" badge).

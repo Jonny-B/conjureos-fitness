@@ -17,7 +17,7 @@ import type { MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { removeSession } from "../features/exercise";
-import { flOzToMl } from "../features/water";
+import { flOzToMl, mlToFlOz } from "../features/water";
 import type { Profile } from "../types";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { NumberField } from "./NumberField";
@@ -26,6 +26,43 @@ import { CloseIcon } from "./icons";
 type Units = Profile["units"];
 
 const SEVERITY = [1, 2, 3, 4, 5];
+
+/**
+ * The ml to write for a water edit, or undefined to leave the stored value
+ * alone.
+ *
+ * `amount` starts out as the entry's ALREADY-ROUNDED display string (we only
+ * get `fmtWater`'s output, not the true stored ml — see the field below), so
+ * re-deriving ml from it via a round-trip conversion is not the identity
+ * function: 1000ml displays as "34 oz" and converting that back gives 1005ml.
+ * Opening an entry and saving it untouched must be a no-op on disk, so we
+ * only ever convert+write when the amount was actually edited; otherwise we
+ * omit `ml` from the patch entirely and the repository leaves the existing
+ * value exactly as it was, no drift possible.
+ */
+export function nextWaterMl(
+  amount: number | undefined,
+  edited: boolean,
+  units: Units,
+  storedMl?: number,
+): number | undefined {
+  if (!edited) return undefined;
+  if (!amount || amount <= 0) return undefined;
+  const next = units === "imperial" ? Math.round(flOzToMl(amount)) : Math.round(amount);
+  // The displayed amount is a ROUNDED view of `storedMl`, so re-converting it
+  // moves the value even when the user changed nothing meaningful: 250ml shows
+  // as "8 oz" and converts back to 237ml. When the number on screen still
+  // renders the value already on disk, the user did not actually change the
+  // amount — keep what is stored rather than the lossy round-trip of it.
+  if (storedMl !== undefined && displaysAs(storedMl, amount, units)) return storedMl;
+  return next;
+}
+
+/** Whether `stored` (ml) is what produced the amount currently on screen. */
+function displaysAs(storedMl: number, shown: number, units: Units): boolean {
+  const asShown = units === "imperial" ? mlToFlOz(storedMl) : storedMl;
+  return Math.round(asShown) === Math.round(shown);
+}
 
 const TITLES: Record<JournalEvent["kind"], string> = {
   food: "Edit food",
@@ -56,8 +93,20 @@ export function JournalEntrySheet({
   const [qty, setQty] = useState<number | undefined>(1);
   const [meal, setMeal] = useState<MealType>((event.meal as MealType) ?? "snacks");
   // Water — edited in the user's own units, converted on save.
-  const startAmount = Number(/[\d.]+/.exec(event.detail ?? "")?.[0] ?? 0);
+  // Prefer the entry's TRUE stored value over the rounded display string; the
+  // regex fallback only covers events that predate `rawValue`.
+  const startAmount =
+    event.rawValue !== undefined
+      ? units === "imperial"
+        ? Math.round(mlToFlOz(event.rawValue))
+        : event.rawValue
+      : Number(/[\d.]+/.exec(event.detail ?? "")?.[0] ?? 0);
   const [amount, setAmount] = useState<number | undefined>(startAmount || undefined);
+  // Whether the user actually touched the amount field. `amount` is seeded
+  // from the rounded display string, not the true stored ml, so we must not
+  // convert-and-rewrite it on a save unless the user changed it — see
+  // `nextWaterMl`.
+  const [amountEdited, setAmountEdited] = useState(false);
   // Symptom
   const [label, setLabel] = useState(event.label);
   const [severity, setSeverity] = useState<number | undefined>(
@@ -76,8 +125,8 @@ export function JournalEntrySheet({
           meal,
         });
       } else if (event.kind === "water") {
-        const ml = units === "imperial" ? Math.round(flOzToMl(amount ?? 0)) : Math.round(amount ?? 0);
-        if (ml > 0) await repo.updateWater(event.id, { ml });
+        const ml = nextWaterMl(amount, amountEdited, units, event.rawValue);
+        if (ml !== undefined) await repo.updateWater(event.id, { ml });
       } else if (event.kind === "symptom") {
         const text = label.trim();
         if (!text) return;
@@ -175,7 +224,10 @@ export function JournalEntrySheet({
               <NumberField
                 className="qty-input"
                 value={amount}
-                onChange={setAmount}
+                onChange={(v) => {
+                  setAmount(v);
+                  setAmountEdited(true);
+                }}
                 min={1}
                 max={units === "imperial" ? 200 : 5000}
                 decimals={0}

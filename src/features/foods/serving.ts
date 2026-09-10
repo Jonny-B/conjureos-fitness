@@ -23,8 +23,13 @@ const GRAMS = /(\d+(?:\.\d+)?)\s*(?:g|gm|gms|gram|grams)\b/gi;
 
 /**
  * Grams in one serving, read from its label, or null when the label doesn't
- * say. Takes the LAST gram figure in the string: a label that carries two
- * ("1.4 oz / 40 g") puts the metric weight last by convention.
+ * say. Takes the last IN-RANGE gram figure in the string: a label that
+ * carries two ("1.4 oz / 40 g") puts the metric weight last by convention,
+ * but a trailing figure past `MAX_SERVING_G` is more likely a misparse (a
+ * catering-pack total, a stray digit) than the real portion, so it's skipped
+ * in favour of an earlier one that actually looks like a serving. Docstring
+ * previously claimed "the last gram figure, full stop" — that undersold the
+ * guard this function has always had; the code was right, the words weren't.
  */
 export function parseServingGrams(label: string | undefined): number | null {
   if (!label) return null;

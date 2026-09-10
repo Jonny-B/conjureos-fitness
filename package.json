@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "1.33.0",
+  "version": "1.34.0",
   "description": "Conjure Health: calorie + nutrition logging, daily targets, weight tracking, and a simple weight-loss plan for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -477,7 +477,7 @@
       },
       "logSleep": {
         "permission": "actions.write",
-        "description": "Log a night's sleep from the clock times the user gives. bedTime and wakeTime are HH:MM on a 24-hour clock; a bedTime after wakeTime is read as the night before, so 23:30 to 07:00 works. date is the morning they GOT UP and defaults to today. Optional quality is 1 (awful) to 5 (great).",
+        "description": "Log a night's sleep from the clock times the user gives. bedTime and wakeTime are HH:MM on a 24-hour clock; a bedTime after wakeTime is read as the night before, so 23:30 to 07:00 works. wakeDate is the date the user WOKE UP, not the date they went to bed, and defaults to today. Example: bed at 23:30 on the 4th, up at 07:00 on the 5th -> wakeDate is 2026-09-05, NOT 2026-09-04; a bedtime-side date files the whole night under the wrong day. Optional quality is 1 (awful) to 5 (great).",
         "params": {
           "type": "object",
           "properties": {
@@ -494,9 +494,9 @@
               "minimum": 1,
               "maximum": 5
             },
-            "date": {
+            "wakeDate": {
               "type": "string",
-              "description": "YYYY-MM-DD of the morning they woke; defaults to today."
+              "description": "YYYY-MM-DD of the morning they woke up. NOT the date they went to bed. Defaults to today."
             }
           },
           "required": [
