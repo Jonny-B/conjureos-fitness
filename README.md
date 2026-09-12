@@ -49,6 +49,25 @@ swap without touching the UI:
 - **`src/features/`** + **`src/screens/`** — pure logic (diary math, goals,
   food search, workout sequencing) and the React UI.
 
+## Appearance
+
+Conjure Health is **locked to Winter dark** and does not follow the ConjureOS
+theme. Most of this app is a number against a target, and its charts, rings and
+status bands are tuned against one ground; Winter's cool, low-chroma palette
+leaves the warm end of the spectrum free for "over target", which is the one
+signal that must never be ambiguous.
+
+Locked does not mean deaf. `src/theme.ts` still receives the OS appearance
+(from the shim at boot, and from every broadcast after) and exposes it through
+`hostAppearance()`. It is simply never applied. To unlock later, that file
+becomes the ladder the Recipes app has plus a settings control; nothing else in
+the app reads `data-theme` directly.
+
+Never hardcode a colour. `--cui-on-accent` is dark in six of the nine palettes,
+so `color: #fff` on a filled control is a bug even while the app is pinned to
+one of them. The camera and scanner overlays are the exception: their white
+sits over a live video feed, not over a themed surface.
+
 ## Development
 
 ```bash

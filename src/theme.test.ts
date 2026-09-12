@@ -1,0 +1,166 @@
+/**
+ * Conjure Health is locked to Winter dark, and these are the rules that make
+ * "locked" mean something more precise than "ignores the theme".
+ *
+ * The interesting half is what it still does: the OS appearance is received
+ * from the shim at boot and from every broadcast after, and readable through
+ * `hostAppearance()`. Only the applying is refused. A version that simply
+ * never listened would pass a naive "does it stay Winter?" test and be a
+ * different thing — and the difference is exactly what a future unlock
+ * depends on.
+ *
+ * Runs in the default node environment against a hand-built window rather than
+ * pulling jsdom in for one file. The fake covers the four things the module
+ * touches: a documentElement that records attributes, a message listener, a
+ * parent, and the injected bridge.
+ */
+
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  initAppearance,
+  hostAppearance,
+  resetHostAppearance,
+  LOCKED_THEME,
+  LOCKED_FLAVOR,
+} from "./theme";
+
+interface Env {
+  win: Window & typeof globalThis;
+  attrs: Record<string, string>;
+  posted: unknown[];
+  inject(theme: unknown, flavor: unknown): void;
+  fromShell(theme: unknown, flavor: unknown): void;
+  fromElsewhere(theme: unknown, flavor: unknown): void;
+}
+
+function makeEnv({ embedded = true }: { embedded?: boolean } = {}): Env {
+  const attrs: Record<string, string> = {};
+  const posted: unknown[] = [];
+  let onMessage: ((ev: MessageEvent) => void) | null = null;
+  const parent = { postMessage: (m: unknown) => posted.push(m) };
+
+  const win = {
+    document: {
+      documentElement: {
+        setAttribute: (k: string, v: string) => {
+          attrs[k] = v;
+        },
+        removeAttribute: (k: string) => {
+          delete attrs[k];
+        },
+      },
+    },
+    addEventListener: (type: string, fn: (ev: MessageEvent) => void) => {
+      if (type === "message") onMessage = fn;
+    },
+  } as unknown as Window & typeof globalThis;
+  // Standalone is parent === self, which is what a top-level page looks like.
+  (win as unknown as { parent: unknown }).parent = embedded ? parent : win;
+
+  const fire = (source: unknown, theme: unknown, flavor: unknown) =>
+    onMessage?.({ data: { type: "conjureos:theme", theme, flavor }, source } as MessageEvent);
+
+  return {
+    win,
+    attrs,
+    posted,
+    inject: (theme, flavor) => {
+      (win as unknown as { __conjureos: unknown }).__conjureos = { appearance: { theme, flavor } };
+    },
+    fromShell: (theme, flavor) => fire(parent, theme, flavor),
+    fromElsewhere: (theme, flavor) => fire({}, theme, flavor),
+  };
+}
+
+beforeEach(() => {
+  resetHostAppearance();
+});
+
+describe("Conjure Health's locked appearance", () => {
+  it("pins Winter dark on <html>", () => {
+    const e = makeEnv();
+
+    initAppearance(e.win);
+
+    expect(e.attrs).toEqual({ "data-theme": "win", "data-flavor": "dark" });
+    expect([LOCKED_THEME, LOCKED_FLAVOR]).toEqual(["win", "dark"]);
+  });
+
+  it("does not wear the theme ConjureOS injected at boot", () => {
+    const e = makeEnv();
+    e.inject("hal", "light");
+
+    initAppearance(e.win);
+
+    expect(e.attrs).toEqual({ "data-theme": "win", "data-flavor": "dark" });
+  });
+
+  it("still records what ConjureOS is wearing", () => {
+    // The whole distinction between "locked" and "deaf". An app that never
+    // read this could not report the OS theme, and unlocking it later would be
+    // a rewrite rather than a deletion.
+    const e = makeEnv();
+    e.inject("hal", "light");
+
+    initAppearance(e.win);
+
+    expect(hostAppearance()).toEqual({ theme: "hal", flavor: "light", inConjureOS: true });
+  });
+
+  it("ignores a theme change pushed while it is running", () => {
+    const e = makeEnv();
+    initAppearance(e.win);
+
+    e.fromShell("xms", "light");
+
+    expect(e.attrs).toEqual({ "data-theme": "win", "data-flavor": "dark" });
+    expect(hostAppearance().theme).toBe("xms");
+  });
+
+  it("knows it is inside ConjureOS even when the user has chosen nothing", () => {
+    // Two nulls is still the shell talking: the user simply never opened
+    // Settings. Keying "are we embedded?" off a non-null theme would report
+    // standalone for most people.
+    const e = makeEnv();
+    e.inject(null, null);
+
+    initAppearance(e.win);
+
+    expect(hostAppearance()).toEqual({ theme: null, flavor: null, inConjureOS: true });
+  });
+
+  it("reports standalone when there is no host bridge", () => {
+    const e = makeEnv({ embedded: false });
+
+    initAppearance(e.win);
+
+    expect(hostAppearance().inConjureOS).toBe(false);
+    expect(e.posted).toEqual([]);
+  });
+
+  it("subscribes anyway, so the shell answers even if it booted first", () => {
+    const e = makeEnv();
+
+    initAppearance(e.win);
+
+    expect(e.posted).toEqual([{ type: "conjureos:theme:subscribe" }]);
+  });
+
+  it("refuses a theme claim from a page that is not the embedder", () => {
+    const e = makeEnv();
+    initAppearance(e.win);
+
+    e.fromElsewhere("cnd", "light");
+
+    expect(hostAppearance()).toEqual({ theme: null, flavor: null, inConjureOS: false });
+  });
+
+  it("drops a palette it does not recognise rather than recording it", () => {
+    const e = makeEnv();
+    initAppearance(e.win);
+
+    e.fromShell("brg", "neon");
+
+    expect(hostAppearance()).toEqual({ theme: null, flavor: null, inConjureOS: true });
+  });
+});
