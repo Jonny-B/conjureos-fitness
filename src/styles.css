@@ -110,8 +110,8 @@ body {
   width: 30px;
   height: 30px;
   border-radius: 9px;
-  color: #fff;
-  background: var(--cui-accent-gradient), var(--cui-accent);
+  color: var(--cui-on-accent);
+  background: var(--cui-accent);
   box-shadow: var(--cui-shadow-accent);
 }
 .topbar-spacer {
@@ -283,7 +283,7 @@ body {
 .btn.primary {
   background: var(--cui-accent);
   border: 1px solid var(--cui-accent);
-  color: #fff;
+  color: var(--cui-on-accent);
   box-shadow: var(--cui-shadow-accent);
 }
 .btn.primary:hover:not(:disabled) {
@@ -423,7 +423,7 @@ body {
 
 /* Calorie-budget hero: remaining ring flanked by tappable meal satellites. */
 .budget-card {
-  background: var(--cui-accent-gradient), var(--bg-2);
+  background: var(--bg-2);
   border: 1px solid var(--cui-accent-tint);
   border-radius: var(--radius);
   padding: 18px 16px;
@@ -876,7 +876,7 @@ body {
 }
 .segmented-btn.active {
   background: var(--cui-accent);
-  color: #fff;
+  color: var(--cui-on-accent);
   box-shadow: var(--cui-shadow-sm);
 }
 .mode-body {
@@ -1449,7 +1449,7 @@ body {
 .workout-check.done {
   background: var(--cui-accent, #7c6cff);
   border-color: var(--cui-accent, #7c6cff);
-  color: #fff;
+  color: var(--cui-on-accent);
 }
 .workout-card.done {
   opacity: 0.55;
@@ -1636,7 +1636,7 @@ body {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--cui-on-accent);
   background: var(--cui-accent);
   box-shadow: var(--cui-shadow-accent);
   transition: transform var(--cui-duration) var(--cui-ease);
@@ -1664,7 +1664,7 @@ body {
   font-size: 11px;
   font-weight: 700;
   vertical-align: middle;
-  color: #fff;
+  color: var(--cui-on-accent);
   background: var(--cui-accent);
 }
 /* Compact, read-only "Your progress" strip: one bordered panel, benchmark rows
@@ -2247,9 +2247,9 @@ html.modal-open .screen {
 .snap-cta-card:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); }
 .snap-cta-card:active { transform: translateY(0); filter: brightness(0.97); }
 .snap-cta-card.primary {
-  border-color: rgba(124, 92, 255, 0.55);
+  border-color: color-mix(in srgb, var(--cui-accent) 55%, transparent);
   background:
-    linear-gradient(rgba(124, 92, 255, 0.08), rgba(124, 92, 255, 0.02)),
+    linear-gradient(color-mix(in srgb, var(--cui-accent) 8%, transparent), color-mix(in srgb, var(--cui-accent) 2%, transparent)),
     rgba(255, 255, 255, 0.04);
 }
 .snap-cta-icon {
@@ -2260,8 +2260,8 @@ html.modal-open .screen {
   color: rgba(255, 255, 255, 0.7);
 }
 .snap-cta-card.primary .snap-cta-icon {
-  background: linear-gradient(135deg, #7c5cff, #a78bff);
-  color: #fff;
+  background: linear-gradient(135deg, var(--cui-accent), var(--cui-accent-hover));
+  color: var(--cui-on-accent);
 }
 .snap-cta-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .snap-cta-title { font-size: 15px; font-weight: 700; line-height: 1.25; }
@@ -2434,7 +2434,7 @@ html.modal-open .screen {
 .meal-cta.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--cui-on-accent);
 }
 /* Three-up entry buttons (Scan Barcode / Search / AI): stack icon over label. */
 .meal-cta-row.three .meal-cta {
@@ -3351,7 +3351,7 @@ input[type="date"].text-input {
 .coach-msg.user {
   align-self: flex-end;
   background: var(--accent);
-  color: #fff;
+  color: var(--cui-on-accent);
   border-bottom-right-radius: 6px;
 }
 .coach-msg.assistant {
@@ -3381,7 +3381,7 @@ input[type="date"].text-input {
 .coach-proposal-opts { display: flex; flex-wrap: wrap; gap: 8px; }
 .coach-proposal-opts .chip.selected {
   background: var(--accent);
-  color: #fff;
+  color: var(--cui-on-accent);
   border-color: var(--accent);
 }
 .coach-proposal-other { min-height: 38px; }
@@ -3539,7 +3539,7 @@ input[type="date"].text-input {
 .chat-bubble.user {
   align-self: flex-end;
   background: var(--cui-accent, #7c6cf5);
-  color: #fff;
+  color: var(--cui-on-accent);
   border-bottom-right-radius: 5px;
 }
 .chat-bubble.assistant {
@@ -4194,12 +4194,13 @@ input[type="date"].text-input {
   border-radius: 6px;
   border: 1.5px solid var(--line);
   background: none;
-  color: #fff;
+  /* Ink on the card surface, not a label on a fill: --cui-fg, not on-accent. */
+  color: var(--cui-fg);
   cursor: pointer;
   transition: background var(--cui-duration) var(--cui-ease),
     border-color var(--cui-duration) var(--cui-ease);
 }
-.entry-check.on { background: var(--accent); border-color: var(--accent); }
+.entry-check.on { background: var(--accent); border-color: var(--accent); color: var(--cui-on-accent); }
 
 /* Sticky so the action stays reachable while scrolling a long meal. */
 .group-bar {
