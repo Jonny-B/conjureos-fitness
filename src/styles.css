@@ -111,7 +111,7 @@ body {
   height: 30px;
   border-radius: 9px;
   color: var(--cui-on-accent);
-  background: var(--cui-accent-gradient), var(--cui-accent);
+  background: var(--cui-accent);
   box-shadow: var(--cui-shadow-accent);
 }
 .topbar-spacer {
@@ -423,7 +423,7 @@ body {
 
 /* Calorie-budget hero: remaining ring flanked by tappable meal satellites. */
 .budget-card {
-  background: var(--cui-accent-gradient), var(--bg-2);
+  background: var(--bg-2);
   border: 1px solid var(--cui-accent-tint);
   border-radius: var(--radius);
   padding: 18px 16px;
@@ -2247,9 +2247,9 @@ html.modal-open .screen {
 .snap-cta-card:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); }
 .snap-cta-card:active { transform: translateY(0); filter: brightness(0.97); }
 .snap-cta-card.primary {
-  border-color: rgba(124, 92, 255, 0.55);
+  border-color: color-mix(in srgb, var(--cui-accent) 55%, transparent);
   background:
-    linear-gradient(rgba(124, 92, 255, 0.08), rgba(124, 92, 255, 0.02)),
+    linear-gradient(color-mix(in srgb, var(--cui-accent) 8%, transparent), color-mix(in srgb, var(--cui-accent) 2%, transparent)),
     rgba(255, 255, 255, 0.04);
 }
 .snap-cta-icon {
@@ -4200,7 +4200,7 @@ input[type="date"].text-input {
   transition: background var(--cui-duration) var(--cui-ease),
     border-color var(--cui-duration) var(--cui-ease);
 }
-.entry-check.on { background: var(--accent); border-color: var(--accent); }
+.entry-check.on { background: var(--accent); border-color: var(--accent); color: var(--cui-on-accent); }
 
 /* Sticky so the action stays reachable while scrolling a long meal. */
 .group-bar {
