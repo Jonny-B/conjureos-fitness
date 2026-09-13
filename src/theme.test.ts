@@ -23,6 +23,7 @@ import {
   LOCKED_THEME,
   LOCKED_FLAVOR,
 } from "./theme";
+import indexHtml from "../index.html?raw";
 
 interface Env {
   win: Window & typeof globalThis;
@@ -155,6 +156,20 @@ describe("Conjure Health's locked appearance", () => {
     expect(hostAppearance()).toEqual({ theme: null, flavor: null, inConjureOS: false });
   });
 
+  it("refuses a theme claim from anywhere when there is no embedder at all", () => {
+    // Standalone is `win.parent === win`, which used to make the bare `&&`
+    // guard short-circuit to false and skip the early return entirely — a
+    // message got processed no matter who sent it. No embedder means nothing
+    // can speak for ConjureOS, so this has to reject even a message that
+    // claims to be the parent.
+    const e = makeEnv({ embedded: false });
+    initAppearance(e.win);
+
+    e.fromElsewhere("cnd", "light");
+
+    expect(hostAppearance()).toEqual({ theme: null, flavor: null, inConjureOS: false });
+  });
+
   it("drops a palette it does not recognise rather than recording it", () => {
     const e = makeEnv();
     initAppearance(e.win);
@@ -162,5 +177,20 @@ describe("Conjure Health's locked appearance", () => {
     e.fromShell("brg", "neon");
 
     expect(hostAppearance()).toEqual({ theme: null, flavor: null, inConjureOS: true });
+  });
+});
+
+describe("the locked palette has exactly one source of truth", () => {
+  it("matches the data-theme/data-flavor pinned in index.html", () => {
+    // LOCKED_THEME/LOCKED_FLAVOR here and the static attributes in index.html
+    // both exist so the right palette is on <html> before first paint, and
+    // nothing ties the two together. Relocking to a different palette by
+    // editing only one would reintroduce a flash of the wrong theme without
+    // failing a single other test in this file.
+    const theme = indexHtml.match(/data-theme="([^"]+)"/)?.[1];
+    const flavor = indexHtml.match(/data-flavor="([^"]+)"/)?.[1];
+
+    expect(theme).toBe(LOCKED_THEME);
+    expect(flavor).toBe(LOCKED_FLAVOR);
   });
 });

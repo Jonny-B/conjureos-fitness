@@ -101,9 +101,12 @@ export function initAppearance(win: Window & typeof globalThis = window): void {
   win.addEventListener("message", (ev: MessageEvent) => {
     const data = ev.data as { type?: unknown; theme?: unknown; flavor?: unknown } | null;
     if (!data || data.type !== MSG) return;
-    // Only the embedder speaks for ConjureOS. We do not act on this, but we
-    // should not record some other page's claim about it either.
-    if (win.parent && win.parent !== win && ev.source !== win.parent) return;
+    // Only the embedder can speak for ConjureOS. With no embedder at all —
+    // this window is its own parent — there is no ConjureOS to speak for it,
+    // so we reject before even checking who sent the message.
+    const embedded = win.parent && win.parent !== win;
+    if (!embedded) return;
+    if (ev.source !== win.parent) return;
     host.inConjureOS = true;
     host.theme = asTheme(data.theme);
     host.flavor = asFlavor(data.flavor);
