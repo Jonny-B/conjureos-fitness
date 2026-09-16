@@ -1,28 +1,25 @@
 /**
- * Conjure Health is locked to Winter dark, and these are the rules that make
- * "locked" mean something more precise than "ignores the theme".
+ * Conjure Health inherits the ConjureOS appearance rather than locking to
+ * one palette. These are the rules that make "inherits" mean something more
+ * precise than "reads it and shrugs".
  *
- * The interesting half is what it still does: the OS appearance is received
- * from the shim at boot and from every broadcast after, and readable through
- * `hostAppearance()`. Only the applying is refused. A version that simply
- * never listened would pass a naive "does it stay Winter?" test and be a
- * different thing — and the difference is exactly what a future unlock
- * depends on.
+ * The interesting half used to be "what does it still do despite the lock";
+ * now it's "what does it fall back to when there is nothing to inherit".
+ * Standalone (no host bridge) and embedded-but-no-override (host sent
+ * null/null) both have to resolve to the Conjure default + the browser's
+ * light/dark preference, which on <html> means no `data-theme`/`data-flavor`
+ * at all — `@conjureos/ui`'s tokens.css reads an absent attribute as exactly
+ * that fallback, so writing "cnj"/some default here would be redundant at
+ * best and wrong the day the Conjure default's resolved hex changes.
  *
- * Runs in the default node environment against a hand-built window rather than
- * pulling jsdom in for one file. The fake covers the four things the module
- * touches: a documentElement that records attributes, a message listener, a
- * parent, and the injected bridge.
+ * Runs in the default node environment against a hand-built window rather
+ * than pulling jsdom in for one file. The fake covers the four things the
+ * module touches: a documentElement that records attributes, a message
+ * listener, a parent, and the injected bridge.
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  initAppearance,
-  hostAppearance,
-  resetHostAppearance,
-  LOCKED_THEME,
-  LOCKED_FLAVOR,
-} from "./theme";
+import { initAppearance, hostAppearance, resetHostAppearance } from "./theme";
 import indexHtml from "../index.html?raw";
 
 interface Env {
@@ -77,29 +74,28 @@ beforeEach(() => {
   resetHostAppearance();
 });
 
-describe("Conjure Health's locked appearance", () => {
-  it("pins Winter dark on <html>", () => {
-    const e = makeEnv();
+describe("Conjure Health's inherited appearance", () => {
+  it("sets no attributes when there is nothing to inherit", () => {
+    // Standalone: no host bridge at all. Falling back to "no attribute"
+    // (Conjure default + browser flavor preference) is correct here, not a
+    // missing case — see the file header.
+    const e = makeEnv({ embedded: false });
 
     initAppearance(e.win);
 
-    expect(e.attrs).toEqual({ "data-theme": "win", "data-flavor": "dark" });
-    expect([LOCKED_THEME, LOCKED_FLAVOR]).toEqual(["win", "dark"]);
+    expect(e.attrs).toEqual({});
   });
 
-  it("does not wear the theme ConjureOS injected at boot", () => {
+  it("wears the theme ConjureOS injected at boot", () => {
     const e = makeEnv();
     e.inject("hal", "light");
 
     initAppearance(e.win);
 
-    expect(e.attrs).toEqual({ "data-theme": "win", "data-flavor": "dark" });
+    expect(e.attrs).toEqual({ "data-theme": "hal", "data-flavor": "light" });
   });
 
-  it("still records what ConjureOS is wearing", () => {
-    // The whole distinction between "locked" and "deaf". An app that never
-    // read this could not report the OS theme, and unlocking it later would be
-    // a rewrite rather than a deletion.
+  it("records what ConjureOS is wearing", () => {
     const e = makeEnv();
     e.inject("hal", "light");
 
@@ -108,26 +104,45 @@ describe("Conjure Health's locked appearance", () => {
     expect(hostAppearance()).toEqual({ theme: "hal", flavor: "light", inConjureOS: true });
   });
 
-  it("ignores a theme change pushed while it is running", () => {
+  it("changes live when the shell pushes a new theme", () => {
+    // The opposite of the old lock's "deliberately no re-apply": inheriting
+    // means a change after boot has to reach <html>, not just hostAppearance().
     const e = makeEnv();
     initAppearance(e.win);
 
     e.fromShell("xms", "light");
 
-    expect(e.attrs).toEqual({ "data-theme": "win", "data-flavor": "dark" });
-    expect(hostAppearance().theme).toBe("xms");
+    expect(e.attrs).toEqual({ "data-theme": "xms", "data-flavor": "light" });
+    expect(hostAppearance()).toEqual({ theme: "xms", flavor: "light", inConjureOS: true });
+  });
+
+  it("drops the flavor attribute again when the shell clears its override", () => {
+    // "Follow the browser" has to be reachable, not just the initial state —
+    // a user picking System in ConjureOS after picking Light needs the
+    // forced data-flavor gone, not stuck on the last value it saw.
+    const e = makeEnv();
+    e.inject("hal", "light");
+    initAppearance(e.win);
+    expect(e.attrs).toEqual({ "data-theme": "hal", "data-flavor": "light" });
+
+    e.fromShell("hal", null);
+
+    expect(e.attrs).toEqual({ "data-theme": "hal" });
+    expect(hostAppearance()).toEqual({ theme: "hal", flavor: null, inConjureOS: true });
   });
 
   it("knows it is inside ConjureOS even when the user has chosen nothing", () => {
     // Two nulls is still the shell talking: the user simply never opened
     // Settings. Keying "are we embedded?" off a non-null theme would report
-    // standalone for most people.
+    // standalone for most people. And two nulls means no attributes — the
+    // Conjure default + browser preference IS the correct rendering here.
     const e = makeEnv();
     e.inject(null, null);
 
     initAppearance(e.win);
 
     expect(hostAppearance()).toEqual({ theme: null, flavor: null, inConjureOS: true });
+    expect(e.attrs).toEqual({});
   });
 
   it("reports standalone when there is no host bridge", () => {
@@ -154,6 +169,7 @@ describe("Conjure Health's locked appearance", () => {
     e.fromElsewhere("cnd", "light");
 
     expect(hostAppearance()).toEqual({ theme: null, flavor: null, inConjureOS: false });
+    expect(e.attrs).toEqual({});
   });
 
   it("refuses a theme claim from anywhere when there is no embedder at all", () => {
@@ -168,29 +184,30 @@ describe("Conjure Health's locked appearance", () => {
     e.fromElsewhere("cnd", "light");
 
     expect(hostAppearance()).toEqual({ theme: null, flavor: null, inConjureOS: false });
+    expect(e.attrs).toEqual({});
   });
 
-  it("drops a palette it does not recognise rather than recording it", () => {
+  it("drops a palette it does not recognise rather than recording or wearing it", () => {
     const e = makeEnv();
     initAppearance(e.win);
 
     e.fromShell("brg", "neon");
 
     expect(hostAppearance()).toEqual({ theme: null, flavor: null, inConjureOS: true });
+    expect(e.attrs).toEqual({});
   });
 });
 
-describe("the locked palette has exactly one source of truth", () => {
-  it("matches the data-theme/data-flavor pinned in index.html", () => {
-    // LOCKED_THEME/LOCKED_FLAVOR here and the static attributes in index.html
-    // both exist so the right palette is on <html> before first paint, and
-    // nothing ties the two together. Relocking to a different palette by
-    // editing only one would reintroduce a flash of the wrong theme without
-    // failing a single other test in this file.
-    const theme = indexHtml.match(/data-theme="([^"]+)"/)?.[1];
-    const flavor = indexHtml.match(/data-flavor="([^"]+)"/)?.[1];
+describe("index.html carries no static palette", () => {
+  it("pins no data-theme/data-flavor on <html>", () => {
+    // The whole point of inheritance is that ConjureOS decides, live. A
+    // static pin here would reintroduce a flash of the wrong palette on
+    // every boot without failing a single other test in this file — the
+    // same trap the old locked-palette pin was written to catch, now in the
+    // opposite direction.
+    const htmlTag = indexHtml.match(/<html[^>]*>/)?.[0] ?? "";
 
-    expect(theme).toBe(LOCKED_THEME);
-    expect(flavor).toBe(LOCKED_FLAVOR);
+    expect(htmlTag).not.toMatch(/data-theme=/);
+    expect(htmlTag).not.toMatch(/data-flavor=/);
   });
 });

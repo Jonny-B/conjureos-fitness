@@ -13,8 +13,8 @@ import { initAppearance } from "./theme";
 const container = document.getElementById("root");
 if (!container) throw new Error("#root not found");
 
-// Pin Winter dark before React mounts, and start listening to ConjureOS
-// without ever acting on it. See src/theme.ts for why this app is locked.
+// Apply whatever ConjureOS is wearing before React mounts, and keep listening
+// for live changes after. See src/theme.ts.
 initAppearance();
 // The @conjureos/ui tokens are scoped to `.cui-ui`. index.html carries the
 // class for the dev server, but the single-file inline build generates its own

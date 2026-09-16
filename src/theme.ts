@@ -1,36 +1,29 @@
 /**
- * Conjure Health is locked to Winter, and does not follow the ConjureOS theme.
+ * Conjure Health inherits the ConjureOS theme + flavor. Whatever palette and
+ * light/dark mode the OS is wearing, this app wears too — at boot, and live
+ * whenever the user changes it in ConjureOS. There is no in-app override: no
+ * lock, no settings control, nothing for this file to arbitrate.
  *
- * WHY A LOCK AT ALL, given ConjureOS lets people pick one of nine palettes and
- * every other app follows it: this app is read at a glance, mid-set or
- * mid-meal, and most of what it shows is a number against a target. Its
- * charts, rings and status bands are tuned against one ground, and "over
- * target" has to stay legible in a way that survives nobody reviewing it in
- * the other seventeen combinations. Winter's cool, low-chroma palette leaves
- * the warm end of the spectrum free for exactly that signal. Halloween's
- * orange would fight it.
+ * This app used to be locked to Winter dark (its charts/rings/status bands
+ * were tuned against one ground). That lock has been lifted — the owner
+ * wants pure inheritance instead — so every literal color in src/styles.css
+ * had to stop assuming Winter dark too; see that file's header comment.
  *
- * WHAT LOCKED DOES NOT MEAN. The app still RECEIVES the OS appearance — the
- * shell injects it at boot and broadcasts every change, and we read both, so
- * `hostAppearance()` can answer "what is ConjureOS wearing" for anything that
- * wants to know. It is simply never applied. Ignoring the handshake entirely
- * would look the same today and be a different thing: a lock is a decision
- * about this app's design, not an opt-out of the platform.
+ * HOW INHERITANCE WORKS. `data-theme`/`data-flavor` on <html> are set from
+ * whatever the host last told us: the value injected at boot (kills the
+ * launch flash — see `initAppearance`), then live on every
+ * `conjureos:theme` broadcast after. No host (standalone / `npm run dev`) or
+ * no override from the host (`theme`/`flavor` came back null) both resolve
+ * to "no attribute", which is deliberate: `@conjureos/ui`'s tokens.css reads
+ * an absent `data-theme` as the Conjure default and an absent `data-flavor`
+ * as the browser's light/dark preference — exactly the fallback a standalone
+ * page (no OS to inherit from) should have anyway.
  *
- * The mirror of `@conjureos/ui`'s `ConjureTheme.init({ theme, flavor, lock:
- * true })`, written here as a typed module for the same reason Recipes has
- * one: `theme.js` installs a browser global from a <script> tag, and nothing
- * in a Vite + TypeScript app should be reaching for one of those.
- *
- * To unlock later, this becomes the ladder Recipes has (`src/theme.ts`
- * there) plus a settings control. Nothing else in the app reads these
- * attributes directly, so that change stays contained to this file.
+ * The mirror of `@conjureos/ui`'s `ConjureTheme.init({ theme, flavor })`
+ * (no `lock`), written here as a typed module for the same reason Recipes
+ * has one: `theme.js` installs a browser global from a <script> tag, and
+ * nothing in a Vite + TypeScript app should be reaching for one of those.
  */
-
-/** The palette Conjure Health is designed against. */
-export const LOCKED_THEME = "win";
-/** And the flavor. Dark, which is what the app has always been. */
-export const LOCKED_FLAVOR = "dark";
 
 const MSG = "conjureos:theme";
 
@@ -53,8 +46,10 @@ const asTheme = (v: unknown): string | null =>
 const asFlavor = (v: unknown): string | null => (v === "dark" || v === "light" ? v : null);
 
 /**
- * What ConjureOS is wearing right now, for anything that wants to report it.
- * Never what this app is wearing — that is always Winter dark.
+ * What ConjureOS is wearing right now — which, with the lock gone, is also
+ * what this app is wearing. Kept as its own accessor (rather than reading
+ * `<html>`'s attributes back) because tests and any future settings surface
+ * want the structured `{theme, flavor, inConjureOS}` shape, not a DOM read.
  */
 export const hostAppearance = (): HostAppearance => ({ ...host });
 
@@ -69,22 +64,31 @@ export const resetHostAppearance = (): void => {
   host.inConjureOS = false;
 };
 
+/** Write the current host appearance onto <html>. Absent means "inherit" —
+ * see the file header for why that is correct, not a missing case. */
+function apply(win: Window & typeof globalThis): void {
+  const el = win.document.documentElement;
+  if (host.theme) el.setAttribute("data-theme", host.theme);
+  else el.removeAttribute("data-theme");
+  if (host.flavor) el.setAttribute("data-flavor", host.flavor);
+  else el.removeAttribute("data-flavor");
+}
+
 /**
- * Pin the palette and start listening.
+ * Read whatever appearance the host has given us so far and start
+ * listening for live changes.
  *
- * Call before React mounts. The attributes are written even though
- * `index.html` also carries them, so the single-file inline build (which
- * generates its own shell) is pinned too — the same reason `main.tsx` sets
- * the `cui-ui` body class at runtime.
+ * Call before React mounts. `index.html` carries no static `data-theme`/
+ * `data-flavor` (the Conjure-default/browser-preference fallback is already
+ * correct pre-JS — see the file header), so this is the only place those
+ * attributes get set for the dev server; the single-file inline build
+ * (which generates its own shell) needs them set at runtime regardless, the
+ * same reason `main.tsx` sets the `cui-ui` body class at runtime too.
  *
  * `win` defaults to the real window and is only ever passed by the tests,
  * which hand it a fake rather than pulling jsdom in for one file.
  */
 export function initAppearance(win: Window & typeof globalThis = window): void {
-  const el = win.document.documentElement;
-  el.setAttribute("data-theme", LOCKED_THEME);
-  el.setAttribute("data-flavor", LOCKED_FLAVOR);
-
   try {
     const injected = (win as unknown as {
       __conjureos?: { appearance?: { theme?: unknown; flavor?: unknown } };
@@ -98,6 +102,8 @@ export function initAppearance(win: Window & typeof globalThis = window): void {
     /* no host bridge: standalone, and there is nothing to record */
   }
 
+  apply(win);
+
   win.addEventListener("message", (ev: MessageEvent) => {
     const data = ev.data as { type?: unknown; theme?: unknown; flavor?: unknown } | null;
     if (!data || data.type !== MSG) return;
@@ -110,12 +116,11 @@ export function initAppearance(win: Window & typeof globalThis = window): void {
     host.inConjureOS = true;
     host.theme = asTheme(data.theme);
     host.flavor = asFlavor(data.flavor);
-    // Deliberately no re-apply. This is the whole point of the lock.
+    apply(win);
   });
 
-  // Announce ourselves anyway, so the shell answers with its current
-  // appearance even if it booted first. We want the value; we just don't
-  // wear it.
+  // Announce ourselves so the shell answers with its current appearance even
+  // if it booted first.
   try {
     if (win.parent && win.parent !== win) {
       win.parent.postMessage({ type: `${MSG}:subscribe` }, "*");
