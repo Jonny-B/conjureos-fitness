@@ -1,21 +1,44 @@
-/* Conjure Fitness — mobile-first styling layered on the ConjureOS design
+/* Conjure Health — mobile-first styling layered on the ConjureOS design
    language (@conjureos/ui). Everything here is hand-rolled and scoped by the
-   class names the components emit; no CSS framework. */
+   class names the components emit; no CSS framework.
+
+   Conjure Health inherits the ConjureOS theme + flavor live (src/theme.ts) —
+   it is not locked to one palette, so nothing below may hardcode a colour
+   that only happens to look right against Winter dark. The only fixed-
+   regardless-of-theme colours left are the macro/status palette
+   (--protein/--carbs/--fat/--good/--bad) and the timeline "kind" palette
+   (--kind-*), both app-specific by design — see the comments below. */
 
 :root {
-  --bg: #0f1117;
-  --bg-2: #171a22;
-  --bg-3: #1f232e;
-  --line: rgba(255, 255, 255, 0.08);
-  --text: #e7e9ee;
-  --muted: #9aa1b1;
-  --accent: #7c6af7;
-  --accent-2: #4a9eff;
+  /* Structural tokens, re-pointed at --cui-* directly (not a frozen hex)
+     so even the pre-.cui-ui fallback is never itself a locked-palette bug. */
+  --bg: var(--cui-bg);
+  --bg-2: var(--cui-bg-1);
+  --bg-3: var(--cui-bg-2);
+  --line: var(--cui-border);
+  --text: var(--cui-fg);
+  --muted: var(--cui-fg-mute);
+  --accent: var(--cui-accent);
+  --accent-2: var(--cui-accent-soft);
+  /* Domain data-viz colors (the macro palette, good/bad) stay app-specific by
+     design: a macro's colour has to stay recognisable as THAT macro, which a
+     value that shifts with the OS theme could not promise. */
   --protein: #5ec8a6;
   --carbs: #f0b34a;
   --fat: #ef6f8e;
   --good: #5ec8a6;
   --bad: #ef6f8e;
+  /* One colour per journal "kind" (food/water/symptom/sleep/exercise/weight),
+     shared between the calendar dots and the timeline so both read as the
+     same vocabulary — see the comment at .dot-food below. Fixed for the same
+     reason the macro palette is: the whole point is telling kinds apart at a
+     glance, which the OS accent can't promise across nine themes. */
+  --kind-food: #7c6cf5;
+  --kind-water: #38bdf8;
+  --kind-symptom: #f59e0b;
+  --kind-sleep: #a78bfa;
+  --kind-exercise: #34d399;
+  --kind-weight: #f472b6;
   --radius: 14px;
   --tabbar-h: 64px;
   --version-h: 20px;
@@ -24,7 +47,7 @@
 /* Restyle on the ConjureOS design language (@conjureos/ui). <body> carries
    `.cui-ui`, so the app's structural tokens above are re-pointed at the
    official `--cui-*` set and the whole UI inherits "Modern Whimsy". Domain
-   data-viz colors (the macro palette, good/bad) stay app-specific by design.
+   data-viz colors (the macro + kind palettes) stay app-specific by design.
    Equal specificity to :root but declared later, so these win where present. */
 .cui-ui {
   --bg: var(--cui-bg);
@@ -392,8 +415,8 @@ body {
   line-height: 1.45;
 }
 .notice-error {
-  border-color: rgba(248, 113, 113, 0.35);
-  background: rgba(248, 113, 113, 0.1);
+  border-color: color-mix(in srgb, var(--cui-error) 35%, transparent);
+  background: color-mix(in srgb, var(--cui-error) 10%, transparent);
   color: var(--cui-error);
 }
 
@@ -817,8 +840,8 @@ body {
   color: var(--bad);
 }
 .step.del:hover:not(:disabled) {
-  background: rgba(248, 113, 113, 0.12);
-  border-color: rgba(248, 113, 113, 0.35);
+  background: color-mix(in srgb, var(--cui-error) 12%, transparent);
+  border-color: color-mix(in srgb, var(--cui-error) 35%, transparent);
 }
 .add-to-meal {
   margin-top: 8px;
@@ -1043,8 +1066,8 @@ body {
   top: 0;
   height: 2px;
   border-radius: 2px;
-  background: linear-gradient(90deg, transparent, var(--cui-accent, #ef4444), transparent);
-  box-shadow: 0 0 8px 1px rgba(239, 68, 68, 0.6);
+  background: linear-gradient(90deg, transparent, var(--cui-accent), transparent);
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--cui-accent) 60%, transparent);
   animation: scanline 2.4s ease-in-out infinite;
 }
 @keyframes scanline {
@@ -1482,9 +1505,9 @@ body {
    done. Deliberately styled apart from workout cards — it's a measurement,
    not another workout in the list. */
 .benchmark-hero {
-  border: 1px solid var(--cui-accent, #7c6cff);
+  border: 1px solid var(--cui-accent);
   background:
-    linear-gradient(180deg, rgba(124, 108, 255, 0.12), rgba(124, 108, 255, 0.03));
+    linear-gradient(180deg, color-mix(in srgb, var(--cui-accent) 12%, transparent), color-mix(in srgb, var(--cui-accent) 3%, transparent));
   border-radius: var(--radius);
   padding: 16px;
   display: flex;
@@ -1735,7 +1758,7 @@ body {
   position: absolute;
   inset: 0;
   width: 0;
-  background: rgba(255, 255, 255, 0.22);
+  background: color-mix(in srgb, var(--cui-fg) 22%, transparent);
   transition: width 120ms ease-out;
   pointer-events: none;
 }
@@ -1865,8 +1888,8 @@ body {
   color: var(--muted);
 }
 .source-pill.wearable {
-  background: rgba(99, 102, 241, 0.16);
-  color: var(--cui-accent, #6366f1);
+  background: var(--cui-accent-mute);
+  color: var(--cui-accent-soft);
 }
 .removed-block { margin: 4px 0 8px; }
 .removed-block summary { cursor: pointer; padding: 4px 0; }
@@ -1949,7 +1972,7 @@ body {
   text-align: center;
 }
 .player.rest {
-  background: radial-gradient(circle at 50% 30%, rgba(94, 200, 166, 0.12), transparent 60%);
+  background: radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--good) 12%, transparent), transparent 60%);
 }
 .player-top {
   display: flex;
@@ -2236,8 +2259,8 @@ html.modal-open .screen {
   padding: 18px 16px;
   border-radius: 14px;
   min-height: 96px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--cui-fg) 4%, transparent);
+  border: 1px solid var(--line);
   cursor: pointer;
   position: relative;
   transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
@@ -2250,14 +2273,14 @@ html.modal-open .screen {
   border-color: color-mix(in srgb, var(--cui-accent) 55%, transparent);
   background:
     linear-gradient(color-mix(in srgb, var(--cui-accent) 8%, transparent), color-mix(in srgb, var(--cui-accent) 2%, transparent)),
-    rgba(255, 255, 255, 0.04);
+    color-mix(in srgb, var(--cui-fg) 4%, transparent);
 }
 .snap-cta-icon {
   width: 56px; height: 56px;
   display: grid; place-items: center;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.7);
+  background: color-mix(in srgb, var(--cui-fg) 6%, transparent);
+  color: var(--muted);
 }
 .snap-cta-card.primary .snap-cta-icon {
   background: linear-gradient(135deg, var(--cui-accent), var(--cui-accent-hover));
@@ -2271,8 +2294,8 @@ html.modal-open .screen {
   position: absolute; top: 8px; right: 8px;
   font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
   padding: 2px 8px;
-  background: rgba(124, 92, 255, 0.18);
-  color: #c9bfff;
+  background: color-mix(in srgb, var(--cui-accent) 18%, transparent);
+  color: var(--cui-accent-soft);
   border-radius: 999px;
   font-weight: 600;
 }
@@ -2280,9 +2303,9 @@ html.modal-open .screen {
 .snap-frame-hint {
   display: flex; gap: 12px; align-items: flex-start;
   padding: 14px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--cui-fg) 4%, transparent);
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
   opacity: 0.9;
 }
 
@@ -2291,8 +2314,8 @@ html.modal-open .screen {
 .snap-busy-sub { font-size: 12px; opacity: 0.7; }
 .snap-spinner {
   width: 32px; height: 32px;
-  border: 3px solid rgba(255, 255, 255, 0.12);
-  border-top-color: #7c5cff;
+  border: 3px solid var(--bg-3);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: snap-spin 900ms linear infinite;
 }
@@ -2310,7 +2333,7 @@ html.modal-open .screen {
   color: inherit; padding: 4px 0;
   outline: none;
 }
-.estimate-title-input:focus { border-bottom: 1px solid rgba(124, 92, 255, 0.55); }
+.estimate-title-input:focus { border-bottom: 1px solid color-mix(in srgb, var(--cui-accent) 55%, transparent); }
 .estimate-brand-input {
   width: 100%;
   font-size: 14px;
@@ -2321,8 +2344,8 @@ html.modal-open .screen {
 
 .notice.notice-ai {
   position: relative;
-  background: rgba(124, 92, 255, 0.10);
-  border: 1px solid rgba(124, 92, 255, 0.35);
+  background: color-mix(in srgb, var(--cui-accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cui-accent) 35%, transparent);
   padding: 14px 14px 14px 22px;
   border-radius: 12px;
 }
@@ -2330,19 +2353,19 @@ html.modal-open .screen {
   content: ""; position: absolute;
   left: 6px; top: 10px; bottom: 10px; width: 4px;
   border-radius: 2px;
-  background: linear-gradient(180deg, #7c5cff, #a78bff);
+  background: linear-gradient(180deg, var(--cui-accent), var(--cui-accent-hover));
 }
 .notice-ai-headline {
   display: flex; align-items: center; gap: 6px;
   font-size: 14px; font-weight: 600;
-  color: #c9bfff;
+  color: var(--cui-accent-soft);
   margin: 0 0 4px 0;
 }
 .notice-ai-body { font-size: 13px; line-height: 1.5; opacity: 0.88; }
 .notice-ai-note { margin-top: 6px; }
 .notice.notice-soft {
-  border: 1px solid rgba(124, 92, 255, 0.35);
-  background: rgba(124, 92, 255, 0.10);
+  border: 1px solid color-mix(in srgb, var(--cui-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--cui-accent) 10%, transparent);
   padding: 10px 12px;
   border-radius: 10px;
   display: flex; gap: 8px; align-items: center;
@@ -2792,9 +2815,9 @@ button.home-card:hover {
   padding: 3px 7px;
   border-radius: 6px;
 }
-.goal-nutrition { color: var(--protein); background: rgba(94, 200, 166, 0.14); }
-.goal-workout { color: var(--accent-2); background: rgba(74, 158, 255, 0.14); }
-.goal-habit { color: var(--carbs); background: rgba(240, 179, 74, 0.14); }
+.goal-nutrition { color: var(--protein); background: color-mix(in srgb, var(--protein) 14%, transparent); }
+.goal-workout { color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
+.goal-habit { color: var(--carbs); background: color-mix(in srgb, var(--carbs) 14%, transparent); }
 .goal-label {
   font-size: 14px;
 }
@@ -3038,12 +3061,12 @@ input[type="date"].text-input {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  background: rgba(239, 68, 68, 0.08);
+  color: var(--bad);
+  border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent);
+  background: color-mix(in srgb, var(--bad) 8%, transparent);
 }
 .btn.danger:active {
-  background: rgba(239, 68, 68, 0.16);
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
 }
 
 /* ── Settings: "Reset health data" dropdown ───────────────────────────── */
@@ -3072,7 +3095,7 @@ input[type="date"].text-input {
   padding: 6px 10px;
   font-size: 12px;
 }
-.danger-text { color: #ef4444; }
+.danger-text { color: var(--bad); }
 
 /* ── W2: exercise explainer dropdown ──────────────────────────────────── */
 .explainer { width: 100%; max-width: 340px; margin: 6px auto 0; }
@@ -3096,9 +3119,9 @@ input[type="date"].text-input {
   background: var(--bg-3);
   color: var(--muted);
 }
-.explainer-source.src-ai { color: var(--accent-2); background: rgba(74, 158, 255, 0.14); }
-.explainer-source.src-user { color: var(--good); background: rgba(94, 200, 166, 0.14); }
-.explainer-source.src-coach { color: var(--accent); background: var(--cui-accent-mute, rgba(124, 106, 247, 0.14)); }
+.explainer-source.src-ai { color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
+.explainer-source.src-user { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.explainer-source.src-coach { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .explainer-howto { font-size: 13px; line-height: 1.5; margin: 0 0 8px; }
 .explainer-muscles { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .muscle-chip {
@@ -3155,14 +3178,14 @@ input[type="date"].text-input {
 
 .calories-card {
   background:
-    linear-gradient(rgba(124, 92, 255, 0.08), rgba(124, 92, 255, 0.02)),
-    rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(124, 92, 255, 0.35);
+    linear-gradient(color-mix(in srgb, var(--cui-accent) 8%, transparent), color-mix(in srgb, var(--cui-accent) 2%, transparent)),
+    color-mix(in srgb, var(--cui-fg) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cui-accent) 35%, transparent);
   border-radius: 14px;
   padding: 18px 16px;
   text-align: center;
 }
-.calories-card.low-confidence { border-left: 3px solid #d4a017; }
+.calories-card.low-confidence { border-left: 3px solid var(--cui-warning); }
 .estimate-calories-input {
   width: 100%;
   background: transparent; border: none;
@@ -3173,24 +3196,24 @@ input[type="date"].text-input {
 }
 .calories-card-label {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
-  color: #c9bfff;
+  color: var(--cui-accent-soft);
   margin-top: 4px;
 }
 
 .macros-edit-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .macro-edit {
   position: relative;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--cui-fg) 4%, transparent);
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 14px 8px;
   text-align: center;
   display: flex; flex-direction: column; gap: 4px;
 }
 .macro-edit.full { grid-column: 1 / -1; }
-.macro-edit.protein { border-bottom: 3px solid #f8766d; }
-.macro-edit.carbs { border-bottom: 3px solid #00ba38; }
-.macro-edit.fat { border-bottom: 3px solid #619cff; }
+.macro-edit.protein { border-bottom: 3px solid var(--protein); }
+.macro-edit.carbs { border-bottom: 3px solid var(--carbs); }
+.macro-edit.fat { border-bottom: 3px solid var(--fat); }
 .macro-edit-label {
   font-size: 11px; opacity: 0.7;
   text-transform: uppercase; letter-spacing: 0.04em;
@@ -3209,8 +3232,8 @@ input[type="date"].text-input {
 .disclosure {
   width: 100%;
   display: flex; justify-content: space-between; align-items: center;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--cui-fg) 4%, transparent);
+  border: 1px solid var(--line);
   border-radius: 10px;
   padding: 12px 14px;
   font-size: 13px;
@@ -3226,8 +3249,8 @@ input[type="date"].text-input {
   font-size: 11px; opacity: 0.85;
 }
 .more-nutrient-field input {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--cui-fg) 4%, transparent);
+  border: 1px solid var(--line);
   border-radius: 8px;
   color: inherit;
   padding: 8px 10px;
@@ -3238,7 +3261,7 @@ input[type="date"].text-input {
   content: "";
   display: inline-block;
   width: 6px; height: 6px; border-radius: 50%;
-  background: #7c5cff;
+  background: var(--cui-accent);
   margin-right: 6px;
   vertical-align: middle;
 }
@@ -3248,10 +3271,10 @@ input[type="date"].text-input {
 .estimate-actions {
   position: sticky; bottom: 0;
   padding: 14px 16px;
-  background: rgba(0, 0, 0, 0.55);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--line);
   margin: 0 -16px;
   display: flex; flex-direction: column; gap: 6px;
 }
@@ -3261,7 +3284,7 @@ input[type="date"].text-input {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--cui-fg) 6%, transparent);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -3544,7 +3567,7 @@ input[type="date"].text-input {
 }
 .chat-bubble.assistant {
   align-self: flex-start;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-2);
   border: 1px solid var(--line);
   border-bottom-left-radius: 5px;
 }
@@ -3641,7 +3664,7 @@ input[type="date"].text-input {
     transition: background var(--cui-duration) var(--cui-ease);
   }
   .tabbar .tab:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--cui-surface-hover);
   }
   .tabbar .tab.active {
     background: color-mix(in srgb, var(--accent) 16%, transparent);
@@ -3816,14 +3839,14 @@ input[type="date"].text-input {
 .wb-bar {
   height: 6px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-3);
   overflow: hidden;
   margin: 8px 0 10px;
 }
 .wb-bar-fill {
   height: 100%;
   border-radius: 3px;
-  background: linear-gradient(90deg, #38bdf8, #60a5fa);
+  background: linear-gradient(90deg, var(--kind-water), #60a5fa);
   transition: width var(--cui-duration-slow, 320ms) var(--cui-ease, ease);
 }
 
@@ -3836,13 +3859,13 @@ input[type="date"].text-input {
   padding: 7px 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--cui-fg) 4%, transparent);
   color: var(--text);
   font-size: 13px;
   cursor: pointer;
   transition: background var(--cui-duration) var(--cui-ease);
 }
-.chip-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.09); }
+.chip-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--cui-fg) 9%, transparent); }
 .chip-btn:disabled { opacity: 0.5; cursor: default; }
 .chip-btn.active {
   background: color-mix(in srgb, var(--accent) 24%, transparent);
@@ -3953,26 +3976,26 @@ input[type="date"].text-input {
 .cal-dots .dot { width: 5px; height: 5px; border-radius: 50%; display: block; }
 /* One colour per kind, shared with the timeline so the grid and the day read
    as the same vocabulary. */
-.dot-food, .tl-food .tl-dot { background: #7c6cf5; }
-.dot-water, .tl-water .tl-dot { background: #38bdf8; }
-.dot-symptom, .tl-symptom .tl-dot { background: #f59e0b; }
-.dot-sleep, .tl-sleep .tl-dot { background: #a78bfa; }
-.dot-exercise, .tl-exercise .tl-dot { background: #34d399; }
-.dot-weight, .tl-weight .tl-dot { background: #f472b6; }
+.dot-food, .tl-food .tl-dot { background: var(--kind-food); }
+.dot-water, .tl-water .tl-dot { background: var(--kind-water); }
+.dot-symptom, .tl-symptom .tl-dot { background: var(--kind-symptom); }
+.dot-sleep, .tl-sleep .tl-dot { background: var(--kind-sleep); }
+.dot-exercise, .tl-exercise .tl-dot { background: var(--kind-exercise); }
+.dot-weight, .tl-weight .tl-dot { background: var(--kind-weight); }
 
 .day-detail-title { font-size: 17px; font-weight: 700; margin: 0 0 10px; }
 .day-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
 .day-chip {
   padding: 5px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--cui-fg) 6%, transparent);
   border: 1px solid var(--line);
   font-size: 12.5px;
 }
 .day-chip.warn {
-  background: rgba(245, 158, 11, 0.14);
-  border-color: rgba(245, 158, 11, 0.4);
-  color: #fcd34d;
+  background: color-mix(in srgb, var(--cui-warning) 14%, transparent);
+  border-color: color-mix(in srgb, var(--cui-warning) 40%, transparent);
+  color: var(--cui-warning);
 }
 
 .timeline { list-style: none; margin: 0; padding: 0; }
@@ -3997,7 +4020,7 @@ input[type="date"].text-input {
   cursor: pointer;
   transition: background var(--cui-duration) var(--cui-ease);
 }
-.tl-row:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); }
+.tl-row:hover:not(:disabled) { background: var(--cui-surface-hover); }
 .tl-row:disabled { cursor: default; }
 
 .entry-headline { font-size: 17px; font-weight: 700; margin-bottom: 14px; }
@@ -4154,7 +4177,7 @@ input[type="date"].text-input {
   width: 44px;
   height: 26px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--bg-3);
   transition: background var(--cui-duration) var(--cui-ease);
 }
 .toggle-track.on { background: var(--accent); }
@@ -4165,7 +4188,8 @@ input[type="date"].text-input {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--cui-on-accent);
+  box-shadow: var(--cui-shadow-sm);
   transition: transform var(--cui-duration) var(--cui-ease);
 }
 .toggle-track.on .toggle-knob { transform: translateX(18px); }
@@ -4268,7 +4292,7 @@ input[type="date"].text-input {
   width: 46px;
   height: 46px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--cui-accent-mute);
   color: var(--accent);
 }
 .shot-thumb {

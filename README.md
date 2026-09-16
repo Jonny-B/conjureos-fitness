@@ -51,22 +51,30 @@ swap without touching the UI:
 
 ## Appearance
 
-Conjure Health is **locked to Winter dark** and does not follow the ConjureOS
-theme. Most of this app is a number against a target, and its charts, rings and
-status bands are tuned against one ground; Winter's cool, low-chroma palette
-leaves the warm end of the spectrum free for "over target", which is the one
-signal that must never be ambiguous.
+Conjure Health **inherits the ConjureOS theme + flavor** — whatever palette
+and light/dark mode the OS is wearing, this app wears too, live. There is no
+in-app override: no lock, no settings control.
 
-Locked does not mean deaf. `src/theme.ts` still receives the OS appearance
-(from the shim at boot, and from every broadcast after) and exposes it through
-`hostAppearance()`. It is simply never applied. To unlock later, that file
-becomes the ladder the Recipes app has plus a settings control; nothing else in
-the app reads `data-theme` directly.
+`src/theme.ts` applies the OS appearance from the shim at boot (kills the
+launch flash) and from every broadcast after, and exposes it through
+`hostAppearance()`. No host (standalone / `npm run dev`) or no OS override
+both fall back to the Conjure default + the browser's light/dark preference,
+which `@conjureos/ui`'s tokens.css already treats as "no `data-theme`"/"no
+`data-flavor`" — the correct behavior, not a missing case.
 
-Never hardcode a colour. `--cui-on-accent` is dark in six of the nine palettes,
-so `color: #fff` on a filled control is a bug even while the app is pinned to
-one of them. The camera and scanner overlays are the exception: their white
-sits over a live video feed, not over a themed surface.
+This app used to be locked to Winter dark; the lock has been lifted. It never
+meant deaf even then — `hostAppearance()` predates the unlock — but every
+literal color in `src/styles.css` had to stop assuming Winter dark once the
+palette could actually change under it.
+
+Never hardcode a colour. `--cui-on-accent` is dark in six of the nine
+palettes, so `color: #fff` on a filled control is a bug. The camera and
+scanner overlays are the exception: their white sits over a live video feed,
+not over a themed surface. The macro/status palette
+(`--protein`/`--carbs`/`--fat`/`--good`/`--bad`) and the timeline "kind"
+palette (`--kind-*`, one colour per journal entry type) are also exceptions,
+deliberately fixed rather than theme-following — see the comment at the top
+of `src/styles.css`.
 
 ## Development
 
