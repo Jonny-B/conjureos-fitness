@@ -1313,6 +1313,12 @@ body {
   font-size: 16px;
   font-variant-numeric: tabular-nums;
 }
+.qty-stepper .qty-unit {
+  width: auto;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding-right: 30px;
+}
 .qty-stepper .step {
   width: 44px;
   height: 44px;
@@ -3512,6 +3518,7 @@ input[type="date"].text-input {
   margin: 12px auto 0;
   padding: 9px 18px;
   font-size: 13px;
+  min-height: 44px;
 }
 
 /* ── Ask about food ──────────────────────────────────────────────────────

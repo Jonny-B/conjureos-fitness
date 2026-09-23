@@ -352,6 +352,7 @@ export function App() {
             onLogged={onLogged}
             onCancel={() => setTab(addReturn)}
             onModeChange={setAddMode}
+            units={profile?.units ?? "metric"}
           />
         ) : tab === "journal" ? (
           <JournalScreen units={profile?.units ?? "metric"} nonce={nonce} />
