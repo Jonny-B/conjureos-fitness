@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { aiErrorMessage, type ChatImage } from "../bridge/ai";
-import type { FoodItem, MealType } from "../types";
+import type { FoodItem, MealType, Profile } from "../types";
+import {
+  fromServings,
+  isVolume,
+  stepFor,
+  toServings,
+  unitsFor,
+  UNIT_LABELS,
+  type AmountUnit,
+} from "../features/servingUnits";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { searchFoods, lookupBarcode, rememberCorrection } from "../features/foods/foodSearch";
@@ -19,6 +28,7 @@ import { BarcodeScanner } from "../components/BarcodeScanner";
 import { NumberField } from "../components/NumberField";
 import { MIN_QTY } from "./MealDetailScreen";
 import { CameraCapture } from "../components/CameraCapture";
+import { SymptomSheet } from "../components/SymptomSheet";
 import { PackageCapture, type PackageResult } from "../components/PackageCapture";
 import { EditableNutritionPreview } from "../components/EditableNutritionPreview";
 import {
@@ -51,6 +61,8 @@ interface Props {
   /** Fired when the user switches input mode inside the screen, so the shell
    *  header can track it (Scan Barcode / AI / Search). */
   onModeChange?: (mode: AddMode) => void;
+  /** Display preference; orders the amount-unit picker. */
+  units?: Profile["units"];
 }
 
 /** Order matters and is shared with the meal screen's buttons: Scan, then AI,
@@ -71,6 +83,7 @@ export function AddFoodScreen({
   defaultMode = "search",
   onLogged,
   onModeChange,
+  units = "metric",
 }: Props) {
   const [selected, setSelected] = useState<{
     food: FoodItem;
@@ -115,6 +128,7 @@ export function AddFoodScreen({
         food={selected.food}
         recipeSlug={selected.recipeSlug}
         initialQty={selected.initialQty ?? 1}
+        units={units}
         date={date}
         defaultMeal={meal}
         onLogged={onLogged}
@@ -513,7 +527,10 @@ function AiMode({
   meal: MealType;
   onLogged: () => void;
 }) {
-  const [tab, setTab] = useState<AiTab>("photo");
+  // Opens on the text path. Most logging happens after the meal, from memory,
+  // and <CameraCapture> asks for camera permission the moment it mounts, so the
+  // camera waits until the user picks the photo tab (ConjureOS #542).
+  const [tab, setTab] = useState<AiTab>("text");
   const [text, setText] = useState("");
   const [items, setItems] = useState<FoodItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -615,7 +632,7 @@ function AiMode({
   return (
     <div className="mode-body">
       <div className="segmented" role="tablist">
-        {(["photo", "text"] as AiTab[]).map((t) => (
+        {(["text", "photo"] as AiTab[]).map((t) => (
           <button
             key={t}
             role="tab"
@@ -924,10 +941,12 @@ function LogPanel({
   onLogged,
   onBack,
   onFix,
+  units,
 }: {
   food: FoodItem;
   recipeSlug?: string;
   initialQty: number;
+  units: Profile["units"];
   date: string;
   defaultMeal: MealType;
   onLogged: () => void;
@@ -935,13 +954,30 @@ function LogPanel({
   /** The user says these numbers are wrong. */
   onFix: () => void;
 }) {
+  // `amount` is what the user typed, in `unit`; `q` is the serving multiplier
+  // the diary stores. They differ only when a gram weight lets the user say
+  // "8 fl oz" instead of "2.37 servings of 100 g" (ConjureOS #475).
+  const [unit, setUnit] = useState<AmountUnit>("serving");
   const [qty, setQty] = useState<number | undefined>(initialQty);
   const [meal, setMeal] = useState<MealType>(defaultMeal);
   const [busy, setBusy] = useState(false);
+  // Symptoms sit beside food in the same Journal, so they can be noted from
+  // here without leaving the food being added (ConjureOS #619).
+  const [symptomOpen, setSymptomOpen] = useState(false);
+  const [symptomSaved, setSymptomSaved] = useState(false);
+  const unitOptions = unitsFor(food, units);
+  const step = stepFor(unit);
+  const inServings = unit === "serving";
 
   // A cleared field reads as 0 here (honest preview) and blocks Add below,
   // rather than silently substituting the minimum.
-  const q = qty ?? 0;
+  const q = toServings(qty ?? 0, unit, food);
+
+  const changeUnit = (next: AmountUnit) => {
+    // Keep the same amount of food, restated in the new unit.
+    setQty(fromServings(q, next, food));
+    setUnit(next);
+  };
   const cal = Math.round(food.perServing.calories * q);
 
   const log = async () => {
@@ -952,7 +988,11 @@ function LogPanel({
       await repo.addDiaryEntry({
         date,
         meal,
-        quantity: Math.max(MIN_QTY, Math.round(qty * 100) / 100),
+        // A typed weight is kept to the gram, so it gets a finer floor and
+        // precision than the serving stepper.
+        quantity: inServings
+          ? Math.max(MIN_QTY, Math.round(q * 100) / 100)
+          : Math.max(0.001, Math.round(q * 1000) / 1000),
         food,
       });
       if (recipeSlug) await markCooked(recipeSlug);
@@ -978,9 +1018,14 @@ function LogPanel({
       </div>
 
       <label className="field">
-        <span>Servings ({food.servingSize})</span>
+        <span>{inServings ? `Servings (${food.servingSize})` : `Amount (1 serving is ${food.servingSize})`}</span>
         <div className="qty-stepper">
-          <button className="step" onClick={() => setQty((v) => Math.max(MIN_QTY, Math.round(((v ?? 0) - 0.25) * 4) / 4))}>
+          <button
+            className="step"
+            onClick={() =>
+              setQty((v) => Math.max(inServings ? MIN_QTY : step, Math.round(((v ?? 0) - step) / step) * step))
+            }
+          >
             −
           </button>
           {/* Same reason as the edit modal: clamping to the min on every
@@ -989,15 +1034,32 @@ function LogPanel({
             className="qty-input"
             value={qty}
             onChange={setQty}
-            min={MIN_QTY}
-            max={99}
+            min={inServings ? MIN_QTY : 0}
+            max={inServings ? 99 : 9999}
             decimals={2}
-            aria-label="Servings"
+            aria-label={inServings ? "Servings" : `Amount in ${UNIT_LABELS[unit]}`}
           />
-          <button className="step" onClick={() => setQty((v) => Math.round(((v ?? 0) + 0.25) * 4) / 4)}>
+          <button className="step" onClick={() => setQty((v) => Math.round(((v ?? 0) + step) / step) * step)}>
             +
           </button>
+          {unitOptions.length > 1 && (
+            <select
+              className="select qty-unit"
+              aria-label="Unit"
+              value={unit}
+              onChange={(e) => changeUnit(e.target.value as AmountUnit)}
+            >
+              {unitOptions.map((u) => (
+                <option key={u} value={u}>
+                  {UNIT_LABELS[u]}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
+        {isVolume(unit) && (
+          <span className="muted small">Volume is converted as if it weighs the same as water.</span>
+        )}
       </label>
 
       <label className="field">
@@ -1014,6 +1076,21 @@ function LogPanel({
       <button className="btn log-report" onClick={onFix}>
         Looks wrong?
       </button>
+
+      <button className="btn log-report" onClick={() => setSymptomOpen(true)}>
+        {symptomSaved ? "Symptom saved. Add another?" : "Log how you felt"}
+      </button>
+
+      {symptomOpen && (
+        <SymptomSheet
+          date={date}
+          onClose={() => setSymptomOpen(false)}
+          onSaved={() => {
+            setSymptomOpen(false);
+            setSymptomSaved(true);
+          }}
+        />
+      )}
     </div>
   );
 }
