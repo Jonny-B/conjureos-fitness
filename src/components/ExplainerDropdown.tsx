@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ExerciseExplainer } from "../types";
 import { normalizeExerciseKey } from "../features/explainers/normalizeKey";
 import { resolveExplainer, saveUserExplainer } from "../features/explainers/resolve";
+import { persist } from "../data/saveFailure";
 
 interface Props {
   name: string;
@@ -56,7 +57,7 @@ export function ExplainerDropdown({ name }: Props) {
       usefulData: useful.trim() || undefined,
       source: "user",
     };
-    await saveUserExplainer(e).catch(() => {});
+    if (!(await persist("your explanation", saveUserExplainer(e)))) return;
     setExplainer(e);
     setEditing(false);
   };

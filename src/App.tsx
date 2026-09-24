@@ -193,7 +193,8 @@ export function App() {
       const res = await commitNewPlan(created, { body, currentProfile: profile, currentGoals: goals });
       // Coach continuity: the plan swap is a new episode on an unbroken
       // history — record it so the coach references the archive, not confusion.
-      recordPlanStarted(res.plan, plan).catch(() => {});
+      // Never throws: a failed write is reported to the user inside remember().
+      void recordPlanStarted(res.plan, plan);
       setPlan(res.plan);
       setProfile(res.profile);
       setGoals(res.goals);

@@ -268,7 +268,7 @@ export async function coachChat(
   //    extracted (silent, best-effort) — this is what makes chat feedback shape
   //    FUTURE workouts, not just the current reply.
   const mem = parseRemember(raw);
-  if (mem) await remember(mem).catch(() => {});
+  if (mem) await remember(mem);
 
   // 1. A proposal (the ask) takes precedence, unless the follow-up budget is spent.
   if (opts?.canPropose !== false) {
@@ -305,7 +305,7 @@ export async function coachChat(
         const summary = summaries.join("; ");
         await remember({
           events: [{ at: new Date().toISOString(), kind: "plan_adjusted", text: summary }],
-        }).catch(() => {});
+        });
         return {
           reply: reply ? `${reply}\n\n✓ Plan updated: ${summary}` : `✓ Plan updated: ${summary}`,
           planUpdate: { plan, summary },
