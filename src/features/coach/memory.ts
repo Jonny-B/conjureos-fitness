@@ -1,11 +1,13 @@
 /**
- * Coach memory persistence — one VFS doc, load-merge-save. All writes are
- * best-effort (readJson/writeJson never throw); the in-memory result is
- * returned so callers can keep going even if persistence failed.
+ * Coach memory persistence: one VFS doc, load-merge-save. The VFS is the same
+ * on every backend. A failed write is reported through reportSaveFailure
+ * (logged, and the user is told), never thrown, so callers keep going with the
+ * returned in-memory result.
  */
 
 import type { Plan } from "../../types";
-import { readJson, writeJson } from "../../bridge/vfs";
+import { readJson, writeJsonOrThrow } from "../../bridge/vfs";
+import { reportSaveFailure } from "../../data/saveFailure";
 import { EMPTY_MEMORY, type CoachEvent, type CoachMemory, type CoachMetric } from "./model";
 
 const MEMORY_PATH = "coach.json";
@@ -53,7 +55,11 @@ export async function remember(patch: MemoryPatch): Promise<CoachMemory> {
   if (patch.summary?.trim()) m.summary = patch.summary.trim().slice(0, 600);
   if (patch.events?.length) m.events = [...patch.events, ...m.events].slice(0, MAX_EVENTS);
   if (patch.metrics?.length) m.metrics = [...patch.metrics, ...m.metrics].slice(0, MAX_METRICS);
-  await writeJson(MEMORY_PATH, m);
+  try {
+    await writeJsonOrThrow(MEMORY_PATH, m);
+  } catch (err) {
+    reportSaveFailure("what your coach remembers", err);
+  }
   return m;
 }
 

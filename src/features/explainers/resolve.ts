@@ -10,7 +10,7 @@
  */
 
 import type { ExerciseExplainer } from "../../types";
-import { readJson, writeJson } from "../../bridge/vfs";
+import { readJson, writeJson, writeJsonOrThrow } from "../../bridge/vfs";
 import { complete, extractJson } from "../../bridge/ai";
 
 const userPath = (key: string) => `explainers/user/${key}.json`;
@@ -90,8 +90,9 @@ export async function resolveExplainer(
 }
 
 /** Persist a user-authored/edited explainer; it wins over trainer + AI. */
+/** Throws when the write fails, so the caller can tell the user. */
 export async function saveUserExplainer(explainer: ExerciseExplainer): Promise<void> {
-  await writeJson(userPath(explainer.exerciseKey), {
+  await writeJsonOrThrow(userPath(explainer.exerciseKey), {
     ...explainer,
     source: "user",
     cachedAt: undefined,

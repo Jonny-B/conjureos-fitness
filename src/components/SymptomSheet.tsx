@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { COMMON_SYMPTOMS } from "../types";
 import { getRepository } from "../data/repository";
+import { reportSaveFailure } from "../data/saveFailure";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { CloseIcon } from "./icons";
 
@@ -43,6 +44,8 @@ export function SymptomSheet({
         ...(note.trim() ? { note: note.trim() } : {}),
       });
       onSaved();
+    } catch (err) {
+      reportSaveFailure("how you felt", err);
     } finally {
       setBusy(false);
     }

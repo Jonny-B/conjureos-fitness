@@ -93,7 +93,12 @@ export async function readJson<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
-/** Best-effort JSON write — persistence failures never throw to callers. */
+/** JSON write that throws when it fails, for data the user would miss. */
+export async function writeJsonOrThrow(path: string, value: unknown): Promise<void> {
+  await vfs.write(path, JSON.stringify(value));
+}
+
+/** Best-effort JSON write for caches: persistence failures never throw to callers. */
 export async function writeJson(path: string, value: unknown): Promise<void> {
   try {
     await vfs.write(path, JSON.stringify(value));

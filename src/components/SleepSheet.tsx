@@ -11,6 +11,7 @@
 import { useMemo, useState } from "react";
 import type { SleepEntry } from "../types";
 import { getRepository } from "../data/repository";
+import { reportSaveFailure } from "../data/saveFailure";
 import { newId } from "../data/id";
 import {
   buildSleepEntry,
@@ -64,6 +65,8 @@ export function SleepSheet({
       const repo = await getRepository();
       await repo.saveSleep(entry);
       onSaved();
+    } catch (err) {
+      reportSaveFailure("your sleep", err);
     } finally {
       setBusy(false);
     }
@@ -76,6 +79,8 @@ export function SleepSheet({
       const repo = await getRepository();
       await repo.removeSleep(existing.id);
       onSaved();
+    } catch (err) {
+      reportSaveFailure("that change to your sleep", err);
     } finally {
       setBusy(false);
     }

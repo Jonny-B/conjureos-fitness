@@ -42,13 +42,6 @@ export type NewSymptomEntry = Omit<SymptomEntry, "id" | "loggedAt"> & { loggedAt
 export type DayLogPatch = Partial<Omit<DailyCheckoff, "date">>;
 
 /**
- * Error thrown by SupabaseRepository for every v2 plan path. The v2 data model
- * is VFS-only for now (DECISIONS 2026-06-24); callers catch this to fall back
- * to the mock layer rather than surfacing it to the user.
- */
-export const PLAN_REQUIRES_V2_BACKEND = "PLAN_REQUIRES_V2_BACKEND";
-
-/**
  * The persistence contract every screen and feature codes against.
  *
  * Implementations must be behaviourally identical: same ordering, same
@@ -143,8 +136,7 @@ export interface Repository {
   clearSymptoms(): Promise<void>;
 
   // ── v2: plans + daily check-off + coached sessions ──────────────────
-  // VFS-only today. SupabaseRepository throws PLAN_REQUIRES_V2_BACKEND for
-  // every method here (see DECISIONS 2026-06-24).
+  // No server tables: every backend keeps these in the on-device store.
 
   /** The active plan, or null when the user hasn't created one. */
   getPlan(): Promise<Plan | null>;
