@@ -23,7 +23,7 @@ interface Props {
   onChangeDate: (date: string) => void;
   onOpenMeal: (meal: MealType) => void;
   onOpenPlan: () => void;
-  onOpenWorkouts: () => void;
+  onOpenExercise: () => void;
   /** Fired when this screen writes something the shell also renders. */
   onMutated: () => void;
 }
@@ -40,7 +40,7 @@ export function DiaryScreen({
   onChangeDate,
   onOpenMeal,
   onOpenPlan,
-  onOpenWorkouts,
+  onOpenExercise,
   onMutated,
 }: Props) {
   const [view, setView] = useState<DayView | null>(null);
@@ -116,9 +116,9 @@ export function DiaryScreen({
             </div>
           </div>
 
-          {/* Workout item — opens the Workouts view. Calories burned add back to
-              the day's budget (reflected in the ring + the summary below). */}
-          <button className="workout-stat" onClick={onOpenWorkouts} aria-label="Open workouts">
+          {/* Exercise item — opens the Exercise screen. Calories burned add back
+              to the day's budget (reflected in the ring + the summary below). */}
+          <button className="workout-stat" onClick={onOpenExercise} aria-label="Open exercise">
             <span className="workout-stat-icon" aria-hidden>
               <WorkoutsIcon size={18} />
             </span>

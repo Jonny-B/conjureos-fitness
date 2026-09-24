@@ -1,12 +1,13 @@
 /**
- * The day's completed workouts + exercise-calorie total, COMBINING in-app
- * sessions with wearable/Apple-Health workouts.
+ * The day's completed workouts + exercise-calorie total, COMBINING exercise
+ * entries (added by hand, or logged by another app through `logWorkout`) with
+ * wearable/Apple-Health workouts.
  *
  * Calories from both sources ADD together (a manual workout and an Apple Health
  * workout are distinct efforts). Because we can't delete from Apple Health, the
  * user "removes" a wearable workout by excluding it locally and "edits" it by
- * storing a kcal override — both per-day on `DailyCheckoff` (reversible). In-app
- * sessions are edited/deleted for real.
+ * storing a kcal override — both per-day on `DailyCheckoff` (reversible).
+ * Entries are edited/deleted for real.
  *
  * Single source of truth for exercise calories: the diary ring and the cross-app
  * `todayTotals` action both call `exerciseCaloriesForDate`.
@@ -19,8 +20,8 @@ import { readWorkouts, type WorkoutBurn } from "../bridge/health";
 import { shiftDate, todayISO } from "./diary";
 import { newId } from "../data/id";
 
-/** Where a completed workout came from: run inside this app, or synced from
- *  Apple Health / another wearable. */
+/** Where a completed workout came from: an entry stored by this app (added
+ *  here or by another app), or synced from Apple Health / another wearable. */
 export type CompletedSource = "app" | "wearable";
 
 /**
@@ -32,7 +33,7 @@ export interface CompletedWorkout {
   /** Stable key: the session id (app) or `${start}-${workoutType}` (wearable). */
   key: string;
   source: CompletedSource;
-  /** Short provenance label, e.g. "In-app" or the wearable/app source name. */
+  /** Short provenance label, e.g. "Added by you" or the wearable's name. */
   sourceLabel: string;
   name: string;
   /** Effective calories (wearable override applied). */
@@ -71,6 +72,16 @@ function labelForWorkoutType(t: string): string {
   return /^[a-zA-Z ]+$/.test(cleaned) ? cleaned : "Workout";
 }
 
+/** Provenance for a stored entry. "app" stands for a missing `source`: a
+ *  session from the workout player this app used to have. */
+const SOURCE_LABELS: Record<string, string> = {
+  manual: "Added by you",
+  logWorkout: "From an app",
+  healthkit: "Apple Health",
+  health_connect: "Health Connect",
+  app: "In-app",
+};
+
 function nameForSession(s: WorkoutSession): string {
   if (s.workoutName) return s.workoutName;
   if (s.cardio) return "Cardio";
@@ -105,7 +116,7 @@ export async function listCompletedWorkouts(date: string): Promise<CompletedWork
       item: {
         key: s.id,
         source: "app" as const,
-        sourceLabel: s.source === "manual" ? "Added by you" : "In-app",
+        sourceLabel: SOURCE_LABELS[s.source ?? "app"] ?? "In-app",
         name: nameForSession(s),
         kcal: s.caloriesBurned ?? 0,
         durationSec: s.durationSec ?? s.cardio?.durationSec ?? undefined,
@@ -188,9 +199,6 @@ export async function addManualExercise(date: string, input: ManualExerciseInput
     id: newId(),
     date,
     workoutName: input.name.trim().slice(0, 60),
-    planned: [],
-    actual: [],
-    reprompts: [],
     completedAt: new Date().toISOString(),
     caloriesBurned: Math.round(input.calories),
     ...(input.durationMin ? { durationSec: Math.round(input.durationMin * 60) } : {}),
@@ -201,58 +209,13 @@ export async function addManualExercise(date: string, input: ManualExerciseInput
   return session;
 }
 
-// ── quick-add presets ───────────────────────────────────────────────────
-
-/** A basic workout with a predefined calorie burn for a set number of minutes. */
-export interface ExercisePreset {
-  id: string;
-  name: string;
-  /** How long the predefined burn is for. */
-  minutes: number;
-  /** Calories burned in `minutes`. */
-  kcal: number;
-}
-
-/**
- * Basic workouts with predefined calories, for the Workouts tab's quick add.
- *
- * Each figure is a typical burn for a ~70 kg (155 lb) adult at a moderate pace
- * (MET × kg × hours, MET values from the Compendium of Physical Activities),
- * rounded to the nearest 10. It is a starting point, not a measurement: the Add
- * sheet shows the number before it is saved, so the user can correct it. A
- * preset is logged as an ordinary manual exercise, so it reaches the calorie
- * ring the same way.
- */
-export const EXERCISE_PRESETS: readonly ExercisePreset[] = [
-  { id: "walk", name: "Walking", minutes: 30, kcal: 120 },
-  { id: "run", name: "Running", minutes: 30, kcal: 300 },
-  { id: "cycle", name: "Cycling", minutes: 30, kcal: 250 },
-  { id: "swim", name: "Swimming", minutes: 30, kcal: 250 },
-  { id: "hike", name: "Hiking", minutes: 60, kcal: 420 },
-  { id: "elliptical", name: "Elliptical", minutes: 30, kcal: 180 },
-  { id: "row", name: "Rowing machine", minutes: 30, kcal: 250 },
-  { id: "strength", name: "Strength training", minutes: 45, kcal: 180 },
-  { id: "hiit", name: "HIIT", minutes: 20, kcal: 190 },
-  { id: "yoga", name: "Yoga", minutes: 30, kcal: 100 },
-];
-
-/**
- * A preset's calories for `minutes` of it, scaled from its predefined burn:
- * 60 minutes of the 30-minute, 120-calorie walk is 240. Anything but a
- * positive number of minutes gives back the preset's own figure.
- */
-export function presetKcal(preset: ExercisePreset, minutes: number | undefined): number {
-  if (minutes === undefined || !Number.isFinite(minutes) || minutes <= 0) return preset.kcal;
-  return Math.round((preset.kcal / preset.minutes) * minutes);
-}
-
-/** Delete an in-app session. */
+/** Delete an exercise entry (anything but a wearable workout). */
 export async function removeSession(id: string): Promise<void> {
   const repo = await getRepository();
   await persist("that change to your workouts", repo.removeWorkoutSession(id));
 }
 
-/** Edit an in-app session's burned calories. */
+/** Edit an exercise entry's burned calories (anything but a wearable workout). */
 export async function setSessionKcal(id: string, kcal: number): Promise<void> {
   const repo = await getRepository();
   const s = (await repo.listWorkoutSessions().catch(() => [])).find((x) => x.id === id);

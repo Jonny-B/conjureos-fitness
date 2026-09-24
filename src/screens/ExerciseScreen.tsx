@@ -1,6 +1,4 @@
 import { useEffect, useState } from "react";
-import type { Plan, Profile, Workout } from "../types";
-import { BUILT_IN_WORKOUTS } from "../features/workouts";
 import { formatDay, todayISO } from "../features/diary";
 import { fmtDuration } from "../features/units";
 import {
@@ -12,100 +10,39 @@ import {
   setWearableKcal,
   addManualExercise,
   manualExerciseProblem,
-  EXERCISE_PRESETS,
-  presetKcal,
   type CompletedWorkout,
-  type ExercisePreset,
 } from "../features/exercise";
 import { NumberField } from "../components/NumberField";
-import { AddIcon, PlayIcon, CloseIcon, TrashIcon } from "../components/icons";
-import { WorkoutRunner, metaLine } from "./WorkoutRunner";
+import { CloseIcon, TrashIcon } from "../components/icons";
 
 /**
- * Workouts tab — a library of ready-to-run workouts PLUS a "Completed today"
- * list that combines in-app sessions and wearable/Apple-Health workouts. From
- * there the user can adjust a workout's burned calories or remove it from the
- * day's total (wearable removals are local + reversible; see features/exercise),
- * and add one: a basic workout with predefined calories, or anything typed in.
+ * The exercise behind the calorie ring's Exercise row: one day's exercise from
+ * every source — added here by hand, synced from Apple Health or another
+ * wearable, or logged by another app (a fitness app, say) through the
+ * `logWorkout` action. Its calories are added back to the day's budget, so the
+ * user must be able to see them, correct them, and remove what's wrong
+ * (wearable removals are local + reversible; see features/exercise).
  *
- * In `exerciseOnly` mode (the coach/workout pause — see features/flags) the
- * library and the runner are gone and only the completed list and the adding
- * render. Apple Health calories still feed the calorie ring while the coach is
- * paused, so the user must keep a way to see and correct the numbers moving
- * their budget, and a way to add exercise their watch didn't catch; this screen
- * is that surface, reached from the Workouts tab and the ring's Exercise row.
+ * Workouts themselves — a library, a player, a program — are not part of
+ * Conjure Health; they live in a separate fitness app.
  */
-export function WorkoutsScreen({
-  units,
-  plan,
-  onPlanChange,
+export function ExerciseScreen({
   date = todayISO(),
   nonce = 0,
   onMutated,
-  exerciseOnly = false,
 }: {
-  units: Profile["units"];
-  plan: Plan | null;
-  onPlanChange: (plan: Plan | null) => void;
   date?: string;
   nonce?: number;
   onMutated?: () => void;
-  /** Render only the completed-workouts list — no library, no runner. */
-  exerciseOnly?: boolean;
 }) {
-  const [running, setRunning] = useState<Workout | null>(null);
-
-  if (exerciseOnly) {
-    return (
-      <div className="workouts">
-        <h1 className="screen-title">Workouts</h1>
-        <p className="muted small">
-          Exercise you add here or sync from Apple Health and other wearables. Calories burned
-          are added back to your daily budget. Edit or remove anything that looks wrong.
-        </p>
-        <CompletedToday date={date} nonce={nonce} onMutated={onMutated} />
-      </div>
-    );
-  }
-
-  if (running) {
-    return (
-      <WorkoutRunner
-        workout={running}
-        plan={plan}
-        units={units}
-        onPlanChange={onPlanChange}
-        onExit={() => {
-          setRunning(null);
-          onMutated?.();
-        }}
-      />
-    );
-  }
-
   return (
-    <div className="workouts">
-      <h1 className="screen-title">Workouts</h1>
-
+    <div className="exercise-screen">
+      <h1 className="screen-title">Exercise</h1>
+      <p className="muted small">
+        Exercise you add here, sync from Apple Health or another wearable, or log from another app.
+        Calories burned are added back to your daily budget. Edit or remove anything that looks wrong.
+      </p>
       <CompletedToday date={date} nonce={nonce} onMutated={onMutated} />
-
-      <h2 className="screen-subtitle">Start a workout</h2>
-      <ul className="workout-list">
-        {BUILT_IN_WORKOUTS.map((w) => (
-          <li key={w.id}>
-            <button className="workout-card" onClick={() => setRunning(w)}>
-              <div className="workout-card-text">
-                <div className="workout-name">{w.name}</div>
-                <div className="workout-summary">{w.summary}</div>
-                <div className="workout-meta">{metaLine(w)}</div>
-              </div>
-              <span className="workout-play" aria-hidden>
-                <PlayIcon size={18} />
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
@@ -121,8 +58,7 @@ function CompletedToday({
 }) {
   const [items, setItems] = useState<CompletedWorkout[] | null>(null);
   const [editing, setEditing] = useState<CompletedWorkout | null>(null);
-  // The Add sheet: closed, blank ("custom"), or filled in from a preset.
-  const [adding, setAdding] = useState<ExercisePreset | "custom" | null>(null);
+  const [adding, setAdding] = useState(false);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -143,20 +79,22 @@ function CompletedToday({
   const active = (items ?? []).filter((i) => !i.excluded);
   const removed = (items ?? []).filter((i) => i.excluded);
   const total = active.reduce((n, i) => n + (i.kcal || 0), 0);
-  // Name the day when it isn't today: the tab adds to whichever day the diary
-  // is showing, and a walk filed under yesterday never moves today's ring.
+  // Name the day when it isn't today: this screen adds to whichever day the
+  // diary is showing, and a walk filed under yesterday never moves today's ring.
   const heading = date === todayISO() ? "Completed today" : `Completed on ${formatDay(date)}`;
 
-  const addSection = <AddWorkout onPick={setAdding} />;
+  const addButton = (
+    <button className="btn primary block add-exercise-btn" onClick={() => setAdding(true)}>
+      Add exercise
+    </button>
+  );
   const addModal = adding && (
     <AddExerciseModal
-      key={adding === "custom" ? "custom" : adding.id}
       date={date}
-      preset={adding === "custom" ? undefined : adding}
       hasWearable={(items ?? []).some((i) => i.source === "wearable" && !i.excluded)}
-      onClose={() => setAdding(null)}
+      onClose={() => setAdding(false)}
       onDone={() => {
-        setAdding(null);
+        setAdding(false);
         refresh();
       }}
     />
@@ -166,8 +104,8 @@ function CompletedToday({
     return (
       <section className="completed-today">
         <h2 className="screen-subtitle">{heading}</h2>
-        <p className="muted small">No workouts logged for this day yet.</p>
-        {addSection}
+        <p className="muted small">No exercise logged for this day yet.</p>
+        {addButton}
         {addModal}
       </section>
     );
@@ -244,7 +182,7 @@ function CompletedToday({
         </details>
       )}
 
-      {items != null && addSection}
+      {items != null && addButton}
       {addModal}
 
       {editing && (
@@ -263,73 +201,25 @@ function CompletedToday({
 }
 
 /**
- * The ways to add exercise: a basic workout with predefined calories, or
- * anything else typed in by hand. Both open the Add sheet, a preset already
- * filled in.
- */
-function AddWorkout({ onPick }: { onPick: (pick: ExercisePreset | "custom") => void }) {
-  return (
-    <div className="add-workout">
-      <h2 className="screen-subtitle">Add a workout</h2>
-      <ul className="preset-list">
-        {EXERCISE_PRESETS.map((p) => (
-          <li key={p.id}>
-            <button className="preset-row" onClick={() => onPick(p)}>
-              <span className="preset-main">
-                <span className="preset-name">{p.name}</span>
-                <span className="preset-meta">
-                  {p.minutes} min · {p.kcal} cal
-                </span>
-              </span>
-              <span className="preset-add" aria-hidden>
-                <AddIcon size={16} />
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <button className="btn block add-exercise-btn" onClick={() => onPick("custom")}>
-        Add something else
-      </button>
-    </div>
-  );
-}
-
-/**
  * Log an exercise by hand: name, optional minutes, calories burned. Calories
  * are typed in rather than estimated, so adding one never costs anything.
- * Opened from a preset, the form starts filled in and the calories follow the
- * minutes until the user types calories of their own.
  */
 function AddExerciseModal({
   date,
-  preset,
   hasWearable,
   onClose,
   onDone,
 }: {
   date: string;
-  /** The basic workout picked; absent for a blank entry. */
-  preset?: ExercisePreset;
   hasWearable: boolean;
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [name, setName] = useState(preset?.name ?? "");
-  const [minutes, setMinutes] = useState<number | undefined>(preset?.minutes);
-  const [kcal, setKcal] = useState<number | undefined>(preset?.kcal);
-  const [kcalTyped, setKcalTyped] = useState(false);
+  const [name, setName] = useState("");
+  const [minutes, setMinutes] = useState<number | undefined>(undefined);
+  const [kcal, setKcal] = useState<number | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const changeMinutes = (m: number | undefined) => {
-    setMinutes(m);
-    if (preset && !kcalTyped && m !== undefined && m > 0) setKcal(presetKcal(preset, m));
-  };
-  const changeKcal = (k: number | undefined) => {
-    if (k !== kcal) setKcalTyped(true);
-    setKcal(k);
-  };
 
   const save = async () => {
     const input = { name, durationMin: minutes, calories: kcal ?? 0 };
@@ -374,18 +264,12 @@ function AddExerciseModal({
           </label>
           <label className="field">
             <span>Minutes (optional)</span>
-            <NumberField value={minutes} min={0} max={1440} onChange={changeMinutes} aria-label="Minutes" />
+            <NumberField value={minutes} min={0} max={1440} onChange={setMinutes} aria-label="Minutes" />
           </label>
           <label className="field">
             <span>Calories burned</span>
-            <NumberField value={kcal} min={0} max={5000} onChange={changeKcal} aria-label="Calories burned" />
+            <NumberField value={kcal} min={0} max={5000} onChange={setKcal} aria-label="Calories burned" />
           </label>
-          {preset && (
-            <p className="muted small">
-              A typical burn at a moderate pace. Change the minutes and the calories follow, or type your
-              own.
-            </p>
-          )}
           {hasWearable && (
             <p className="muted small">
               If your watch already synced this workout, adding it here counts it twice. Edit the synced one
