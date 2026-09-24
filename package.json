@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "1.38.1",
+  "version": "1.38.2",
   "description": "Conjure Health: calorie + nutrition logging, daily targets, weight tracking, and a simple weight-loss plan for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -436,7 +436,7 @@
       },
       "logWater": {
         "permission": "actions.write",
-        "description": "Log a drink. Pass ml OR oz (fluid ounces), not both \u2014 storage is always metric, so the app converts. date is YYYY-MM-DD and defaults to today. Use when the user says they drank something.",
+        "description": "Log a drink. Pass ml OR oz (fluid ounces), not both — storage is always metric, so the app converts. date is YYYY-MM-DD and defaults to today. Use when the user says they drank something.",
         "params": {
           "type": "object",
           "properties": {
@@ -527,7 +527,7 @@
       },
       "logSymptom": {
         "permission": "actions.write",
-        "description": "Record something the user felt \u2014 a headache, heartburn, anything they describe. label is free text. Optional severity is 1 (barely) to 5 (severe), and note is a short free-text detail. Lands on the journal at the current time. Notes written this way are never readable back through the API.",
+        "description": "Record something the user felt — a headache, heartburn, anything they describe. label is free text. Optional severity is 1 (barely) to 5 (severe), and note is a short free-text detail. Lands on the journal at the current time. Notes written this way are never readable back through the API.",
         "params": {
           "type": "object",
           "properties": {
@@ -607,7 +607,7 @@
       },
       "setFoodQuantity": {
         "permission": "actions.write",
-        "description": "Change how many servings of an already-logged food the user had \u2014 'make that two'. Takes the diary entry id returned by logFood or listed by dayNutrition.",
+        "description": "Change how many servings of an already-logged food the user had — 'make that two'. Takes the diary entry id returned by logFood or listed by dayNutrition.",
         "params": {
           "type": "object",
           "properties": {
@@ -644,7 +644,7 @@
       },
       "deleteEntry": {
         "permission": "actions.write",
-        "description": "Remove ONE record the user logged by mistake \u2014 the undo for a double-log. kind says which log it is; id is that record's id, except for weight where id is the date (YYYY-MM-DD), since there is one weight per day. There is deliberately no bulk delete: clearing a whole history is done by the user in Settings.",
+        "description": "Remove ONE record the user logged by mistake — the undo for a double-log. kind says which log it is; id is that record's id, except for weight where id is the date (YYYY-MM-DD), since there is one weight per day. There is deliberately no bulk delete: clearing a whole history is done by the user in Settings.",
         "params": {
           "type": "object",
           "properties": {
@@ -688,7 +688,7 @@
       },
       "dayWellbeing": {
         "permission": "actions.read",
-        "description": "Return the non-food side of a day: water drunk, sleep length, weight if recorded, and symptoms with their severity and time. Defaults to today. The free-text note on a symptom is never returned \u2014 only the label, severity and time. For food use dayNutrition.",
+        "description": "Return the non-food side of a day: water drunk, sleep length, weight if recorded, and symptoms with their severity and time. Defaults to today. The free-text note on a symptom is never returned — only the label, severity and time. For food use dayNutrition.",
         "params": {
           "type": "object",
           "properties": {

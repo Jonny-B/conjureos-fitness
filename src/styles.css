@@ -4428,3 +4428,7 @@ input[type="date"].text-input {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* "Add your own food" entry points and form. */
+.add-own-food { margin-top: 12px; min-height: 44px; }
+.custom-food-form .select, .custom-food-form .text-input { min-height: 44px; }
