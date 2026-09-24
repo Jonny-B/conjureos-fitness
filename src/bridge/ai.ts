@@ -105,6 +105,17 @@ export function aiErrorMessage(err: unknown, fallback = "The AI didn't answer. T
   if (m.includes("credit balance is too low")) {
     return "The AI service is out of credit. Top up the Anthropic account behind ConjureOS (or the key in your settings) and try again.";
   }
+  // ConjureOS rewrites that same provider rejection before it reaches the
+  // app, so the raw Anthropic sentence rarely arrives. Its hosted wording
+  // names "the ConjureOS account"; a user's own key gets "Your Anthropic
+  // account". Neither is the user's ConjureOS credits, and neither is a
+  // connection problem.
+  if (m.includes("conjureos account") && m.includes("out of credit")) {
+    return "The AI service ConjureOS uses is out of credit, so estimates are paused. This is on ConjureOS's side, not your credits. Try again later.";
+  }
+  if (/your (anthropic|openai) account is out of credit/.test(m)) {
+    return "Your own AI key is out of credit. Add credit with your AI provider, or remove the key in ConjureOS settings to use your ConjureOS credits.";
+  }
   if (m.includes("out_of_credits") || m.includes("out of credits")) {
     return "You're out of AI credits. Top up in ConjureOS settings, or add your own Anthropic key.";
   }
@@ -113,6 +124,12 @@ export function aiErrorMessage(err: unknown, fallback = "The AI didn't answer. T
   }
   if (m.includes("rate limit") || m.includes("rate_limited")) {
     return "Too many AI requests just now. Wait a few seconds and try again.";
+  }
+  if (m.includes("busy right now") || m.includes("overloaded") || m.includes("temporarily unavailable")) {
+    return "The AI service is busy or down for a moment. Try again shortly.";
+  }
+  if (m.includes("failed to fetch") || m.includes("network") || m.includes("load failed")) {
+    return "Couldn't reach the AI. Check your connection and try again.";
   }
   if (m.includes("timeout") || m.includes("timed out")) {
     return "The AI took too long to answer. Try again.";

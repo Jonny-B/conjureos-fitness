@@ -31,3 +31,27 @@ describe("servingUnits", () => {
     expect(unitsFor(coffee, "imperial").slice(0, 2)).toEqual(["serving", "oz"]);
   });
 });
+
+import { servingRatio } from "./servingUnits";
+import { parseServingGrams } from "./foods/serving";
+
+describe("servingRatio", () => {
+  const r = (a: string, b: string, g?: number) => servingRatio(a, b, g, parseServingGrams);
+  it("rescales by gram weight", () => {
+    expect(r("100 g", "150 g")).toBeCloseTo(1.5);
+    expect(r("1 slice (28 g)", "56 g")).toBeCloseTo(2);
+  });
+  it("prefers the stored gram weight over the label", () => {
+    expect(r("1 bar", "80 g", 40)).toBeCloseTo(2);
+  });
+  it("rescales a count of the same unit", () => {
+    expect(r("1 cup", "2 cups")).toBeCloseTo(2);
+    expect(r("2 slices", "1 slice")).toBeCloseTo(0.5);
+    expect(r("1/2 cup", "1 cup")).toBeCloseTo(2);
+  });
+  it("leaves incomparable labels alone", () => {
+    expect(r("1 cup", "1 bowl")).toBeNull();
+    expect(r("1 serving", "1 serving")).toBeNull();
+    expect(r("a handful", "two handfuls")).toBeNull();
+  });
+});

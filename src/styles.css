@@ -4399,3 +4399,13 @@ input[type="date"].text-input {
   font-size: 13px;
   line-height: 1.55;
 }
+
+.add-exercise-btn {
+  margin-top: 12px;
+  min-height: 44px;
+}
+
+.entry-edit-total {
+  margin-top: 8px;
+  font-size: 0.9rem;
+}

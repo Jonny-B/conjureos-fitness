@@ -7,6 +7,7 @@ import { CloseIcon } from "../components/icons";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { clearAllHistories, clearHistory, visibleHistoryItems } from "../features/resetData";
 import { HealthDataPolicy } from "../components/HealthDataPolicy";
+import { COACH_AND_WORKOUTS_ENABLED } from "../features/flags";
 import {
   consentIsCurrent,
   readAiJournalConsent,
@@ -121,7 +122,7 @@ export function SettingsSheet({
             </div>
           </Field>
           <p className="muted small">
-            Your stats, goals, dates, workouts and daily targets live in{" "}
+            Your stats, goals, dates{COACH_AND_WORKOUTS_ENABLED ? ", workouts" : ""} and daily targets live in{" "}
             <strong>Edit plan</strong> on the Plan tab. Changing them there recalculates your targets.
           </p>
 

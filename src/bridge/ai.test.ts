@@ -48,6 +48,26 @@ describe("aiErrorMessage", () => {
     expect(aiErrorMessage(new Error(raw))).not.toMatch(/connection/i);
   });
 
+  it("reads the web kernel's rewrite of the same exhausted-account rejection", () => {
+    // ConjureOS src/ai/providerErrors.ts replaces Anthropic's sentence before
+    // the app sees it, so the raw-string match above never fires on the web.
+    const hosted = new Error(
+      "The AI provider turned the request down because the ConjureOS account with it is out of credit. This is on our side, not your credits. Please try again later.",
+    );
+    expect(aiErrorMessage(hosted, "The estimator didn’t answer. Try again.")).toMatch(/out of credit/i);
+    expect(aiErrorMessage(hosted)).toMatch(/not your credits/i);
+    expect(aiErrorMessage(hosted)).not.toMatch(/connection|couldn.t reach/i);
+    const byk = new Error(
+      "Your Anthropic account is out of credit. Add credit in the Anthropic Console, or remove your key in Settings to use your ConjureOS credits.",
+    );
+    expect(aiErrorMessage(byk)).toMatch(/your own AI key/i);
+  });
+
+  it("names a busy provider and a real network failure plainly", () => {
+    expect(aiErrorMessage(new Error("The AI service is busy right now. Try again in a moment."))).toMatch(/busy/i);
+    expect(aiErrorMessage(new Error("TypeError: Failed to fetch"))).toMatch(/connection/i);
+  });
+
   it("keeps an unrecognised host reason visible instead of swallowing it", () => {
     const msg = aiErrorMessage(new Error("kaboom 517"), "The estimator didn't answer.");
     expect(msg).toContain("kaboom 517");

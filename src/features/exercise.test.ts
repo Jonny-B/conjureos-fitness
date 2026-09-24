@@ -86,3 +86,16 @@ describe("exercise combine (wearable + in-app)", () => {
     expect(await exerciseCaloriesForDate(DATE)).toBe(0);
   });
 });
+
+import { manualExerciseProblem } from "./exercise";
+
+describe("manualExerciseProblem", () => {
+  it("accepts a named exercise with calories", () => {
+    expect(manualExerciseProblem({ name: "Walk", calories: 150, durationMin: 30 })).toBeNull();
+  });
+  it("asks for what is missing", () => {
+    expect(manualExerciseProblem({ name: " ", calories: 100 })).toMatch(/name/i);
+    expect(manualExerciseProblem({ name: "Walk" })).toMatch(/calories/i);
+    expect(manualExerciseProblem({ name: "Walk", calories: 9000 })).toMatch(/5,000/);
+  });
+});

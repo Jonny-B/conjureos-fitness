@@ -10,6 +10,8 @@ import {
   excludeWearable,
   restoreWearable,
   setWearableKcal,
+  addManualExercise,
+  manualExerciseProblem,
   type CompletedWorkout,
 } from "../features/exercise";
 import { NumberField } from "../components/NumberField";
@@ -53,8 +55,8 @@ export function WorkoutsScreen({
       <div className="workouts">
         <h1 className="screen-title">Exercise</h1>
         <p className="muted small">
-          Workouts synced from Apple Health and other wearables. Calories burned are added back
-          to your daily budget — edit or remove anything that looks wrong.
+          Exercise you add here or sync from Apple Health and other wearables. Calories burned
+          are added back to your daily budget. Edit or remove anything that looks wrong.
         </p>
         <CompletedToday date={date} nonce={nonce} onMutated={onMutated} />
       </div>
@@ -114,6 +116,7 @@ function CompletedToday({
 }) {
   const [items, setItems] = useState<CompletedWorkout[] | null>(null);
   const [editing, setEditing] = useState<CompletedWorkout | null>(null);
+  const [adding, setAdding] = useState(false);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -136,11 +139,30 @@ function CompletedToday({
   const total = active.reduce((n, i) => n + (i.kcal || 0), 0);
   const heading = date === todayISO() ? "Completed today" : "Completed";
 
+  const addButton = (
+    <button className="btn primary block add-exercise-btn" onClick={() => setAdding(true)}>
+      Add exercise
+    </button>
+  );
+  const addModal = adding && (
+    <AddExerciseModal
+      date={date}
+      hasWearable={(items ?? []).some((i) => i.source === "wearable" && !i.excluded)}
+      onClose={() => setAdding(false)}
+      onDone={() => {
+        setAdding(false);
+        refresh();
+      }}
+    />
+  );
+
   if (items && items.length === 0) {
     return (
       <section className="completed-today">
         <h2 className="screen-subtitle">{heading}</h2>
         <p className="muted small">No workouts logged for this day yet.</p>
+        {addButton}
+        {addModal}
       </section>
     );
   }
@@ -216,6 +238,9 @@ function CompletedToday({
         </details>
       )}
 
+      {items != null && addButton}
+      {addModal}
+
       {editing && (
         <CompletedEditModal
           date={date}
@@ -228,6 +253,97 @@ function CompletedToday({
         />
       )}
     </section>
+  );
+}
+
+/**
+ * Log an exercise by hand: name, optional minutes, calories burned. Calories
+ * are typed in rather than estimated, so adding one never costs anything.
+ */
+function AddExerciseModal({
+  date,
+  hasWearable,
+  onClose,
+  onDone,
+}: {
+  date: string;
+  hasWearable: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [minutes, setMinutes] = useState<number | undefined>(undefined);
+  const [kcal, setKcal] = useState<number | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    const input = { name, durationMin: minutes, calories: kcal ?? 0 };
+    const problem = manualExerciseProblem({ ...input, calories: kcal });
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await addManualExercise(date, input);
+      onDone();
+    } catch {
+      setError("Couldn't save this exercise. Nothing was added. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet compact" onClick={(e) => e.stopPropagation()}>
+        <header className="sheet-head">
+          <h2>Add exercise</h2>
+          <button className="icon-btn" aria-label="Close" onClick={onClose}>
+            <CloseIcon size={20} />
+          </button>
+        </header>
+        <div className="sheet-body">
+          <label className="field">
+            <span>What did you do?</span>
+            <input
+              className="text-input"
+              type="text"
+              value={name}
+              maxLength={60}
+              placeholder="e.g. Evening walk"
+              onChange={(e) => setName(e.target.value)}
+              aria-label="Exercise name"
+            />
+          </label>
+          <label className="field">
+            <span>Minutes (optional)</span>
+            <NumberField value={minutes} min={0} max={1440} onChange={setMinutes} aria-label="Minutes" />
+          </label>
+          <label className="field">
+            <span>Calories burned</span>
+            <NumberField value={kcal} min={0} max={5000} onChange={setKcal} aria-label="Calories burned" />
+          </label>
+          {hasWearable && (
+            <p className="muted small">
+              If your watch already synced this workout, adding it here counts it twice. Edit the synced one
+              instead.
+            </p>
+          )}
+          {error && <div className="notice notice-error" role="alert">{error}</div>}
+        </div>
+        <footer className="sheet-foot">
+          <button className="btn" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn primary" disabled={busy} onClick={() => void save()}>
+            {busy ? "Saving…" : "Add"}
+          </button>
+        </footer>
+      </div>
+    </div>
   );
 }
 
