@@ -32,6 +32,11 @@ import { SymptomSheet } from "../components/SymptomSheet";
 import { PackageCapture, type PackageResult } from "../components/PackageCapture";
 import { EditableNutritionPreview } from "../components/EditableNutritionPreview";
 import {
+  CUSTOM_SERVING_UNITS,
+  customFoodProblem,
+  saveCustomFood,
+} from "../features/foods/customFoods";
+import {
   BarcodeIcon,
   ChevronLeft,
   ChevronRight,
@@ -97,6 +102,8 @@ export function AddFoodScreen({
   const [meal, setMeal] = useState<MealType>(defaultMeal);
   // A food the user has told us is wrong.
   const [fixing, setFixing] = useState<{ food: FoodItem } | null>(null);
+  // The "Add your own food" form, prefilled with whatever was searched.
+  const [creating, setCreating] = useState<{ name: string } | null>(null);
 
   const changeMode = (m: AddMode) => {
     setMode(m);
@@ -105,6 +112,19 @@ export function AddFoodScreen({
 
   const pick = (food: FoodItem, opts?: PickOpts) =>
     setSelected({ food, recipeSlug: opts?.recipeSlug, initialQty: opts?.initialQty });
+
+  if (creating) {
+    return (
+      <CustomFoodForm
+        initialName={creating.name}
+        onSaved={(food) => {
+          setCreating(null);
+          setSelected({ food });
+        }}
+        onCancel={() => setCreating(null)}
+      />
+    );
+  }
 
   if (fixing) {
     return (
@@ -164,7 +184,7 @@ export function AddFoodScreen({
         </label>
       </div>
 
-      {mode === "search" && <SearchMode meal={meal} onPick={pick} />}
+      {mode === "search" && <SearchMode meal={meal} onPick={pick} onAddOwn={(name) => setCreating({ name })} />}
       {mode === "scan" && <ScanMode onPick={(food) => pick(food)} />}
       {/* `meal` is passed straight through (not as a "default") — the toolbar
           picker above is the single source of truth for all three modes, AI
@@ -181,7 +201,15 @@ export function AddFoodScreen({
 const MIN_SEARCH_CHARS = 3;
 const SEARCH_DEBOUNCE_MS = 250;
 
-function SearchMode({ meal, onPick }: { meal: MealType; onPick: (food: FoodItem, opts?: PickOpts) => void }) {
+function SearchMode({
+  meal,
+  onPick,
+  onAddOwn,
+}: {
+  meal: MealType;
+  onPick: (food: FoodItem, opts?: PickOpts) => void;
+  onAddOwn: (name: string) => void;
+}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<FoodItem[]>([]);
   const [searching, setSearching] = useState(false);
@@ -306,8 +334,13 @@ function SearchMode({ meal, onPick }: { meal: MealType; onPick: (food: FoodItem,
           <FoodResultList
             foods={results}
             onPick={onPick}
-            emptyHint={searching ? "Searching…" : "No matches — try a simpler term."}
+            emptyHint={searching ? "Searching…" : "No matches. Try a simpler term, or add it yourself."}
           />
+          {!searching && results.length === 0 && (
+            <button className="btn primary block add-own-food" onClick={() => onAddOwn(trimmed)}>
+              Add "{trimmed}" as your own food
+            </button>
+          )}
           {recipes.length > 0 && (
             <>
               <div className="section-label">From your apps</div>
@@ -360,6 +393,9 @@ function SearchMode({ meal, onPick }: { meal: MealType; onPick: (food: FoodItem,
           )}
         </>
       )}
+      <button className="btn log-report add-own-food" onClick={() => onAddOwn(ready ? trimmed : "")}>
+        Add your own food
+      </button>
     </div>
   );
 }
@@ -921,7 +957,8 @@ function FoodResultList({
               <div className="entry-name">{f.name}</div>
               <div className="entry-sub">
                 {f.servingSize}
-                {f.brand ? ` · ${f.brand}` : ""} · {f.source === "usda" ? "USDA" : "OFF"}
+                {f.brand ? ` · ${f.brand}` : ""} ·{" "}
+                {f.source === "usda" ? "USDA" : f.source === "custom" ? "Yours" : "OFF"}
               </div>
             </div>
             <div className="entry-cal">{f.perServing.calories}</div>
@@ -1216,6 +1253,111 @@ function Macro({ label, value, unit }: { label: string; value: number; unit?: st
         {unit ?? ""}
       </div>
       <div className="macro-pill-label">{label}</div>
+    </div>
+  );
+}
+
+// ── "Add your own food" ─────────────────────────────────────────────────
+
+/**
+ * A food typed in by hand: name, one serving (amount plus unit), calories and
+ * macros. Free; it saves to the app's VFS and is searchable afterwards. The AI
+ * estimate is a separate, paid path under the AI tab.
+ */
+function CustomFoodForm({
+  initialName,
+  onSaved,
+  onCancel,
+}: {
+  initialName: string;
+  onSaved: (food: FoodItem) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [brand, setBrand] = useState("");
+  const [amount, setAmount] = useState<number | undefined>(1);
+  const [unit, setUnit] = useState<string>("serving");
+  const [calories, setCalories] = useState<number | undefined>(undefined);
+  const [protein, setProtein] = useState<number | undefined>(undefined);
+  const [carbs, setCarbs] = useState<number | undefined>(undefined);
+  const [fat, setFat] = useState<number | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+
+  const input = {
+    name,
+    brand,
+    servingAmount: amount ?? 0,
+    servingUnit: unit,
+    calories: calories ?? NaN,
+    protein: protein ?? 0,
+    carbs: carbs ?? 0,
+    fat: fat ?? 0,
+  };
+  const problem = customFoodProblem(input);
+
+  const save = async () => {
+    if (problem || busy) return;
+    setBusy(true);
+    try {
+      const food = await saveCustomFood(input);
+      if (food) onSaved(food);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const macro = (label: string, value: number | undefined, set: (v: number | undefined) => void) => (
+    <label className="field">
+      <span>{label}</span>
+      <NumberField value={value} onChange={set} min={0} max={9999} decimals={1} aria-label={label} />
+    </label>
+  );
+
+  return (
+    <div className="log-panel custom-food-form">
+      <button className="link-btn back-link" onClick={onCancel}>
+        <ChevronLeft size={16} /> Back
+      </button>
+      <h2 className="log-title">Add your own food</h2>
+      <div className="muted small">Copy the numbers off the label. Saved foods show up when you search.</div>
+
+      <label className="field">
+        <span>Name</span>
+        <input className="text-input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      </label>
+      <label className="field">
+        <span>Brand (optional)</span>
+        <input className="text-input" value={brand} onChange={(e) => setBrand(e.target.value)} />
+      </label>
+
+      <div className="field-row">
+        <label className="field">
+          <span>Serving</span>
+          <NumberField value={amount} onChange={setAmount} min={0} max={9999} decimals={2} aria-label="Serving amount" />
+        </label>
+        <label className="field">
+          <span>Unit</span>
+          <select className="select" aria-label="Serving unit" value={unit} onChange={(e) => setUnit(e.target.value)}>
+            {CUSTOM_SERVING_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {macro("Calories per serving", calories, setCalories)}
+      <div className="field-row">
+        {macro("Protein (g)", protein, setProtein)}
+        {macro("Carbs (g)", carbs, setCarbs)}
+        {macro("Fat (g)", fat, setFat)}
+      </div>
+
+      {problem && <div className="muted small">{problem}</div>}
+      <button className="btn primary block" disabled={!!problem || busy} onClick={save}>
+        {busy ? "Saving…" : "Save food"}
+      </button>
     </div>
   );
 }

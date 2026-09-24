@@ -15,6 +15,7 @@ import { readJson, writeJson } from "../../bridge/vfs";
 import * as off from "./openFoodFacts";
 import * as usda from "./usda";
 import * as conjure from "./conjureHealthDb";
+import { searchCustomFoods } from "./customFoods";
 
 const CACHE_PATH = "food-cache.json";
 const CACHE_VERSION = 2 as const;
@@ -169,7 +170,15 @@ export async function searchFoods(
 
   let offResults: FoodItem[] = [];
   let usdaResults: FoodItem[] = [];
-  const merged = () => mergeUsFirst(usdaResults, offResults, 2, 1).slice(0, limit);
+  // The user's own foods lead: they are the only numbers the user vouched for.
+  let mine: FoodItem[] = [];
+  try {
+    mine = await searchCustomFoods(q);
+  } catch {
+    mine = [];
+  }
+  if (mine.length > 0 && !signal?.aborted) onPartial?.(mine);
+  const merged = () => [...mine, ...mergeUsFirst(usdaResults, offResults, 2, 1)].slice(0, limit);
 
   const offP = off
     .searchText(q, offWant, signal)
