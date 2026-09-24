@@ -16,6 +16,7 @@ import type { JournalEvent } from "../features/journal";
 import type { MealType } from "../types";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
+import { reportSaveFailure } from "../data/saveFailure";
 import { removeSession } from "../features/exercise";
 import { flOzToMl, mlToFlOz } from "../features/water";
 import type { Profile } from "../types";
@@ -137,6 +138,8 @@ export function JournalEntrySheet({
         });
       }
       onChanged();
+    } catch (err) {
+      reportSaveFailure("your changes", err);
     } finally {
       setBusy(false);
     }
@@ -168,6 +171,8 @@ export function JournalEntrySheet({
           break;
       }
       onChanged();
+    } catch (err) {
+      reportSaveFailure("that change", err);
     } finally {
       setBusy(false);
     }

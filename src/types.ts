@@ -428,9 +428,8 @@ export interface Workout {
 
 // ── v2: plans, check-off, coached sessions ───────────────────────────
 //
-// These persist as VFS app data via MockRepository (owner call, DECISIONS
-// 2026-06-24) — no new Supabase tables. The SupabaseRepository throws
-// PLAN_REQUIRES_V2_BACKEND for every method below. All shapes are additive and
+// These persist as VFS app data in the on-device store on every backend
+// (owner call, DECISIONS 2026-06-24), with no Supabase tables. All shapes are additive and
 // self-contained so Phase 9 platform sync can back the JSON up as-is.
 
 /**

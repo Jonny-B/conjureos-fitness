@@ -25,8 +25,13 @@ import type {
 } from "../types";
 import { DEFAULT_GOALS } from "../types";
 import { getAccessToken } from "../bridge/host";
-import type { DayLogPatch, NewDiaryEntry, Repository } from "./repository";
-import { PLAN_REQUIRES_V2_BACKEND } from "./repository";
+import type {
+  DayLogPatch,
+  NewDiaryEntry,
+  NewSymptomEntry,
+  NewWaterEntry,
+  Repository,
+} from "./repository";
 import { SupabaseRestClient } from "./supabaseClient";
 
 interface ProfileRow {
@@ -63,10 +68,9 @@ interface WeightRow {
  * VITE_SUPABASE_ANON_KEY are set. Rows are scoped to the signed-in user by
  * RLS; `init()` performs an anonymous sign-in when no session exists.
  *
- * Covers the v1 surface (profile, goals, diary, weights) on the server.
- * Workout sessions are kept on-device in the local store (see `localStore`).
- * Every other v2 method throws {@link PLAN_REQUIRES_V2_BACKEND}, which callers
- * swallow (DECISIONS 2026-06-24).
+ * Profile, goals, diary and weights live on the server. Everything else
+ * (plans, check-offs, workout sessions, sleep, water, symptoms) has no server
+ * table and lives on-device in the local store (see `localStore`).
  */
 export class SupabaseRepository implements Repository {
   readonly kind = "supabase" as const;
@@ -86,12 +90,10 @@ export class SupabaseRepository implements Repository {
   }
 
   /**
-   * Workout sessions have no server table, so they live in the same on-device
-   * store the local backend uses: localStorage, mirrored to the app's VFS
-   * `store.json`, which platform sync backs up. Without this every session
-   * write threw here and callers swallowed it, so a manually added exercise
-   * vanished for Supabase users (ConjureOS #796). Loaded lazily, so the local
-   * store only enters the bundle path when a session is actually touched.
+   * Data with no server table lives in the same on-device store the local
+   * backend uses: localStorage, mirrored to the app's VFS `store.json`, which
+   * platform sync backs up. Loaded lazily, so the local store only enters the
+   * bundle path when that data is actually touched.
    */
   private local: Promise<Repository> | null = null;
   private localStore(): Promise<Repository> {
@@ -212,83 +214,79 @@ export class SupabaseRepository implements Repository {
     await (await this.localStore()).clearWorkoutHistory();
   }
 
-  // ── Sleep, water & symptoms: VFS-only, same as the v2 plan surface ──
-  // No server tables yet, so every method throws and callers fall back to the
-  // mock layer exactly as they already do for plans.
+  // ── On-device data: sleep, water, symptoms, plans, check-offs ──
+  // No server tables for these, so they use the same on-device store as
+  // workout sessions (see localStore).
 
   async clearSleep(): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+    await (await this.localStore()).clearSleep();
   }
   async clearWater(): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+    await (await this.localStore()).clearWater();
   }
   async clearSymptoms(): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+    await (await this.localStore()).clearSymptoms();
   }
-  async listSleep(): Promise<SleepEntry[]> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async listSleep(date: string): Promise<SleepEntry[]> {
+    return (await this.localStore()).listSleep(date);
   }
-  async listSleepRange(): Promise<SleepEntry[]> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async listSleepRange(from: string, to: string): Promise<SleepEntry[]> {
+    return (await this.localStore()).listSleepRange(from, to);
   }
-  async saveSleep(): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async saveSleep(entry: SleepEntry): Promise<void> {
+    await (await this.localStore()).saveSleep(entry);
   }
-  async removeSleep(): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async removeSleep(id: string): Promise<void> {
+    await (await this.localStore()).removeSleep(id);
   }
-  async listWater(): Promise<WaterEntry[]> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async listWater(date: string): Promise<WaterEntry[]> {
+    return (await this.localStore()).listWater(date);
   }
-  async listWaterRange(): Promise<WaterEntry[]> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async listWaterRange(from: string, to: string): Promise<WaterEntry[]> {
+    return (await this.localStore()).listWaterRange(from, to);
   }
-  async addWater(): Promise<WaterEntry> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async addWater(entry: NewWaterEntry): Promise<WaterEntry> {
+    return (await this.localStore()).addWater(entry);
   }
-  async updateWater(): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async updateWater(id: string, patch: Parameters<Repository["updateWater"]>[1]): Promise<void> {
+    await (await this.localStore()).updateWater(id, patch);
   }
-  async removeWater(): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async removeWater(id: string): Promise<void> {
+    await (await this.localStore()).removeWater(id);
   }
-  async listSymptoms(): Promise<SymptomEntry[]> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async listSymptoms(date: string): Promise<SymptomEntry[]> {
+    return (await this.localStore()).listSymptoms(date);
   }
-  async listSymptomsRange(): Promise<SymptomEntry[]> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async listSymptomsRange(from: string, to: string): Promise<SymptomEntry[]> {
+    return (await this.localStore()).listSymptomsRange(from, to);
   }
-  async addSymptom(): Promise<SymptomEntry> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async addSymptom(entry: NewSymptomEntry): Promise<SymptomEntry> {
+    return (await this.localStore()).addSymptom(entry);
   }
-  async updateSymptom(): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async updateSymptom(id: string, patch: Parameters<Repository["updateSymptom"]>[1]): Promise<void> {
+    await (await this.localStore()).updateSymptom(id, patch);
   }
-  async removeSymptom(): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async removeSymptom(id: string): Promise<void> {
+    await (await this.localStore()).removeSymptom(id);
   }
-
-  // ── v2: VFS-only today; no backend rows yet (DECISIONS 2026-06-24). ──
-  // Every method throws so callers can detect the unsupported backend and
-  // route plan data through the mock layer instead.
 
   async getPlan(): Promise<Plan | null> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+    return (await this.localStore()).getPlan();
   }
-  async savePlan(_plan: Plan): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async savePlan(plan: Plan): Promise<void> {
+    await (await this.localStore()).savePlan(plan);
   }
   async clearPlan(): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+    await (await this.localStore()).clearPlan();
   }
-  async getDayLog(_date: string): Promise<DailyCheckoff | null> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async getDayLog(date: string): Promise<DailyCheckoff | null> {
+    return (await this.localStore()).getDayLog(date);
   }
-  async saveDayLog(_date: string, _patch: DayLogPatch): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async saveDayLog(date: string, patch: DayLogPatch): Promise<void> {
+    await (await this.localStore()).saveDayLog(date, patch);
   }
-  async markCheckoff(_goalId: string, _date: string, _done: boolean): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async markCheckoff(goalId: string, date: string, done: boolean): Promise<void> {
+    await (await this.localStore()).markCheckoff(goalId, date, done);
   }
   async listWorkoutSessions(limit?: number): Promise<WorkoutSession[]> {
     return (await this.localStore()).listWorkoutSessions(limit);

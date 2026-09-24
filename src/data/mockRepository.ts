@@ -262,8 +262,8 @@ function migrate(loaded: unknown): StoreShape {
  * memory and mirrored to the app's VFS (plus localStorage in the browser), so
  * a fresh checkout runs end-to-end with zero configuration and no network.
  *
- * Unlike {@link SupabaseRepository} this implements the v2 plan surface too,
- * which is why it stays the authoritative store for plans and sessions.
+ * It is also the on-device store {@link SupabaseRepository} uses for the data
+ * that has no server table (plans, check-offs, sessions, sleep, water, symptoms).
  * Reads are served from the in-memory copy; every mutation persists eagerly.
  */
 export class MockRepository implements Repository {

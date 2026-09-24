@@ -9,9 +9,8 @@
  * previously-disjoint stores (Plan ↔ Profile ↔ Goals) so a plan actually
  * informs the diary and body stats aren't entered twice.
  *
- * Persistence tolerates the Supabase `PLAN_REQUIRES_V2_BACKEND` throw (plan data
- * is VFS-only today) exactly as the old call sites did — every write is
- * best-effort and the returned in-memory plan is authoritative for the session.
+ * A write that fails is reported through `persist` (logged, and the user is
+ * told) and the returned in-memory plan stays authoritative for the session.
  */
 
 import type {
@@ -26,6 +25,7 @@ import type {
 } from "../../types";
 import { DEFAULT_PROFILE } from "../../types";
 import { getRepository } from "../../data/repository";
+import { persist } from "../../data/saveFailure";
 import { newId } from "../../data/id";
 import { measureSession, recordBenchmarkResult } from "./program";
 import { calibrateToBenchmark, maybeAdapt } from "./analyze";
@@ -134,7 +134,7 @@ export async function commitNewPlan(
   ctx: { body?: WizardBody; currentProfile: Profile | null; currentGoals: Goals },
 ): Promise<CommitResult> {
   const repo = await getRepository();
-  await repo.savePlan(plan).catch(() => {});
+  await persist("your plan", repo.savePlan(plan));
 
   let profile = ctx.currentProfile;
   const b = ctx.body;
@@ -146,12 +146,12 @@ export async function commitNewPlan(
   // code could then cement those defaults), which reads as "my stats reverted to
   // default" after a reload. Fall back to the current profile, else DEFAULT.
   const finalProfile: Profile = profile ?? { ...DEFAULT_PROFILE };
-  await repo.saveProfile(finalProfile).catch(() => {});
+  await persist("your profile", repo.saveProfile(finalProfile));
   profile = finalProfile;
 
   const goals = targetsToGoals(plan, ctx.currentGoals);
   if (plan.targets?.dailyCalories != null) {
-    await repo.saveGoals(goals).catch(() => {});
+    await persist("your daily targets", repo.saveGoals(goals));
   }
   return { plan, profile, goals };
 }
@@ -160,7 +160,7 @@ export async function commitNewPlan(
 export async function saveProgram(plan: Plan, program: WorkoutProgram): Promise<Plan> {
   const next: Plan = { ...plan, program };
   const repo = await getRepository();
-  await repo.savePlan(next).catch(() => {});
+  await persist("your plan", repo.savePlan(next));
   return next;
 }
 
@@ -209,10 +209,10 @@ export async function updatePlan(
 ): Promise<{ plan: Plan; goals: Goals }> {
   const next: Plan = { ...plan, ...patch };
   const repo = await getRepository();
-  await repo.savePlan(next).catch(() => {});
+  await persist("your plan", repo.savePlan(next));
   const goals = targetsToGoals(next, ctx.currentGoals);
   if (patch.targets && next.targets?.dailyCalories != null) {
-    await repo.saveGoals(goals).catch(() => {});
+    await persist("your daily targets", repo.saveGoals(goals));
   }
   return { plan: next, goals };
 }
@@ -270,7 +270,7 @@ export async function modifyPlanInPlace(
 ): Promise<CommitResult> {
   const profile = mergeBodyIntoProfile(ctx.currentProfile ?? DEFAULT_PROFILE, body);
   const repo = await getRepository();
-  await repo.saveProfile(profile).catch(() => {});
+  await persist("your profile", repo.saveProfile(profile));
 
   const targets: PlanTargets = modeTracksFood(plan.mode)
     ? goalsToTargets(recommendGoals(profile))
@@ -289,7 +289,7 @@ export async function modifyPlanInPlace(
 /** Drop the active plan. */
 export async function clearPlan(): Promise<void> {
   const repo = await getRepository();
-  await repo.clearPlan().catch(() => {});
+  await persist("that change to your plan", repo.clearPlan());
 }
 
 /**
@@ -307,7 +307,7 @@ export async function recordSessionAndAdapt(
   },
 ): Promise<Plan | null> {
   const repo = await getRepository();
-  await repo.saveWorkoutSession(session).catch(() => {});
+  await persist("this workout", repo.saveWorkoutSession(session));
   if (!plan?.program) return plan;
 
   const measuresBenchmark = Boolean(session.benchmarkId || session.benchmarkIds?.length);
@@ -349,7 +349,7 @@ export async function recordSessionAndAdapt(
     /* AI/adaptation is best-effort; keep the measurement result */
   }
 
-  if (next !== plan) await repo.savePlan(next).catch(() => {});
+  if (next !== plan) await persist("your plan", repo.savePlan(next));
   return next;
 }
 
@@ -361,7 +361,7 @@ export async function toggleWorkoutDone(plan: Plan, programWorkoutId: string, do
   if (program === plan.program) return plan;
   const next: Plan = { ...plan, program };
   const repo = await getRepository();
-  await repo.savePlan(next).catch(() => {});
+  await persist("your plan", repo.savePlan(next));
   return next;
 }
 
@@ -372,7 +372,7 @@ export async function startNextGroup(plan: Plan): Promise<Plan> {
   const repo = await getRepository();
   const sessions = await repo.listWorkoutSessions(200).catch(() => [] as WorkoutSession[]);
   const next = await advanceToNextGroup(plan, sessions, await coachPreferences());
-  if (next !== plan) await repo.savePlan(next).catch(() => {});
+  if (next !== plan) await persist("your plan", repo.savePlan(next));
   return next;
 }
 
@@ -422,7 +422,7 @@ export async function applyCoachPlanChange(
   if (change.goalWeightKg != null && Number.isFinite(change.goalWeightKg) && profile) {
     const gw = Math.round(clamp(change.goalWeightKg, 25, 400) * 10) / 10;
     nextProfile = { ...profile, goalWeightKg: gw, direction: deriveDirection(profile.weightKg, gw) };
-    await repo.saveProfile(nextProfile).catch(() => {});
+    await persist("your profile", repo.saveProfile(nextProfile));
     if (modeTracksFood(plan.mode)) patch.targets = goalsToTargets(recommendGoals(nextProfile));
   }
   if (change.dailyCalories != null && Number.isFinite(change.dailyCalories) && modeTracksFood(plan.mode)) {

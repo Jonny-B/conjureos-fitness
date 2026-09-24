@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Plan } from "../types";
 import { getRepository } from "../data/repository";
+import { persist } from "../data/saveFailure";
 import { buildDayView } from "../features/diary";
 import { buildCoachContext } from "../features/coach/context";
 import { evaluateCheckin } from "../features/coach/coach";
@@ -88,11 +89,12 @@ export function DayCheckinSheet({
     setBusy(true);
     try {
       const repo = await getRepository();
-      await repo
-        .saveDayLog(date, {
+      await persist(
+        "your check-in",
+        repo.saveDayLog(date, {
           checkin: { at: new Date().toISOString(), answers: answers.map((a) => ({ question: a.question, answer: a.value })) },
-        })
-        .catch(() => {});
+        }),
+      );
       const outcome = await evaluateCheckin("day", answers, ctx);
       if (outcome.planUpdate) {
         onPlanChange(outcome.planUpdate.plan);

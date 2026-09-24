@@ -12,6 +12,7 @@ import type { Profile, SleepEntry, SymptomEntry, WaterEntry } from "../types";
 
 type Units = Profile["units"];
 import { getRepository } from "../data/repository";
+import { reportSaveFailure } from "../data/saveFailure";
 import { todayISO } from "../features/diary";
 import { formatSleep, sleepMinutes } from "../features/sleep";
 import { DEFAULT_WATER_TARGET_ML, fmtWater, totalMl, waterPresets } from "../features/water";
@@ -61,6 +62,8 @@ export function WellbeingCard({
       await repo.addWater({ date, ml });
       await load();
       onMutated();
+    } catch (err) {
+      reportSaveFailure("that drink", err);
     } finally {
       setBusy(false);
     }
@@ -77,16 +80,22 @@ export function WellbeingCard({
       await repo.removeWater(last.id);
       await load();
       onMutated();
+    } catch (err) {
+      reportSaveFailure("that change to your water", err);
     } finally {
       setBusy(false);
     }
   };
 
   const removeSymptom = async (id: string) => {
-    const repo = await getRepository();
-    await repo.removeSymptom(id);
-    await load();
-    onMutated();
+    try {
+      const repo = await getRepository();
+      await repo.removeSymptom(id);
+      await load();
+      onMutated();
+    } catch (err) {
+      reportSaveFailure("that change", err);
+    }
   };
 
   const ml = totalMl(water);

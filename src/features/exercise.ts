@@ -14,6 +14,7 @@
 
 import type { WorkoutSession } from "../types";
 import { getRepository } from "../data/repository";
+import { persist } from "../data/saveFailure";
 import { readWorkouts, type WorkoutBurn } from "../bridge/health";
 import { shiftDate, todayISO } from "./diary";
 import { newId } from "../data/id";
@@ -149,7 +150,7 @@ async function patchDay(
 ): Promise<void> {
   const repo = await getRepository();
   const dl = await repo.getDayLog(date).catch(() => null);
-  await repo.saveDayLog(date, fn(dl)).catch(() => {});
+  await persist("your check-offs", repo.saveDayLog(date, fn(dl)));
 }
 
 /** What the user types to log an exercise by hand. */
@@ -203,7 +204,7 @@ export async function addManualExercise(date: string, input: ManualExerciseInput
 /** Delete an in-app session. */
 export async function removeSession(id: string): Promise<void> {
   const repo = await getRepository();
-  await repo.removeWorkoutSession(id).catch(() => {});
+  await persist("that change to your workouts", repo.removeWorkoutSession(id));
 }
 
 /** Edit an in-app session's burned calories. */
@@ -211,7 +212,7 @@ export async function setSessionKcal(id: string, kcal: number): Promise<void> {
   const repo = await getRepository();
   const s = (await repo.listWorkoutSessions().catch(() => [])).find((x) => x.id === id);
   if (!s) return;
-  await repo.saveWorkoutSession({ ...s, caloriesBurned: Math.max(0, Math.round(kcal)) }).catch(() => {});
+  await persist("this workout", repo.saveWorkoutSession({ ...s, caloriesBurned: Math.max(0, Math.round(kcal)) }));
 }
 
 /** Remove a wearable workout from this day's total (reversible). */

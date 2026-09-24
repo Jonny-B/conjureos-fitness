@@ -26,6 +26,7 @@ import { COACH_AND_WORKOUTS_ENABLED } from "./features/flags";
 import { CoachScreen } from "./screens/CoachScreen";
 import { SettingsSheet, type SettingsView } from "./screens/SettingsSheet";
 import { AppHeader } from "./components/AppHeader";
+import { SaveFailedNotice } from "./components/SaveFailedNotice";
 import {
   AddIcon,
   AppleIcon,
@@ -325,6 +326,7 @@ export function App() {
   return (
     <div className="app">
       <AppHeader title={header.title} onBack={header.onBack} onSettings={() => openSettings("main")} />
+      <SaveFailedNotice />
 
       <main className="screen">
         {!ready ? (

@@ -4409,3 +4409,22 @@ input[type="date"].text-input {
   margin-top: 8px;
   font-size: 0.9rem;
 }
+
+/* A save that did not persist (SaveFailedNotice). */
+.save-failed-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 16px 0;
+}
+.save-failed-dismiss {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
