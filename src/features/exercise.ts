@@ -201,6 +201,51 @@ export async function addManualExercise(date: string, input: ManualExerciseInput
   return session;
 }
 
+// ── quick-add presets ───────────────────────────────────────────────────
+
+/** A basic workout with a predefined calorie burn for a set number of minutes. */
+export interface ExercisePreset {
+  id: string;
+  name: string;
+  /** How long the predefined burn is for. */
+  minutes: number;
+  /** Calories burned in `minutes`. */
+  kcal: number;
+}
+
+/**
+ * Basic workouts with predefined calories, for the Workouts tab's quick add.
+ *
+ * Each figure is a typical burn for a ~70 kg (155 lb) adult at a moderate pace
+ * (MET × kg × hours, MET values from the Compendium of Physical Activities),
+ * rounded to the nearest 10. It is a starting point, not a measurement: the Add
+ * sheet shows the number before it is saved, so the user can correct it. A
+ * preset is logged as an ordinary manual exercise, so it reaches the calorie
+ * ring the same way.
+ */
+export const EXERCISE_PRESETS: readonly ExercisePreset[] = [
+  { id: "walk", name: "Walking", minutes: 30, kcal: 120 },
+  { id: "run", name: "Running", minutes: 30, kcal: 300 },
+  { id: "cycle", name: "Cycling", minutes: 30, kcal: 250 },
+  { id: "swim", name: "Swimming", minutes: 30, kcal: 250 },
+  { id: "hike", name: "Hiking", minutes: 60, kcal: 420 },
+  { id: "elliptical", name: "Elliptical", minutes: 30, kcal: 180 },
+  { id: "row", name: "Rowing machine", minutes: 30, kcal: 250 },
+  { id: "strength", name: "Strength training", minutes: 45, kcal: 180 },
+  { id: "hiit", name: "HIIT", minutes: 20, kcal: 190 },
+  { id: "yoga", name: "Yoga", minutes: 30, kcal: 100 },
+];
+
+/**
+ * A preset's calories for `minutes` of it, scaled from its predefined burn:
+ * 60 minutes of the 30-minute, 120-calorie walk is 240. Anything but a
+ * positive number of minutes gives back the preset's own figure.
+ */
+export function presetKcal(preset: ExercisePreset, minutes: number | undefined): number {
+  if (minutes === undefined || !Number.isFinite(minutes) || minutes <= 0) return preset.kcal;
+  return Math.round((preset.kcal / preset.minutes) * minutes);
+}
+
 /** Delete an in-app session. */
 export async function removeSession(id: string): Promise<void> {
   const repo = await getRepository();

@@ -13,6 +13,9 @@ import {
   setSessionKcal,
   removeSession,
   wearableKey,
+  addManualExercise,
+  EXERCISE_PRESETS,
+  presetKcal,
 } from "./exercise";
 import type { WorkoutSession } from "../types";
 
@@ -97,5 +100,41 @@ describe("manualExerciseProblem", () => {
     expect(manualExerciseProblem({ name: " ", calories: 100 })).toMatch(/name/i);
     expect(manualExerciseProblem({ name: "Walk" })).toMatch(/calories/i);
     expect(manualExerciseProblem({ name: "Walk", calories: 9000 })).toMatch(/5,000/);
+  });
+});
+
+describe("quick-add presets", () => {
+  const walk = { id: "walk", name: "Walking", minutes: 30, kcal: 120 };
+
+  it("are all savable as a manual exercise", () => {
+    for (const p of EXERCISE_PRESETS) {
+      expect(manualExerciseProblem({ name: p.name, durationMin: p.minutes, calories: p.kcal })).toBeNull();
+    }
+  });
+
+  it("have unique ids", () => {
+    const ids = EXERCISE_PRESETS.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("scale the predefined calories with the minutes", () => {
+    expect(presetKcal(walk, 60)).toBe(240);
+    expect(presetKcal(walk, 45)).toBe(180);
+    expect(presetKcal(walk, 10)).toBe(40);
+  });
+
+  it("keep the predefined calories without a usable duration", () => {
+    expect(presetKcal(walk, undefined)).toBe(120);
+    expect(presetKcal(walk, 0)).toBe(120);
+    expect(presetKcal(walk, Number.NaN)).toBe(120);
+  });
+
+  it("reach the day's exercise calories once added", async () => {
+    const run = EXERCISE_PRESETS.find((p) => p.id === "run")!;
+    await addManualExercise(DATE, { name: run.name, durationMin: run.minutes, calories: run.kcal });
+    expect(await exerciseCaloriesForDate(DATE)).toBe(run.kcal);
+    expect(await listCompletedWorkouts(DATE)).toMatchObject([
+      { name: "Running", kcal: 300, durationSec: 1800, sourceLabel: "Added by you" },
+    ]);
   });
 });

@@ -317,9 +317,7 @@ export function App() {
           : tab === "journal"
             ? { title: "Journal" }
           : tab === "workouts"
-            ? COACH_AND_WORKOUTS_ENABLED
-              ? { title: "Workouts" }
-              : { title: "Exercise", onBack: () => setTab("diary") }
+            ? { title: "Workouts" }
             : tab === "coach"
               ? { title: "Coach", onBack: () => setTab("plan") }
               : { title: "Conjure Health" };
@@ -404,7 +402,9 @@ export function App() {
         <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(mealForNow())} />
         <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan" || tab === "coach"} onClick={() => setTab("plan")} />
         <TabButton label="Journal" Icon={CalendarIcon} active={tab === "journal"} onClick={() => setTab("journal")} />
-        {!loggingOnly && COACH_AND_WORKOUTS_ENABLED && (
+        {/* Shown while the coach + program are paused too: then it's the
+            exercise log, where basic workouts are added to the calorie ring. */}
+        {!loggingOnly && (
           <TabButton label="Workouts" Icon={WorkoutsIcon} active={tab === "workouts"} onClick={() => setTab("workouts")} />
         )}
       </nav>

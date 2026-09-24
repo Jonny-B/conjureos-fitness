@@ -16,7 +16,7 @@
  * not cancelled and not deleted — it is switched off at the surface.
  *
  * ## What this flag hides when false
- * - The Workouts tab and the built-in workout library
+ * - The built-in workout library and its guided runner
  * - The Coach chat tab and the Plan tab's coach launcher
  * - The evening "how did your day go?" check-in banner + sheet
  * - The Plan tab's program section (assigned workouts + benchmark progress)
@@ -28,6 +28,10 @@
  *   calorie budget, which makes them a nutrition feature. The ring's Exercise
  *   row still opens a list of the day's workouts so those numbers can be
  *   corrected or removed — see `WorkoutsScreen`'s `exerciseOnly` mode.
+ * - **The Workouts tab, as that exercise log** (owner request, 2026-09-24).
+ *   It lists the day's workouts and adds more: basic workouts with predefined
+ *   calories, or anything typed in by hand. Every one lands in the calorie
+ *   budget, so this is the same nutrition feature, not the paused program.
  * - **The `logWorkout` cross-app action**, for the same reason: an assistant or
  *   wearable logging a burn still has to reach the calorie budget.
  * - **All stored data.** Existing plans keep their `program`, and `coach.json` /

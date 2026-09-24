@@ -282,7 +282,7 @@ export function JournalEntrySheet({
             <div className="muted small">
               {event.editable
                 ? "Removing this deletes the session and takes its calories back out of that day."
-                : "This came from your watch, so it can't be deleted here — hide it from the day on the Exercise screen."}
+                : "This came from your watch, so it can't be deleted here — hide it from the day on the Workouts tab."}
             </div>
           )}
         </div>

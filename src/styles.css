@@ -1893,12 +1893,72 @@ body {
   background: var(--bg-3);
   color: var(--muted);
 }
-.source-pill.wearable {
+/* Prefixed: a bare `.app` modifier picked up the app shell's layout rules. */
+.source-pill.source-wearable {
   background: var(--cui-accent-mute);
   color: var(--cui-accent-soft);
 }
 .removed-block { margin: 4px 0 8px; }
 .removed-block summary { cursor: pointer; padding: 4px 0; }
+
+/* Workouts tab — "Add a workout": basic workouts with predefined calories.
+   One column on a phone, as many as fit once the rail gives the room. */
+.add-workout {
+  margin-top: 18px;
+}
+.preset-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.preset-row {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color var(--cui-duration) var(--cui-ease),
+              background var(--cui-duration) var(--cui-ease);
+}
+.preset-row:hover {
+  border-color: var(--cui-accent-tint);
+  background: var(--bg-3);
+}
+.preset-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.preset-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.preset-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+.preset-add {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--cui-on-accent);
+  background: var(--cui-accent);
+}
 
 /* Program editor (W6) */
 .program-editor {

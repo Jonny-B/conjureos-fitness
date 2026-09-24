@@ -27,8 +27,11 @@ Phase 8 bundler. **Open source app, private backend** — see below.
   - **Recipes** — pull a saved recipe from the [Recipes app](https://github.com/Jonny-B/conjureos-app-recipes)
     (cross-app actions) and log its per-serving macros, marking it cooked.
 - **Trends** — weight tracking with a trend sparkline + BMI.
-- **Workouts** — built-in workout library with a guided player: timed sets,
-  rep sets, rest countdowns, and synthesized audio cues.
+- **Workouts** — the day's exercise, synced from Apple Health or added by
+  hand: pick a basic workout with predefined calories (walking, running,
+  cycling…) or type anything else in. Calories burned go back into the day's
+  calorie budget. The built-in workout library with its guided player is
+  paused for now (`src/features/flags.ts`).
 - **Profile & goals** — Mifflin-St Jeor recommendation with manual override.
 
 Nutrition logging is the fully-built core; weight and workouts are functional
