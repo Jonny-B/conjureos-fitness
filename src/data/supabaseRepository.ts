@@ -63,9 +63,10 @@ interface WeightRow {
  * VITE_SUPABASE_ANON_KEY are set. Rows are scoped to the signed-in user by
  * RLS; `init()` performs an anonymous sign-in when no session exists.
  *
- * Covers the v1 surface (profile, goals, diary, weights) only — every v2 plan
- * and session method throws {@link PLAN_REQUIRES_V2_BACKEND}, which callers
- * catch to fall back to the mock layer (DECISIONS 2026-06-24).
+ * Covers the v1 surface (profile, goals, diary, weights) on the server.
+ * Workout sessions are kept on-device in the local store (see `localStore`).
+ * Every other v2 method throws {@link PLAN_REQUIRES_V2_BACKEND}, which callers
+ * swallow (DECISIONS 2026-06-24).
  */
 export class SupabaseRepository implements Repository {
   readonly kind = "supabase" as const;
@@ -82,6 +83,26 @@ export class SupabaseRepository implements Repository {
   async init(): Promise<void> {
     // Token is fetched per-request; nothing to warm. Presence was already
     // verified by the selector before we got constructed.
+  }
+
+  /**
+   * Workout sessions have no server table, so they live in the same on-device
+   * store the local backend uses: localStorage, mirrored to the app's VFS
+   * `store.json`, which platform sync backs up. Without this every session
+   * write threw here and callers swallowed it, so a manually added exercise
+   * vanished for Supabase users (ConjureOS #796). Loaded lazily, so the local
+   * store only enters the bundle path when a session is actually touched.
+   */
+  private local: Promise<Repository> | null = null;
+  private localStore(): Promise<Repository> {
+    if (!this.local) {
+      this.local = import("./mockRepository").then(async ({ MockRepository }) => {
+        const repo = new MockRepository();
+        await repo.init();
+        return repo;
+      });
+    }
+    return this.local;
   }
 
   async getProfile(): Promise<Profile | null> {
@@ -187,8 +208,8 @@ export class SupabaseRepository implements Repository {
   }
 
   async clearWorkoutHistory(): Promise<void> {
-    // Workout sessions/day logs are VFS-only (v2) — nothing server-side yet.
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+    // Workout sessions are on-device (see localStore); nothing server-side.
+    await (await this.localStore()).clearWorkoutHistory();
   }
 
   // ── Sleep, water & symptoms: VFS-only, same as the v2 plan surface ──
@@ -269,14 +290,14 @@ export class SupabaseRepository implements Repository {
   async markCheckoff(_goalId: string, _date: string, _done: boolean): Promise<void> {
     throw new Error(PLAN_REQUIRES_V2_BACKEND);
   }
-  async listWorkoutSessions(_limit?: number): Promise<WorkoutSession[]> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async listWorkoutSessions(limit?: number): Promise<WorkoutSession[]> {
+    return (await this.localStore()).listWorkoutSessions(limit);
   }
-  async saveWorkoutSession(_session: WorkoutSession): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async saveWorkoutSession(session: WorkoutSession): Promise<void> {
+    await (await this.localStore()).saveWorkoutSession(session);
   }
-  async removeWorkoutSession(_id: string): Promise<void> {
-    throw new Error(PLAN_REQUIRES_V2_BACKEND);
+  async removeWorkoutSession(id: string): Promise<void> {
+    await (await this.localStore()).removeWorkoutSession(id);
   }
 }
 

@@ -16,6 +16,7 @@ import type { WorkoutSession } from "../types";
 import { getRepository } from "../data/repository";
 import { readWorkouts, type WorkoutBurn } from "../bridge/health";
 import { shiftDate, todayISO } from "./diary";
+import { newId } from "../data/id";
 
 /** Where a completed workout came from: run inside this app, or synced from
  *  Apple Health / another wearable. */
@@ -103,7 +104,7 @@ export async function listCompletedWorkouts(date: string): Promise<CompletedWork
       item: {
         key: s.id,
         source: "app" as const,
-        sourceLabel: "In-app",
+        sourceLabel: s.source === "manual" ? "Added by you" : "In-app",
         name: nameForSession(s),
         kcal: s.caloriesBurned ?? 0,
         durationSec: s.durationSec ?? s.cardio?.durationSec ?? undefined,
@@ -149,6 +150,54 @@ async function patchDay(
   const repo = await getRepository();
   const dl = await repo.getDayLog(date).catch(() => null);
   await repo.saveDayLog(date, fn(dl)).catch(() => {});
+}
+
+/** What the user types to log an exercise by hand. */
+export interface ManualExerciseInput {
+  name: string;
+  /** Minutes, optional. */
+  durationMin?: number;
+  /** Calories burned, required: this is what reaches the budget. */
+  calories: number;
+}
+
+/**
+ * Validate a hand-entered exercise. Returns the problem to show, or null when
+ * it can be saved.
+ */
+export function manualExerciseProblem(input: Partial<ManualExerciseInput>): string | null {
+  if (!input.name || !input.name.trim()) return "Give the exercise a name.";
+  const c = input.calories;
+  if (c === undefined || !Number.isFinite(c) || c <= 0) return "Enter the calories burned.";
+  if (c > 5000) return "That is more than 5,000 calories. Check the number.";
+  const d = input.durationMin;
+  if (d !== undefined && (!Number.isFinite(d) || d < 0 || d > 1440)) return "Duration must be between 0 and 1,440 minutes.";
+  return null;
+}
+
+/**
+ * Log an exercise by hand for `date`. Unlike the other mutations this does NOT
+ * swallow a failed write: a save button that silently does nothing is the bug
+ * this exists to avoid, so the caller shows the error.
+ */
+export async function addManualExercise(date: string, input: ManualExerciseInput): Promise<WorkoutSession> {
+  const problem = manualExerciseProblem(input);
+  if (problem) throw new Error(problem);
+  const session: WorkoutSession = {
+    id: newId(),
+    date,
+    workoutName: input.name.trim().slice(0, 60),
+    planned: [],
+    actual: [],
+    reprompts: [],
+    completedAt: new Date().toISOString(),
+    caloriesBurned: Math.round(input.calories),
+    ...(input.durationMin ? { durationSec: Math.round(input.durationMin * 60) } : {}),
+    source: "manual",
+  };
+  const repo = await getRepository();
+  await repo.saveWorkoutSession(session);
+  return session;
 }
 
 /** Delete an in-app session. */

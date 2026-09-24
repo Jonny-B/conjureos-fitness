@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react";
-import type { DiaryEntry, FoodItem, Goals, MealType } from "../types";
+import { useEffect, useRef, useState } from "react";
+import type { DiaryEntry, FoodItem, Goals, Macros, MealType, Profile } from "../types";
+import {
+  fromServings,
+  isVolume,
+  servingRatio,
+  toServings,
+  unitsFor,
+  UNIT_LABELS,
+  type AmountUnit,
+} from "../features/servingUnits";
+import { parseServingGrams } from "../features/foods/serving";
 import { MEAL_LABELS, MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { entryMacros, isAiEstimate } from "../features/diary";
@@ -19,6 +29,8 @@ interface Props {
   onSearch: () => void;
   onAi: () => void;
   onMutated: () => void;
+  /** Display preference; orders the amount-unit picker in the edit sheet. */
+  units?: Profile["units"];
 }
 
 /**
@@ -46,6 +58,7 @@ export function MealDetailScreen({
   onSearch,
   onAi,
   onMutated,
+  units = "metric",
 }: Props) {
   const [entries, setEntries] = useState<DiaryEntry[] | null>(null);
   // The entry currently open in the edit modal, or null.
@@ -219,6 +232,7 @@ export function MealDetailScreen({
       {editing && (
         <EntryEditModal
           entry={editing}
+          units={units}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -416,24 +430,36 @@ function MealHistory({
  * Edit a logged diary entry: fix the name/serving/macros, change how much, MOVE
  * it to a different meal, or delete it. Edits patch the entry's food snapshot
  * (per-serving macros) + meal + quantity in one save.
+ *
+ * Numbers follow the amount (ConjureOS #644): changing the serving label to a
+ * comparable one ("100 g" to "150 g", "1 cup" to "2 cups") rescales the
+ * per-serving macros, and the entry's total is shown live as the amount or unit
+ * changes. Typing a macro by hand makes that the new baseline.
  */
 function EntryEditModal({
   entry,
+  units,
   onClose,
   onSaved,
 }: {
   entry: DiaryEntry;
+  units: Profile["units"];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [name, setName] = useState(entry.food.name);
   const [serving, setServing] = useState(entry.food.servingSize);
+  const [servingGrams, setServingGrams] = useState<number | undefined>(
+    entry.food.servingGrams ?? parseServingGrams(entry.food.servingSize) ?? undefined,
+  );
   const [meal, setMeal] = useState<MealType>(entry.meal);
+  // `qty` is what the user typed, in `unit`; the diary stores servings.
+  const [unit, setUnit] = useState<AmountUnit>("serving");
   const [qty, setQty] = useState<number | undefined>(entry.quantity);
-  const [cal, setCal] = useState(entry.food.perServing.calories);
-  const [protein, setProtein] = useState(entry.food.perServing.protein);
-  const [carbs, setCarbs] = useState(entry.food.perServing.carbs);
-  const [fat, setFat] = useState(entry.food.perServing.fat);
+  const [macros, setMacros] = useState<Macros>({ ...entry.food.perServing });
+  // What a serving-label change scales from: the label and numbers as they
+  // were before the user started retyping the label.
+  const base = useRef({ serving: entry.food.servingSize, grams: servingGrams, macros: { ...entry.food.perServing } });
   const [busy, setBusy] = useState(false);
   // A thrown write (transient backend hiccup) used to leave `busy` stuck
   // true forever, since save()/remove() had no catch — Save and Delete
@@ -441,6 +467,43 @@ function EntryEditModal({
   // only live control) discards the edit instead of letting you retry it.
   const [error, setError] = useState<string | null>(null);
   useScrollLock();
+
+  const sizing: FoodItem = { ...entry.food, servingGrams };
+  const unitOptions = unitsFor(sizing, units);
+  const inServings = unit === "serving";
+  const q = toServings(qty ?? 0, unit, sizing);
+
+  const changeServing = (next: string) => {
+    setServing(next);
+    const b = base.current;
+    const ratio = servingRatio(b.serving, next, b.grams, parseServingGrams);
+    const nextGrams = parseServingGrams(next) ?? (ratio && b.grams ? b.grams * ratio : undefined);
+    setServingGrams(nextGrams ?? (next.trim() === b.serving.trim() ? b.grams : undefined));
+    if (ratio) {
+      const r1 = (v: number) => Math.round(v * ratio * 10) / 10;
+      setMacros({
+        ...b.macros,
+        calories: r1(b.macros.calories),
+        protein: r1(b.macros.protein),
+        carbs: r1(b.macros.carbs),
+        fat: r1(b.macros.fat),
+      });
+    } else if (next.trim() === b.serving.trim()) {
+      setMacros({ ...b.macros });
+    }
+  };
+
+  const setMacro = (k: "calories" | "protein" | "carbs" | "fat") => (v: number) => {
+    const m = { ...macros, [k]: v };
+    setMacros(m);
+    // A hand-typed number is the truth for the label as it reads now.
+    base.current = { serving, grams: servingGrams, macros: m };
+  };
+
+  const changeUnit = (next: AmountUnit) => {
+    setQty(fromServings(q, next, sizing));
+    setUnit(next);
+  };
 
   const save = async () => {
     const trimmed = name.trim();
@@ -451,13 +514,16 @@ function EntryEditModal({
       ...entry.food,
       name: trimmed.slice(0, 80),
       servingSize: serving.trim() || entry.food.servingSize,
+      ...(servingGrams ? { servingGrams: Math.round(servingGrams * 10) / 10 } : {}),
       perServing: {
-        calories: Math.max(0, Math.round(cal)),
-        protein: Math.max(0, Math.round(protein)),
-        carbs: Math.max(0, Math.round(carbs)),
-        fat: Math.max(0, Math.round(fat)),
+        ...macros,
+        calories: Math.max(0, Math.round(macros.calories)),
+        protein: Math.max(0, Math.round(macros.protein)),
+        carbs: Math.max(0, Math.round(macros.carbs)),
+        fat: Math.max(0, Math.round(macros.fat)),
       },
     };
+    if (!servingGrams) delete food.servingGrams;
     try {
       const repo = await getRepository();
       await repo.updateDiaryEntry(entry.id, {
@@ -465,7 +531,10 @@ function EntryEditModal({
         meal,
         // 2dp, not quarters: the steppers move in 0.25s but a TYPED 0.3 or 1.75
         // should survive the save rather than snapping to the nearest quarter.
-        quantity: Math.max(MIN_QTY, Math.round((qty ?? MIN_QTY) * 100) / 100),
+        // A typed weight keeps gram precision instead.
+        quantity: inServings
+          ? Math.max(MIN_QTY, Math.round((qty ?? MIN_QTY) * 100) / 100)
+          : Math.max(0.001, Math.round(q * 1000) / 1000),
       });
       onSaved();
     } catch {
@@ -488,6 +557,8 @@ function EntryEditModal({
     }
   };
 
+  const total = (v: number) => Math.round(v * q);
+
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet entry-edit" onClick={(e) => e.stopPropagation()}>
@@ -504,50 +575,75 @@ function EntryEditModal({
             <input className="text-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Food name" />
           </label>
 
-          <div className="field-row">
-            <label className="field">
-              <span>Meal</span>
-              <select className="select" value={meal} onChange={(e) => setMeal(e.target.value as MealType)}>
-                {MEAL_TYPES.map((m) => (
-                  <option key={m} value={m}>
-                    {MEAL_LABELS[m]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Quantity (servings)</span>
+          <label className="field">
+            <span>Meal</span>
+            <select className="select" value={meal} onChange={(e) => setMeal(e.target.value as MealType)}>
+              {MEAL_TYPES.map((m) => (
+                <option key={m} value={m}>
+                  {MEAL_LABELS[m]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>{inServings ? "Amount (servings)" : `Amount (1 serving is ${serving || entry.food.servingSize})`}</span>
+            <div className="qty-stepper">
               {/* NumberField, not a raw input: a controlled `String(Number(v))`
                   field erases the trailing dot the instant you type "0.", so a
                   decimal quantity could never be entered. */}
               <NumberField
+                className="qty-input"
                 value={qty}
                 onChange={setQty}
-                min={MIN_QTY}
-                max={99}
+                min={inServings ? MIN_QTY : 0}
+                max={inServings ? 99 : 9999}
                 decimals={2}
-                aria-label="Quantity (servings)"
+                aria-label={inServings ? "Quantity (servings)" : `Amount in ${UNIT_LABELS[unit]}`}
               />
-            </label>
-          </div>
+              {unitOptions.length > 1 && (
+                <select
+                  className="select qty-unit"
+                  aria-label="Unit"
+                  value={unit}
+                  onChange={(e) => changeUnit(e.target.value as AmountUnit)}
+                >
+                  {unitOptions.map((u) => (
+                    <option key={u} value={u}>
+                      {UNIT_LABELS[u]}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            {isVolume(unit) && (
+              <span className="muted small">Volume is converted as if it weighs the same as water.</span>
+            )}
+          </label>
 
           <label className="field">
             <span>Serving</span>
             <input
               className="text-input"
               value={serving}
-              onChange={(e) => setServing(e.target.value)}
+              onChange={(e) => changeServing(e.target.value)}
               placeholder="e.g. 1 cup (240 g)"
             />
           </label>
 
           <div className="macros-edit-row">
-            <MacroBox label="Calories" value={cal} onChange={setCal} />
-            <MacroBox label="Protein (g)" value={protein} onChange={setProtein} />
-            <MacroBox label="Carbs (g)" value={carbs} onChange={setCarbs} />
-            <MacroBox label="Fat (g)" value={fat} onChange={setFat} />
+            <MacroBox label="Calories" value={macros.calories} onChange={setMacro("calories")} />
+            <MacroBox label="Protein (g)" value={macros.protein} onChange={setMacro("protein")} />
+            <MacroBox label="Carbs (g)" value={macros.carbs} onChange={setMacro("carbs")} />
+            <MacroBox label="Fat (g)" value={macros.fat} onChange={setMacro("fat")} />
           </div>
-          <div className="muted small">Macros are per one serving.</div>
+          <div className="muted small">
+            Per serving. Changing the serving to a weight or count, like 150 g or 2 cups, rescales them.
+          </div>
+          <div className="entry-edit-total" aria-live="polite">
+            This entry: <strong>{total(macros.calories)} cal</strong> · {total(macros.protein)} g protein ·{" "}
+            {total(macros.carbs)} g carbs · {total(macros.fat)} g fat
+          </div>
           {error && <div className="notice notice-error">{error}</div>}
         </div>
 
@@ -555,7 +651,7 @@ function EntryEditModal({
           <button className="btn danger" disabled={busy} onClick={remove}>
             <TrashIcon size={16} /> Delete
           </button>
-          <button className="btn primary" disabled={busy || !name.trim()} onClick={save}>
+          <button className="btn primary" disabled={busy || !name.trim() || !(q > 0)} onClick={save}>
             {busy ? "Saving…" : "Save"}
           </button>
         </footer>

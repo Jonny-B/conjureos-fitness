@@ -587,7 +587,7 @@ function AiMode({
       setToHistory(res.items.length < GROUP_BY_DEFAULT_AT);
     } catch (err) {
       if (runIdRef.current !== myRunId) return;
-      setError(aiErrorMessage(err, "Couldn’t reach the estimator. Try again."));
+      setError(aiErrorMessage(err, "The estimator didn’t answer. Try again."));
     } finally {
       if (runIdRef.current === myRunId) setBusy(false);
     }

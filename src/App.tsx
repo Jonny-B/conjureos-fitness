@@ -343,6 +343,7 @@ export function App() {
             onSearch={() => openAdd(activeMeal, "search", "meal")}
             onAi={() => openAdd(activeMeal, "ai", "meal")}
             onMutated={() => setNonce((n) => n + 1)}
+            units={profile?.units ?? "metric"}
           />
         ) : tab === "add" ? (
           <AddFoodScreen

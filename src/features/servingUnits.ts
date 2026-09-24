@@ -63,3 +63,40 @@ export function stepFor(unit: AmountUnit): number {
   if (unit === "oz" || unit === "floz") return 1;
   return 0.25;
 }
+
+/** "2 cups" → { n: 2, rest: "cup" }. Plural "s" is dropped so "1 cup" and
+ *  "2 cups" compare equal. Null when the label doesn't start with a number. */
+function leadingAmount(label: string): { n: number; rest: string } | null {
+  const m = /^\s*(\d+\/\d+|\d+(?:\.\d+)?)\s*(.*)$/.exec(label);
+  if (!m) return null;
+  const num = m[1] ?? "";
+  const [top, bottom] = num.split("/");
+  const n = bottom !== undefined ? Number(top) / Number(bottom) : Number(num);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const rest = (m[2] ?? "").trim().toLowerCase().replace(/\s*\(.*\)\s*$/, "").replace(/(?<=\w)s$/, "");
+  return { n, rest };
+}
+
+/**
+ * How much bigger `next` is than `prev`, when both serving labels say so in
+ * comparable terms: gram weights ("100 g" → "150 g"), or the same unit with a
+ * different count ("1 cup" → "2 cups"). Null when the labels can't be compared,
+ * in which case the per-serving numbers are left alone.
+ *
+ * `prevGrams` is the food's stored gram weight, which beats reading the label.
+ */
+export function servingRatio(
+  prev: string,
+  next: string,
+  prevGrams: number | null | undefined,
+  parseGrams: (label: string) => number | null,
+): number | null {
+  if (prev.trim() === next.trim()) return null;
+  const nextG = parseGrams(next);
+  const prevG = prevGrams && prevGrams > 0 ? prevGrams : parseGrams(prev);
+  if (nextG && prevG) return nextG / prevG;
+  const a = leadingAmount(prev);
+  const b = leadingAmount(next);
+  if (a && b && a.rest === b.rest) return b.n / a.n;
+  return null;
+}
