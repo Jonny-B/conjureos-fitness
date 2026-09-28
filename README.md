@@ -9,7 +9,10 @@
 > - Store slug `conjure-fitness`, a new listing. Never publish to `fitness`:
 >   that would replace Conjure Health for everyone who has it installed.
 > - Publishes to the DEV store only (Actions → Run workflow). There is no
->   release/prod trigger yet.
+>   release/prod trigger yet. The dev listing was created 2026-09-28 (store
+>   app id `57a80973-e0e2-4c75-97a2-cbe3691ee56e`, featured, v1 = `0.1.0`), so
+>   never run `--first-publish` for `conjure-fitness` on dev again. Prod has no
+>   listing yet. Bump `version` above the live one before every Run workflow.
 > - `src/features/flags.ts`: `COACH_AND_WORKOUTS_ENABLED` is on and
 >   `NUTRITION_ENABLED` is off. The food code is still here, just unreachable;
 >   the app opens on a new Home screen (`src/screens/HomeScreen.tsx`).
