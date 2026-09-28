@@ -69,8 +69,10 @@ beforeEach(async () => {
       },
     },
   };
+  // The food handlers are off in Conjure Fitness but still tested, so ask for
+  // them explicitly (see registerActions' includeNutrition).
   const { registerActions } = await import("./actions");
-  await registerActions();
+  await registerActions({ includeNutrition: true });
 });
 
 const call = (name: string, params?: unknown) => {
@@ -89,13 +91,17 @@ describe("what the orchestrator can reach", () => {
       default: { conjureos: { actions?: Record<string, unknown> } };
     };
     const declared = Object.keys(pkg.default.conjureos.actions ?? {}).sort();
-    if (!NUTRITION_ENABLED) {
-      // Conjure Fitness: every handler here is a food/wellbeing one, so the
-      // manifest declares none and App never calls registerActions.
-      expect(declared).toEqual([]);
-      return;
-    }
-    expect(Object.keys(actions).sort()).toEqual(declared);
+    // What App actually registers: the default, not the test's food-inclusive set.
+    let published: Record<string, Handler> = {};
+    (globalThis as { window?: unknown }).window = {
+      __conjureos: { actions: { register: async (map: Record<string, Handler>) => void (published = map) } },
+    };
+    const { registerActions } = await import("./actions");
+    await registerActions();
+    expect(Object.keys(published).sort()).toEqual(declared);
+    // Conjure Fitness declares exactly its four fitness actions.
+    expect(NUTRITION_ENABLED).toBe(false);
+    expect(declared).toEqual(["listWorkouts", "logWorkout", "nextWorkout", "trainingSummary"]);
   });
 
   it("does not expose consent, the pattern-finder, bulk clears, or goal writes", () => {

@@ -18,7 +18,10 @@
 >   the app opens on a new Home screen (`src/screens/HomeScreen.tsx`).
 > - No shared backend: the Supabase `fitness` schema is Health's, so this app
 >   keeps its data in its local store (`src/data/repository.ts`).
-> - No cross-app actions are declared or registered.
+> - Cross-app actions (0.2.0): `listWorkouts`, `trainingSummary`,
+>   `nextWorkout` and `logWorkout`, documented in [ACTIONS.md](ACTIONS.md).
+>   `listWorkouts` feeds Conjure Health's calorie ring through its
+>   `workoutSource` need; its `returns` schema is a contract.
 >
 > Everything below describes the app as it was before the split.
 

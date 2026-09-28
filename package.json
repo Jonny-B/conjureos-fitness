@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Conjure Fitness: guided workouts, run tracking, an adaptive training plan and an AI coach for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -16,8 +16,333 @@
       "ai.complete",
       "vfs.read",
       "vfs.write",
+      "actions.write",
       "native.location",
       "native.health"
+    ],
+    "actions": {
+      "listWorkouts": {
+        "permission": "actions.read",
+        "description": "List the workouts the user recorded in Conjure Fitness (guided workouts, runs, rides, and workouts logged by hand or by other apps), newest first, with duration and calories burned. from/to are YYYY-MM-DD; the default is the last 7 days ending today, and ranges wider than 92 days are cut to the most recent 92. Workouts synced from Apple Health or other wearables are not included. Use for \"what workouts did I do\", \"did I train on Tuesday\", or to count workouts.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "description": "First day, YYYY-MM-DD. Defaults to 6 days before \"to\"."
+            },
+            "to": {
+              "type": "string",
+              "description": "Last day, YYYY-MM-DD. Defaults to today."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Most workouts to return; default 50."
+            }
+          }
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "workouts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable id of the workout session."
+                  },
+                  "date": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD the workout was done."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Display name, e.g. \"Full-Body Express\" or \"Morning Run\"."
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "Lowercase activity: \"strength\", \"cardio\", or what a caller logged (\"yoga\", \"running\")."
+                  },
+                  "durationMin": {
+                    "type": "integer",
+                    "description": "Length in minutes; 0 when unknown."
+                  },
+                  "caloriesBurned": {
+                    "type": "integer",
+                    "description": "Active energy burned, kcal."
+                  },
+                  "caloriesEstimated": {
+                    "type": "boolean",
+                    "description": "True when caloriesBurned is this app's estimate rather than a supplied number."
+                  },
+                  "completedAt": {
+                    "type": "string",
+                    "description": "ISO timestamp the workout finished."
+                  },
+                  "distanceKm": {
+                    "type": "number",
+                    "description": "Runs and rides only."
+                  }
+                },
+                "required": [
+                  "id",
+                  "date",
+                  "name",
+                  "type",
+                  "durationMin",
+                  "caloriesBurned",
+                  "caloriesEstimated",
+                  "completedAt"
+                ]
+              }
+            }
+          },
+          "required": [
+            "from",
+            "to",
+            "workouts"
+          ]
+        }
+      },
+      "trainingSummary": {
+        "permission": "actions.read",
+        "description": "Summarize the user's training for the week containing a date (Monday to that date): number of workouts, active days, the plan's days-per-week goal (0 when none), total minutes, calories burned and distance. date is YYYY-MM-DD and defaults to today. Use for \"how did I do this week\" or \"am I on track with my workouts\".",
+        "params": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "type": "string",
+              "description": "Any day of the week to summarize, YYYY-MM-DD; defaults to today."
+            }
+          }
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "weekStart": {
+              "type": "string"
+            },
+            "through": {
+              "type": "string"
+            },
+            "workouts": {
+              "type": "integer"
+            },
+            "activeDays": {
+              "type": "integer"
+            },
+            "activeDates": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "weeklyGoalDays": {
+              "type": "integer"
+            },
+            "minutes": {
+              "type": "integer"
+            },
+            "caloriesBurned": {
+              "type": "integer"
+            },
+            "distanceKm": {
+              "type": "number"
+            },
+            "hasPlan": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "weekStart",
+            "through",
+            "workouts",
+            "activeDays",
+            "activeDates",
+            "weeklyGoalDays",
+            "minutes",
+            "caloriesBurned",
+            "distanceKm",
+            "hasPlan"
+          ]
+        }
+      },
+      "nextWorkout": {
+        "permission": "actions.read",
+        "description": "Return the next workout in the user's training plan, with its exercises and sets, and how far through the current group of workouts they are. message is one line that can be shown or said as-is; workout is absent when there is no plan or program, or the current group is finished. Use for \"what's my workout today\" or \"what's next in my plan\".",
+        "params": {
+          "type": "object",
+          "properties": {}
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "hasPlan": {
+              "type": "boolean"
+            },
+            "hasProgram": {
+              "type": "boolean"
+            },
+            "message": {
+              "type": "string"
+            },
+            "workout": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string",
+                  "description": "A run or ride's goal, e.g. \"5 km\"."
+                },
+                "exercises": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "prescription": {
+                        "type": "string",
+                        "description": "e.g. \"3 × 10 reps\" or \"4 × 45s\"."
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "prescription"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "type",
+                "exercises"
+              ]
+            },
+            "group": {
+              "type": "integer"
+            },
+            "groupDone": {
+              "type": "integer"
+            },
+            "groupSize": {
+              "type": "integer"
+            },
+            "evaluation": {
+              "type": "boolean",
+              "description": "This group re-tests the plan's benchmarks."
+            }
+          },
+          "required": [
+            "hasPlan",
+            "hasProgram",
+            "message"
+          ]
+        }
+      },
+      "logWorkout": {
+        "permission": "actions.write",
+        "description": "Record a workout the user did outside the app (a run, a class, \"30 minutes of yoga\") in their Conjure Fitness training history. Only durationMin is required. Pass calories only when the user or a device states the number; otherwise the app estimates them. type is the activity (e.g. running, cycling, yoga, strength); distanceKm is for runs, rides and swims. date is YYYY-MM-DD, defaults to today, and cannot be in the future.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "durationMin": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600,
+              "description": "Length in minutes."
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 60,
+              "description": "Display name, e.g. \"Evening spin class\". Defaults to the type."
+            },
+            "type": {
+              "type": "string",
+              "maxLength": 40,
+              "description": "Activity, e.g. running, cycling, swimming, yoga, strength."
+            },
+            "distanceKm": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 500,
+              "description": "Distance in km, for runs, rides and swims."
+            },
+            "calories": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5000,
+              "description": "Active energy burned, kcal, when stated."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD; defaults to today."
+            }
+          },
+          "required": [
+            "durationMin"
+          ]
+        },
+        "returns": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "date": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "durationMin": {
+              "type": "integer"
+            },
+            "caloriesBurned": {
+              "type": "integer"
+            },
+            "caloriesEstimated": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "name",
+            "durationMin",
+            "caloriesBurned",
+            "caloriesEstimated"
+          ]
+        }
+      }
+    },
+    "promptSuggestions": [
+      "What's my next workout?",
+      "Log a 30 minute run I did this morning",
+      "How many days did I train this week?"
     ]
   },
   "scripts": {
