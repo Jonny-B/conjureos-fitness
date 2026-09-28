@@ -65,16 +65,14 @@ describe("clearAllHistories", () => {
 });
 
 describe("visibleHistoryItems", () => {
-  it("still offers the wellbeing rows while the coach is paused", () => {
+  it("offers the wellbeing rows", () => {
     const kinds = visibleHistoryItems().map((i) => i.kind);
     expect(kinds).toContain("sleep");
     expect(kinds).toContain("water");
     expect(kinds).toContain("symptoms");
   });
 
-  it("hides only the paused coach + workout slices", () => {
-    const kinds = visibleHistoryItems().map((i) => i.kind);
-    expect(kinds).not.toContain("coach");
-    expect(kinds).not.toContain("workouts");
+  it("offers every row, coach + workout slices included, with the coach on", () => {
+    expect(visibleHistoryItems()).toEqual(HISTORY_ITEMS);
   });
 });

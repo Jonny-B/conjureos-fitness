@@ -30,7 +30,7 @@ import { useScrollLock } from "../hooks/useScrollLock";
 import { WorkoutRunner, metaLine } from "./WorkoutRunner";
 import { toIntInRange } from "../features/num";
 import { weekExerciseProgress, type WeekExerciseProgress } from "../features/exercise";
-import { COACH_AND_WORKOUTS_ENABLED } from "../features/flags";
+import { COACH_AND_WORKOUTS_ENABLED, NUTRITION_ENABLED } from "../features/flags";
 
 /**
  * Plan hub — the home for the user's plan, tracking + coaching, condensing what
@@ -851,7 +851,7 @@ const STARTERS = [
   "What should I eat before a workout?",
 ];
 
-function CoachLauncher({ onAsk }: { onAsk: (question: string) => void }) {
+export function CoachLauncher({ onAsk }: { onAsk: (question: string) => void }) {
   const [text, setText] = useState("");
   const ask = (q: string) => {
     const t = q.trim();
@@ -863,7 +863,7 @@ function CoachLauncher({ onAsk }: { onAsk: (question: string) => void }) {
       <div className="section-label">Talk to your coach</div>
       <p className="muted small coach-launch-hint">
         Start with a question below or ask your own — it opens a full chat with your coach, who can
-        see your plan, food, weight, and workouts.
+        see your plan{NUTRITION_ENABLED ? ", food, weight," : ""} and workouts.
       </p>
       <div className="coach-launch-chips">
         {STARTERS.map((s) => (

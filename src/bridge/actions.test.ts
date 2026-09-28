@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SleepEntry, SymptomEntry, WaterEntry, WeightEntry } from "../types";
+import { NUTRITION_ENABLED } from "../features/flags";
 
 type Handler = (params?: unknown) => Promise<unknown>;
 
@@ -85,9 +86,15 @@ describe("what the orchestrator can reach", () => {
     // The manifest is what the host validates against, so a handler without a
     // schema is unreachable and a schema without a handler is a broken promise.
     const pkg = (await import("../../package.json")) as unknown as {
-      default: { conjureos: { actions: Record<string, unknown> } };
+      default: { conjureos: { actions?: Record<string, unknown> } };
     };
-    const declared = Object.keys(pkg.default.conjureos.actions).sort();
+    const declared = Object.keys(pkg.default.conjureos.actions ?? {}).sort();
+    if (!NUTRITION_ENABLED) {
+      // Conjure Fitness: every handler here is a food/wellbeing one, so the
+      // manifest declares none and App never calls registerActions.
+      expect(declared).toEqual([]);
+      return;
+    }
     expect(Object.keys(actions).sort()).toEqual(declared);
   });
 

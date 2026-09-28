@@ -33,7 +33,7 @@ import { modeHasWorkouts, modeTracksFood } from "../features/plan/model";
 import type { WizardBody } from "../features/plan/planService";
 import { decidePlanEdit } from "../features/plan/planService";
 import type { ExerciseSet, ProgramWorkout } from "../types";
-import { COACH_AND_WORKOUTS_ENABLED } from "../features/flags";
+import { COACH_AND_WORKOUTS_ENABLED, NUTRITION_ENABLED } from "../features/flags";
 
 type Step = "disclaimer" | "mode" | "safety" | "inputs" | "review";
 
@@ -134,6 +134,10 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
     const existing = editPlan?.mode;
     if (!COACH_AND_WORKOUTS_ENABLED) {
       return existing === "logging_only" ? existing : "eat_better";
+    }
+    // Food tracking off: every plan is a training plan (see features/flags).
+    if (!NUTRITION_ENABLED) {
+      return existing === "logging_only" ? existing : "get_fit";
     }
     return existing ?? "both";
   });
@@ -364,7 +368,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
             n={1}
             title={COACH_AND_WORKOUTS_ENABLED ? "What do you want to focus on?" : "What's your goal?"}
           />
-          {COACH_AND_WORKOUTS_ENABLED && (
+          {COACH_AND_WORKOUTS_ENABLED && NUTRITION_ENABLED && (
             <div className="mode-cards">
               {MODE_CARDS.map((c) => (
                 <button
@@ -388,7 +392,9 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
               className="text-area"
               rows={2}
               placeholder={
-                COACH_AND_WORKOUTS_ENABLED
+                !NUTRITION_ENABLED
+                  ? "e.g. get better at the Murph, or run a 5K"
+                  : COACH_AND_WORKOUTS_ENABLED
                   ? "e.g. lose a few pounds and get better at the Murph"
                   : "e.g. lose a couple of pounds"
               }

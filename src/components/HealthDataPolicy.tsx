@@ -35,13 +35,13 @@ export function HealthDataPolicy({ onClose }: { onClose: () => void }) {
 
           <h3>What this covers</h3>
           <p>
-            Conjure Health records things about your body: what you ate, what you weigh, how
+            Conjure Fitness records things about your body: what you ate, what you weigh, how
             you slept, how much you drank, symptoms you noticed, and workouts you did. Some
             privacy laws call this <strong>consumer health data</strong>. This page explains
             what happens to it.
           </p>
           <p>
-            Conjure Health is not a doctor, a clinic, an insurer, or any other kind of
+            Conjure Fitness is not a doctor, a clinic, an insurer, or any other kind of
             healthcare provider, and it is not part of one. That means your entries here are
             not medical records and HIPAA does not apply to them. The protections described
             on this page are the ones we actually implement, not ones HIPAA imposes on us.

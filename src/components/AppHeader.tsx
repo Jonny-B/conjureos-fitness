@@ -5,7 +5,7 @@
  * their own back/title headers — this owns both.
  */
 
-import { AppleIcon, ChevronLeft, SettingsIcon } from "./icons";
+import { ChevronLeft, SettingsIcon, WorkoutsIcon } from "./icons";
 
 /** The app's single top bar. Pass `onBack` on sub-pages to swap the brand
  *  mark for a back chevron. */
@@ -28,7 +28,7 @@ export function AppHeader({
           </button>
         ) : (
           <span className="brand-mark" aria-hidden>
-            <AppleIcon />
+            <WorkoutsIcon />
           </span>
         )}
       </div>

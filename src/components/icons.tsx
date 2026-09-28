@@ -86,6 +86,14 @@ export const TrendsIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Tab icon: Conjure Fitness's Home screen (a house). */
+export const HomeIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 10.5 12 3l9 7.5" />
+    <path d="M5 9v11a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9" />
+  </Svg>
+);
+
 /** Tab icon: workouts (a dumbbell). */
 export const WorkoutsIcon = (p: IconProps) => (
   <Svg {...p}>
