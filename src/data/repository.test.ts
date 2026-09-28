@@ -31,10 +31,12 @@ describe("getRepository backend selection hardening", () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it("falls back to the durable local store when the Supabase backend is unreachable", async () => {
+  it("never opens the shared backend, even signed in with the project configured", async () => {
+    // Conjure Fitness keeps to its local store: the `fitness` schema is Conjure
+    // Health's (see SHARED_BACKEND_ENABLED in repository.ts).
     const repo = await getRepository();
-    expect(probe).toHaveBeenCalled(); // we actually probed reachability
-    expect(repo.kind).toBe("mock"); // …and did NOT hand back the broken backend
+    expect(probe).not.toHaveBeenCalled();
+    expect(repo.kind).toBe("mock");
   });
 
   it("returns the same instance on repeat + concurrent calls (idempotent)", async () => {

@@ -170,6 +170,15 @@ function hasSupabaseConfig(): boolean {
 }
 
 /**
+ * Off in Conjure Fitness (2026-09-28): the Supabase `fitness` schema holds
+ * Conjure Health's data, one plan and one profile per user, so this app writing
+ * there would overwrite the plan Health is tracking. Until Conjure Fitness has
+ * its own schema it keeps everything in its local store (localStorage + VFS),
+ * which its own slug already keeps apart from Health's.
+ */
+const SHARED_BACKEND_ENABLED = false;
+
+/**
  * The real backend is used only when ALL of these hold:
  *   1. the shared-project URL + anon key are configured at build time,
  *   2. the host exposes the SSO auth bridge, and
@@ -179,6 +188,7 @@ function hasSupabaseConfig(): boolean {
  * usable, and never half-wires a backend it can't authenticate to.
  */
 async function shouldUseSupabase(): Promise<boolean> {
+  if (!SHARED_BACKEND_ENABLED) return false;
   if (!hasSupabaseConfig() || !isHostAuthAvailable()) return false;
   return (await getAccessToken()) !== null;
 }

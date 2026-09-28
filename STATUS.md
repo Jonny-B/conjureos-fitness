@@ -1,4 +1,9 @@
-# Conjure Health, project status
+# Conjure Fitness, project status
+
+> **2026-09-28, `0.1.0`: Conjure Fitness, split from Conjure Health, DEV ONLY.** Calorie tracking moved to [conjureos-health](https://github.com/Jonny-B/conjureos-health) (which keeps the `fitness` slug and deleted the workout code). Here `COACH_AND_WORKOUTS_ENABLED` is back on and a new `NUTRITION_ENABLED` flag is off: tabs are Home / Plan / Coach / Workouts, the app opens on a new `HomeScreen`, the wizard builds `get_fit` plans only, and no actions are declared or registered. New store slug `conjure-fitness`; the publish workflow is dev-only. The shared Supabase backend is off (`SHARED_BACKEND_ENABLED` in `data/repository.ts`) because the `fitness` schema is Health's. Rough first cut; looks and flow still to do. Not built yet: sending finished workouts to Conjure Health's `logWorkout` so they count on its calorie ring.
+>
+> Everything below is the Conjure Health history from before the split.
+
 
 > **Last updated: 2026-08-04.** `1.21.0` = **coach + workout program PAUSED (owner decision); Conjure Health ships as a focused weight-loss + nutrition tracker.** One flag, `COACH_AND_WORKOUTS_ENABLED` in `src/features/flags.ts`, hides the Workouts tab + library, the Coach tab + Plan-tab launcher, the evening check-in, the Plan tab's program/benchmark section, and the wizard's mode picker (plans are forced `eat_better`). NOTHING is deleted: all code + 86 tests stay green, existing plans keep `program`, `coach.json` and session history are untouched, and no data migrates — flipping the flag back to `true` restores everything. Deliberately STILL ON: Apple Health / wearable exercise calories (they move the calorie budget, so they're a nutrition feature) and the `logWorkout` action; the ring's Exercise row now opens an exercise-only view (`WorkoutsScreen exerciseOnly`) to edit/remove those burns. Also fixed a pre-existing gap this exposed: food-only plans had NO 'Edit plan' entry point (it lived inside ProgramSection, which renders nothing without a program) — new `PlanHeaderSection` always provides it. Bundle 710→662 kB. Revival checklist lives in the flags.ts doc comment.
 >

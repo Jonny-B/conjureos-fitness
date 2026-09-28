@@ -5,7 +5,7 @@ import type { Plan, PlanGoal } from "../../types";
 
 const goal = (kind: PlanGoal["kind"], label: string): PlanGoal => ({ id: label, label, kind });
 
-// A plan from before the pause: mode "both", with workout goals on it.
+// A plan with food and workout goals on it (mode "both").
 const legacy = {
   id: "p1",
   mode: "both",
@@ -23,30 +23,17 @@ const legacy = {
   createdAt: "2026-07-27T00:00:00Z",
 } as Plan;
 
-describe("plan display while workouts are paused", () => {
-  it("is only meaningful with the flag off (guards the rest of this suite)", () => {
-    expect(COACH_AND_WORKOUTS_ENABLED).toBe(false);
+describe("plan display with workouts on (Conjure Fitness)", () => {
+  it("is only meaningful with the flag on (guards the rest of this suite)", () => {
+    expect(COACH_AND_WORKOUTS_ENABLED).toBe(true);
   });
 
-  it("reads a legacy 'both' plan as the half we can still deliver", () => {
-    expect(planModeLabel(legacy)).toBe("Eat better");
+  it("labels a plan by its own mode", () => {
+    expect(planModeLabel(legacy)).toBe("Eat better + train");
+    expect(planModeLabel({ ...legacy, mode: "get_fit" })).toBe("Get fit");
   });
 
-  it("leaves a food-only plan's label alone", () => {
-    expect(planModeLabel({ ...legacy, mode: "eat_better" })).toBe("Eat better");
-  });
-
-  it("hides workout goals without touching the plan", () => {
-    const shown = visiblePlanGoals(legacy);
-    expect(shown.map((g) => g.label)).toEqual([
-      "Hit a 300-500 cal daily deficit",
-      "Weigh in every morning",
-    ]);
-    // The plan itself is untouched — flipping the flag back restores them.
-    expect(legacy.goals).toHaveLength(4);
-  });
-
-  it("keeps nutrition and habit goals", () => {
-    expect(visiblePlanGoals(legacy).every((g) => g.kind !== "workout")).toBe(true);
+  it("shows every goal, workout goals included", () => {
+    expect(visiblePlanGoals(legacy).map((g) => g.label)).toEqual(legacy.goals.map((g) => g.label));
   });
 });
