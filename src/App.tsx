@@ -128,13 +128,11 @@ export function App() {
       setPlan(existingPlan);
       setReady(true);
     })();
-    // Every registered action is a food/wellbeing one, so none are offered
-    // while food tracking is off (package.json declares none either).
-    if (NUTRITION_ENABLED) {
-      registerActions().catch(() => {
-        /* cross-app integration is non-fatal */
-      });
-    }
+    // The fitness actions always; the food ones only while food tracking is on
+    // (registerActions decides, to match what package.json declares).
+    registerActions().catch(() => {
+      /* cross-app integration is non-fatal */
+    });
     return () => {
       alive = false;
     };

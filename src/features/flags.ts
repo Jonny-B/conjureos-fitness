@@ -34,10 +34,11 @@ export const COACH_AND_WORKOUTS_ENABLED: boolean = true;
  * it apart is later work), but none of it is reachable:
  * - No Diary, Add food, meal or Journal tabs. The app opens on Home.
  * - The plan wizard builds `get_fit` plans only.
- * - No cross-app actions are registered or declared in package.json, so the
- *   ConjureOS assistant never sends this app food, water, sleep or weight.
+ * - The food and wellbeing actions are neither declared in package.json nor
+ *   registered, so the ConjureOS assistant never sends this app food, water,
+ *   sleep or weight. The fitness actions are (see ACTIONS.md).
  *
- * Not built yet: sending a finished workout to Conjure Health's `logWorkout`
- * action, so it counts on Health's calorie ring.
+ * Workouts still reach Health's calorie ring: Conjure Health's `workoutSource`
+ * need reads them through this app's `listWorkouts`.
  */
 export const NUTRITION_ENABLED: boolean = false;

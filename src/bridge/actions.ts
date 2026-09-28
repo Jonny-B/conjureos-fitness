@@ -1,7 +1,10 @@
 /**
- * Cross-app actions Conjure Fitness exposes via ConjureOS's Phase 13a bridge, so the
- * home orchestrator, an assistant, or the Recipes app can write to / read from
- * the diary:
+ * The FOOD and wellbeing cross-app actions, from when this app was Conjure
+ * Health. Off in Conjure Fitness (NUTRITION_ENABLED in features/flags): they are
+ * neither declared in package.json nor registered. The actions Conjure Fitness
+ * does expose live in fitnessActions.ts; registerActions below publishes both.
+ * When on, the home orchestrator, an assistant, or the Recipes app can write to
+ * / read from the diary:
  *
  *   logFood({ name, calories, protein?, carbs?, fat?, meal?, date? })  → write
  *   todayTotals()                                                      → read
@@ -37,7 +40,7 @@
  * side-effect-free; writes trigger ConjureOS's one-time per-caller grant.
  */
 
-import type { Macros, MealType, WorkoutSession } from "../types";
+import type { Macros, MealType } from "../types";
 import { MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
 import { parseMeal } from "../features/naturalLanguage";
@@ -49,6 +52,9 @@ import { getRecipe, markCooked, RecipesAppClosedError, type ListedRecipe } from 
 import { exerciseCaloriesForDate } from "../features/exercise";
 import { daySnapshot, recentSnapshots } from "../features/dataApi";
 import { newId } from "../data/id";
+import { asDate, asId, asNonNegInt, asObject, asPositiveAmount, asString } from "./params";
+import { FITNESS_ACTIONS } from "./fitnessActions";
+import { NUTRITION_ENABLED } from "../features/flags";
 
 /** Exercise calories for a date: wearable (Apple Health, etc.) + in-app logged
  *  sessions, added, minus any the user removed. Shared with the diary ring via
@@ -57,86 +63,12 @@ async function exerciseCaloriesFor(date: string): Promise<number> {
   return exerciseCaloriesForDate(date);
 }
 
-function asObject(v: unknown): Record<string, unknown> {
-  if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("params must be an object");
-  return v as Record<string, unknown>;
-}
-function asString(v: unknown, field: string, max: number): string {
-  if (typeof v !== "string") throw new Error(`params.${field} must be a string`);
-  const t = v.trim();
-  if (!t) throw new Error(`params.${field} cannot be empty`);
-  if (t.length > max) throw new Error(`params.${field} exceeds ${max} chars`);
-  // eslint-disable-next-line no-control-regex
-  return t.replace(/[\x00-\x1F\x7F]/g, "");
-}
-function asNonNegInt(v: unknown, field: string, max: number, dflt = 0): number {
-  if (v === undefined || v === null) return dflt;
-  const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n) || n < 0) throw new Error(`params.${field} must be a non-negative number`);
-  return Math.min(max, Math.round(n));
-}
-/**
- * A caller-stated amount, validated against a schema's [min, max].
- *
- * Zero or negative is always REJECTED, never clamped up: for a field that
- * counts or measures something (days of history, servings, a corrected
- * quantity), "none" is a different request than "a little" — the caller
- * should just not make the call, or use deleteEntry — so it must never be
- * silently reinterpreted as a default or a minimum. A positive value that
- * falls outside the bound, on the other hand, is safe to clamp to the nearer
- * edge: capping an excessive "days: 999" or rounding "servings: 0.02" up to
- * the smallest representable amount doesn't invent an amount the caller never
- * stated, it just refuses to honor an amount stated too precisely or too
- * generously. Applied consistently at every "explicit but out of range"
- * numeric field on this surface — see recentNutrition/recentWellbeing (days),
- * logRecipeMeal (servings), and setFoodQuantity (quantity).
- */
-function asPositiveAmount(
-  v: unknown,
-  field: string,
-  min: number,
-  max: number,
-  integer = false,
-): number {
-  const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n) || n <= 0) throw new Error(`params.${field} must be a positive number`);
-  const clamped = Math.min(max, Math.max(min, n));
-  return integer ? Math.round(clamped) : clamped;
-}
-
 function asMeal(v: unknown): MealType {
   if (typeof v === "string" && (MEAL_TYPES as string[]).includes(v)) return v as MealType;
   // Default by time of day if unspecified.
   const h = new Date().getHours();
   return h < 11 ? "breakfast" : h < 15 ? "lunch" : h < 21 ? "dinner" : "snacks";
 }
-function asDate(v: unknown): string {
-  if (v === undefined || v === null) return todayISO();
-  const s = asString(v, "date", 10);
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) throw new Error("params.date must be YYYY-MM-DD");
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  // The regex only checks SHAPE. `new Date("2026-02-30")` rolls over to March
-  // 2nd instead of failing, so the only reliable check is to construct the
-  // date from its parts and read it back: a date that doesn't exist comes
-  // back on a different day/month than the one asked for. This matters
-  // because a written entry under a date the app's own UI can never navigate
-  // to (recentNutrition/recentWellbeing walk real calendar days) is written
-  // and then permanently invisible.
-  const roundTrip = new Date(y, mo - 1, d);
-  if (roundTrip.getFullYear() !== y || roundTrip.getMonth() !== mo - 1 || roundTrip.getDate() !== d) {
-    throw new Error("params.date must be a real calendar date (YYYY-MM-DD)");
-  }
-  return s;
-}
-
-/** An id from a caller: non-empty, bounded, control characters stripped. */
-function asId(v: unknown): string {
-  return asString(v, "id", 64);
-}
-
 /**
  * A positive amount in one of two units, exactly one of which must be given.
  * Callers speak the user's units ("16 oz of water", "184 lb"), and storage is
@@ -333,30 +265,6 @@ async function recentNutrition(raw?: unknown): Promise<{
  * burned calories + date are persisted structurally for now. Untrusted input,
  * so every field is checked + clamped.
  */
-async function logWorkout(raw?: unknown): Promise<{ id: string; caloriesBurned: number }> {
-  const p = asObject(raw);
-  const calories = asNonNegInt(p.calories, "calories", 10000);
-  // Validated (range-clamped) so a bad caller is rejected, even though the
-  // structured session doesn't store them yet.
-  if (p.type !== undefined) asString(p.type, "type", 40);
-  asNonNegInt(p.durationMin, "durationMin", 1440);
-  const date = asDate(p.date);
-
-  const repo = await getRepository();
-  const session: WorkoutSession = {
-    id: newId(),
-    date,
-    planned: [],
-    actual: [],
-    reprompts: [],
-    completedAt: new Date().toISOString(),
-    caloriesBurned: calories,
-    source: "logWorkout",
-  };
-  await repo.saveWorkoutSession(session);
-  return { id: session.id, caloriesBurned: calories };
-}
-
 async function logRecipeMeal(raw?: unknown): Promise<{ id: string; logged: boolean }> {
   const p = asObject(raw);
   const slug = asString(p.slug, "slug", 80)
@@ -630,22 +538,34 @@ async function recentWellbeing(raw?: unknown): Promise<{ days: WellbeingDay[] }>
 }
 
 /**
- * Publish this app's actions (logFood, todayTotals, dayNutrition,
- * recentNutrition, logRecipeMeal, logWorkout) to ConjureOS so the assistant and other apps can call them.
- * Call once at startup; a no-op outside ConjureOS or on a host too old to
- * support registration. Keep the handler set in sync with the `conjureos.actions`
- * block in package.json — that's the schema the host validates against.
+ * Publish this app's actions to ConjureOS so the assistant and other apps can
+ * call them: the fitness actions always, the food ones only when food tracking
+ * is on. Call once at startup; a no-op outside ConjureOS or on a host too old to
+ * support registration. The handler set must match the `conjureos.actions`
+ * block in package.json exactly — the host validates against it, and a declared
+ * action without a handler fails the whole registration.
+ *
+ * `includeNutrition` exists for tests, which still exercise the food handlers.
  */
-export async function registerActions(): Promise<void> {
+export async function registerActions(
+  opts: { includeNutrition?: boolean } = {},
+): Promise<void> {
   const bridge = window.__conjureos?.actions;
   if (!bridge?.register) return; // not inside ConjureOS, or host too old
+  const includeNutrition = opts.includeNutrition ?? NUTRITION_ENABLED;
   await bridge.register({
+    ...(includeNutrition ? nutritionActions() : {}),
+    ...FITNESS_ACTIONS,
+  });
+}
+
+function nutritionActions() {
+  return {
     logFood,
     todayTotals,
     dayNutrition,
     recentNutrition,
     logRecipeMeal,
-    logWorkout,
     logWater,
     logSleep,
     logSymptom,
@@ -654,5 +574,5 @@ export async function registerActions(): Promise<void> {
     deleteEntry,
     dayWellbeing,
     recentWellbeing,
-  });
+  };
 }

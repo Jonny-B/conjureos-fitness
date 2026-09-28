@@ -754,6 +754,12 @@ export interface WorkoutSession {
   caloriesBurned?: number;
   /** Where the session came from. Absent = in-app player (default). */
   source?: "manual" | "healthkit" | "health_connect" | "logWorkout";
+  /** Free-text activity a caller named when logging it from another app
+   *  ("running", "yoga"). Additive; absent on sessions from the player. */
+  activity?: string;
+  /** True when `caloriesBurned` is this app's estimate rather than a number
+   *  the user, a wearable or the calling app supplied. Additive. */
+  caloriesEstimated?: boolean;
 }
 
 // ── Derived view models ──────────────────────────────────────────────
