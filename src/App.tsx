@@ -5,6 +5,7 @@ import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
 import { todayISO } from "./features/diary";
 import { rollSelectedDate } from "./features/dayRollover";
+import { onDataChanged } from "./features/dataEvents";
 import {
   archivePlan,
   commitNewPlan,
@@ -175,6 +176,8 @@ export function App() {
     setDate((d) => rollSelectedDate(d, prev, today));
     setCheckinDismissed(false);
   }, [today]);
+  // A write from another app (logWorkout) happens outside React: re-read.
+  useEffect(() => onDataChanged(() => setNonce((n) => n + 1)), []);
 
   // Whether today's coach check-in exists (drives the evening banner).
   useEffect(() => {

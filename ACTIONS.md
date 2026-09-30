@@ -11,8 +11,11 @@ the `conjureos.actions` block in `package.json`. This page explains them.
 | [`nextWorkout`](#nextworkout) | read | The next workout in the training plan, with its sets |
 | [`logWorkout`](#logworkout) | write | Record a workout done outside the app |
 
-Reads never prompt the user. `logWorkout` asks once per calling app (Allow once
-/ Always / Block). A closed Conjure Fitness is started off-screen to answer.
+The first time another app calls any of these actions, read or write, ConjureOS
+asks the user once (Allow once / Always / Block). Only the ConjureOS assistant
+is exempt. A Block comes back as `PERMISSION_DENIED`, so callers should treat it
+as an empty answer, and a caller's invoke timeout should cover the dialog. A
+closed Conjure Fitness is started off-screen to answer.
 
 ## Rules that hold for every action
 
@@ -30,7 +33,8 @@ Reads never prompt the user. `logWorkout` asks once per calling app (Allow once
 
 ## listWorkouts
 
-`{ from?, to?, limit? }` → `{ from, to, workouts: Workout[] }`, newest first.
+`{ from?, to?, limit? }` → `{ from, to, workouts: Workout[] }`, newest first
+(by `date`, then `completedAt`).
 
 - `to` defaults to today, `from` to 6 days before `to`. A range wider than 92
   days is cut to the most recent 92 (the answer's `from` says where it

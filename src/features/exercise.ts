@@ -212,7 +212,9 @@ export async function setSessionKcal(id: string, kcal: number): Promise<void> {
   const repo = await getRepository();
   const s = (await repo.listWorkoutSessions().catch(() => [])).find((x) => x.id === id);
   if (!s) return;
-  await persist("this workout", repo.saveWorkoutSession({ ...s, caloriesBurned: Math.max(0, Math.round(kcal)) }));
+  // A figure the user typed is no longer this app's estimate.
+  const { caloriesEstimated: _estimated, ...rest } = s;
+  await persist("this workout", repo.saveWorkoutSession({ ...rest, caloriesBurned: Math.max(0, Math.round(kcal)) }));
 }
 
 /** Remove a wearable workout from this day's total (reversible). */

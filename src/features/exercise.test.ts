@@ -80,6 +80,15 @@ describe("exercise combine (wearable + in-app)", () => {
     expect(await exerciseCaloriesForDate(DATE)).toBe(300);
   });
 
+  it("an edited calorie figure is no longer flagged as an estimate", async () => {
+    const repo = await getRepository();
+    await repo.saveWorkoutSession(session({ caloriesBurned: 343, caloriesEstimated: true }));
+    await setSessionKcal("s1", 520);
+    const saved = (await repo.listWorkoutSessions()).find((x) => x.id === "s1")!;
+    expect(saved.caloriesBurned).toBe(520);
+    expect(saved.caloriesEstimated).toBeUndefined();
+  });
+
   it("edits and deletes an in-app session", async () => {
     const repo = await getRepository();
     await repo.saveWorkoutSession(session());

@@ -13,11 +13,13 @@ export function asObject(v: unknown): Record<string, unknown> {
 }
 export function asString(v: unknown, field: string, max: number): string {
   if (typeof v !== "string") throw new Error(`params.${field} must be a string`);
-  const t = v.trim();
+  // Control characters (newline, tab, ...) become spaces, not nothing, so
+  // "2 eggs\n1 toast" doesn't glue into "2 eggs1 toast"; then runs collapse.
+  // eslint-disable-next-line no-control-regex
+  const t = v.replace(/[\x00-\x1F\x7F]+/g, " ").replace(/\s{2,}/g, " ").trim();
   if (!t) throw new Error(`params.${field} cannot be empty`);
   if (t.length > max) throw new Error(`params.${field} exceeds ${max} chars`);
-  // eslint-disable-next-line no-control-regex
-  return t.replace(/[\x00-\x1F\x7F]/g, "");
+  return t;
 }
 export function asNonNegInt(v: unknown, field: string, max: number, dflt = 0): number {
   if (v === undefined || v === null) return dflt;

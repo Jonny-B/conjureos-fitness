@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Plan, Profile, ProgramWorkout, Workout, WorkoutSession } from "../types";
 import { shiftDate, todayISO } from "../features/diary";
 import { weekToDate } from "../features/exercise";
+import { onDataChanged } from "../features/dataEvents";
 
 type Handler = (params?: unknown) => Promise<unknown>;
 
@@ -106,6 +107,21 @@ describe("listWorkouts", () => {
     expect(r.to).toBe(today);
     expect(r.from).toBe(shiftDate(today, -6));
     expect(r.workouts.map((w) => w.name)).toEqual(["Today", "Six days ago"]);
+  });
+
+  it("orders by workout date, not by when it was recorded, including under limit", async () => {
+    // A back-dated entry recorded this afternoon (later completedAt) must not
+    // outrank the run dated today, nor push it out of a small limit.
+    const d3 = shiftDate(today, -3);
+    db.sessions = [
+      session(today, { workoutName: "Run", completedAt: `${today}T08:00:00.000Z` }),
+      session(d3, { workoutName: "Yoga", completedAt: `${today}T15:00:00.000Z` }),
+    ];
+    type R = { workouts: { name: string; date: string }[] };
+    const all = (await call("listWorkouts")) as R;
+    expect(all.workouts.map((w) => w.name)).toEqual(["Run", "Yoga"]);
+    const one = (await call("listWorkouts", { limit: 1 })) as R;
+    expect(one.workouts.map((w) => w.name)).toEqual(["Run"]);
   });
 
   it("leaves out wearable-synced sessions, which Health already counts", async () => {
@@ -289,6 +305,49 @@ describe("logWorkout", () => {
     const r = await call("logWorkout", { durationMin: 45, name: "Spin class", calories: 410, date: shiftDate(today, -1) });
     expect(r).toMatchObject({ name: "Spin class", caloriesBurned: 410, caloriesEstimated: false });
     expect(db.sessions[0]!.caloriesEstimated).toBeUndefined();
+  });
+
+  it("sorts a back-dated workout within its own day, not at this moment", async () => {
+    const d3 = shiftDate(today, -3);
+    await call("logWorkout", { durationMin: 30, type: "yoga", date: d3 });
+    await call("logWorkout", { durationMin: 30, type: "running" });
+    const [back, now] = [db.sessions[0]!, db.sessions[1]!];
+    expect(back.completedAt).toBe(new Date(`${d3}T12:00:00`).toISOString());
+    expect(todayISO(new Date(back.completedAt))).toBe(d3);
+    expect(Math.abs(Date.parse(now.completedAt) - Date.now())).toBeLessThan(60_000);
+    const list = (await call("listWorkouts", { limit: 1 })) as { workouts: { date: string }[] };
+    expect(list.workouts[0]!.date).toBe(today);
+  });
+
+  it("estimates 'crunches' and 'spinal' as general activity, not as a run or a spin", async () => {
+    db.profile = profile(70);
+    const kcal = async (type: string) =>
+      ((await call("logWorkout", { durationMin: 30, type })) as { caloriesBurned: number }).caloriesBurned;
+    expect(await kcal("core crunches")).toBe(175); // MET 5
+    expect(await kcal("spinal mobility")).toBe(105); // mobility MET 3
+    expect(await kcal("arrow drills")).toBe(175);
+    expect(await kcal("Running")).toBe(343);
+    expect(await kcal("spin class")).toBe(280); // MET 8
+    expect(await kcal("rowing")).toBe(245); // MET 7
+  });
+
+  it("tells the open app the data changed after a write, and not when validation fails", async () => {
+    const fn = vi.fn();
+    const off = onDataChanged(fn);
+    try {
+      await expect(call("logWorkout", { durationMin: 0 })).rejects.toThrow();
+      expect(fn).not.toHaveBeenCalled();
+      await call("logWorkout", { durationMin: 20, type: "yoga", calories: 80 });
+      expect(fn).toHaveBeenCalledTimes(1);
+    } finally {
+      off();
+    }
+  });
+
+  it("turns newlines and tabs in text params into spaces, not nothing", async () => {
+    await call("logWorkout", { durationMin: 20, type: "core\twork", name: " Mac\n\nand  cheese ", calories: 50 });
+    expect(db.sessions[0]).toMatchObject({ activity: "core work", workoutName: "Mac and cheese" });
+    await expect(call("logWorkout", { durationMin: 20, type: "\u0001\n" })).rejects.toThrow(/empty/);
   });
 
   it("then shows up in listWorkouts and trainingSummary", async () => {

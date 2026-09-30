@@ -27,8 +27,10 @@
  *     Health itself, so listing them here would count those workouts twice.
  *
  * Reads are side-effect-free and never call AI (a background read must not
- * spend the user's credits); `logWorkout` triggers ConjureOS's one-time
- * per-caller grant.
+ * spend the user's credits). Every action is grant-gated for other apps, reads
+ * included: a caller's first call to any of them asks the user once (Allow
+ * once / Always / Block), and only the ConjureOS assistant is exempt. A caller's
+ * invoke budget should cover that dialog.
  */
 
 import type { ExerciseSet, Plan, WorkoutSession } from "../types";
@@ -36,6 +38,7 @@ import { getRepository } from "../data/repository";
 import { newId } from "../data/id";
 import { shiftDate, todayISO } from "../features/diary";
 import { weekToDate } from "../features/exercise";
+import { notifyDataChanged } from "../features/dataEvents";
 import { sessionMinutes } from "../features/calories";
 import { loadPlan } from "../features/plan/planService";
 import { currentGroup, isEvaluationGroup, workoutsInGroup } from "../features/plan/groups";
@@ -62,10 +65,12 @@ function isOwnSession(s: WorkoutSession): boolean {
 /** Rough MET by activity, for a burn estimate when nobody supplied one. */
 function metForActivity(activity: string | undefined, cardio: boolean): number {
   const a = (activity ?? "").toLowerCase();
-  if (/run|jog/.test(a)) return 9.8;
-  if (/cycl|bike|ride|spin/.test(a)) return 8;
-  if (/swim/.test(a)) return 7;
-  if (/row/.test(a)) return 7;
+  // Anchored to word starts (and spin/row to word ends): "crunches" is not a
+  // run, "arrow" is not a row, "spinal" is not a spin class.
+  if (/\brun|\bjog/.test(a)) return 9.8;
+  if (/\bcycl|\bbik(e|ing)|\bride|\briding|\bspin(ning)?\b/.test(a)) return 8;
+  if (/\bswim/.test(a)) return 7;
+  if (/\browing?\b|\brows?\b/.test(a)) return 7;
   if (/hiit|interval|circuit|crossfit/.test(a)) return 8;
   if (/hike/.test(a)) return 6;
   if (/walk/.test(a)) return 3.5;
@@ -168,6 +173,9 @@ async function listWorkouts(raw?: unknown): Promise<{ from: string; to: string; 
   ]);
   const workouts = sessions
     .filter((s) => isOwnSession(s) && s.date >= from && s.date <= to)
+    // Newest by workout date, not by when it was recorded: a back-dated entry
+    // must not jump ahead of (or push out) a newer-dated workout.
+    .sort((a, b) => b.date.localeCompare(a.date) || b.completedAt.localeCompare(a.completedAt))
     .slice(0, limit)
     .map((s): ListedWorkout => {
       const burn = burnFor(s, weightKg);
@@ -373,7 +381,8 @@ async function logWorkout(raw?: unknown): Promise<{
     planned: [],
     actual: [],
     reprompts: [],
-    completedAt: new Date().toISOString(),
+    // A back-dated workout sorts within its own day, not at this moment.
+    completedAt: date === todayISO() ? new Date().toISOString() : new Date(`${date}T12:00:00`).toISOString(),
     durationSec,
     caloriesBurned: kcal,
     ...(estimated ? { caloriesEstimated: true } : {}),
@@ -392,6 +401,8 @@ async function logWorkout(raw?: unknown): Promise<{
   };
   const repo = await getRepository();
   await repo.saveWorkoutSession(session);
+  // Another app's write happens outside React: tell the open screens to re-read.
+  notifyDataChanged();
   return {
     id: session.id,
     date,
