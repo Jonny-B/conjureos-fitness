@@ -14,6 +14,8 @@ export interface CardioTrackState {
   autoPaused: boolean;
   /** True once at least one GPS fix has arrived. */
   gps: boolean;
+  /** Last location error (denied permission, no source), cleared by the next fix. */
+  gpsError: string | null;
 }
 
 const MIN_MOVE_M = 4; // ignore sub-jitter movement
@@ -28,7 +30,27 @@ const INITIAL: CardioTrackState = {
   running: false,
   autoPaused: false,
   gps: false,
+  gpsError: null,
 };
+
+/**
+ * Accept/accumulate step for one fix. The anchor stays on the last accepted
+ * point, so sub-threshold movement (a 1 Hz runner, a walker, 2.5 s native
+ * polls) builds up until it clears the jitter threshold instead of being thrown
+ * away. A fix rejected as a teleport still becomes the anchor so a bad fix
+ * can resync. `addedM` is the distance to count (0 when nothing is accepted).
+ */
+export function advanceAnchor(
+  anchor: LocationSample | null,
+  s: LocationSample,
+): { anchor: LocationSample; addedM: number; moved: boolean } {
+  if (!anchor) return { anchor: s, addedM: 0, moved: false };
+  const d = haversineMeters(anchor, s);
+  const threshold = Math.max(MIN_MOVE_M, (s.accuracy ?? 20) * 0.5);
+  if (d < threshold) return { anchor, addedM: 0, moved: false };
+  if (d >= MAX_JUMP_M) return { anchor: s, addedM: 0, moved: false };
+  return { anchor: s, addedM: d, moved: true };
+}
 
 /**
  * GPS run/bike tracker. Distance via haversine over the position stream; elapsed
@@ -50,6 +72,7 @@ export function useGpsTracker() {
   const lastSplitElapsedRef = useRef(0);
   const splitsRef = useRef<number[]>([]);
   const trackRef = useRef<LocationSample[]>([]);
+  const gpsErrorRef = useRef<string | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
   const wakeRef = useRef<{ release: () => void } | null>(null);
 
@@ -64,35 +87,33 @@ export function useGpsTracker() {
       running: runningRef.current,
       autoPaused: autoPausedRef.current,
       gps: trackRef.current.length > 0,
+      gpsError: gpsErrorRef.current,
     });
   }, []);
 
   const onSample = useCallback(
     (s: LocationSample) => {
       trackRef.current.push(s);
-      const last = lastSampleRef.current;
-      lastSampleRef.current = s;
+      gpsErrorRef.current = null;
       if (!runningRef.current) {
+        lastSampleRef.current = s; // while paused the anchor follows every fix
         publish();
         return;
       }
-      if (last) {
-        const d = haversineMeters(last, s);
-        const threshold = Math.max(MIN_MOVE_M, (s.accuracy ?? 20) * 0.5);
-        if (d >= threshold && d < MAX_JUMP_M) {
-          distMRef.current += d;
-          lastMoveRef.current = Date.now();
-          autoPausedRef.current = false;
-          const km = distMRef.current / 1000;
-          while (km >= nextSplitKmRef.current) {
-            const sec = Math.round(elapsedMsRef.current / 1000);
-            splitsRef.current.push(sec - lastSplitElapsedRef.current);
-            lastSplitElapsedRef.current = sec;
-            nextSplitKmRef.current += 1;
-          }
-        }
-      } else {
+      const step = advanceAnchor(lastSampleRef.current, s);
+      if (!lastSampleRef.current) lastMoveRef.current = Date.now();
+      lastSampleRef.current = step.anchor;
+      if (step.moved) {
+        distMRef.current += step.addedM;
         lastMoveRef.current = Date.now();
+        autoPausedRef.current = false;
+        const km = distMRef.current / 1000;
+        while (km >= nextSplitKmRef.current) {
+          const sec = Math.round(elapsedMsRef.current / 1000);
+          splitsRef.current.push(sec - lastSplitElapsedRef.current);
+          lastSplitElapsedRef.current = sec;
+          nextSplitKmRef.current += 1;
+        }
       }
       publish();
     },
@@ -131,7 +152,13 @@ export function useGpsTracker() {
     runningRef.current = true;
     lastTickRef.current = Date.now();
     lastMoveRef.current = Date.now();
-    if (!unsubRef.current) unsubRef.current = watchLocation(onSample);
+    gpsErrorRef.current = null; // a restart (e.g. Use GPS after an empty run) retries from a clean slate
+    if (!unsubRef.current) {
+      unsubRef.current = watchLocation(onSample, (message) => {
+        gpsErrorRef.current = message;
+        publish();
+      });
+    }
     requestWake();
     publish();
   }, [onSample, publish]);

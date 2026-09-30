@@ -12,27 +12,74 @@ interface Props {
   onCancel: () => void;
 }
 
+/** A GPS result with no distance or no time is not a workout: saving it would
+ *  record an empty session (and a 0 km benchmark baseline). */
+export function isEmptyGpsRun(c: Pick<CardioActual, "distanceKm" | "durationSec">): boolean {
+  return !(c.distanceKm > 0) || !(c.durationSec > 0);
+}
+
+/** Split chip text. Splits are per km (the tracker's unit), and a split is a
+ *  duration, not a pace, so it is labelled km and shown as a clock for all units. */
+export function splitChipLabel(index: number, splitSec: number): string {
+  return `km ${index + 1} · ${fmtClock(splitSec)}`;
+}
+
 /** Cardio (run/bike) screen: live GPS distance/pace/time/splits, with a manual
  *  distance+duration path always reachable. */
 export function CardioPlayer({ workout, units, onFinish, onCancel }: Props) {
   const { available, state, start, pause, resume, stop } = useGpsTracker();
   const [manual, setManual] = useState(!available);
   const [started, setStarted] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [emptyNotice, setEmptyNotice] = useState(false);
   const distDisplay = units === "imperial" ? kmToMi(state.distanceKm) : state.distanceKm;
+
+  const finishGps = () => {
+    const result = stop();
+    if (isEmptyGpsRun(result)) {
+      // Nothing worth saving: stop() already released the watch, so offer manual entry.
+      setStarted(false);
+      setEmptyNotice(true);
+      setManual(true);
+      return;
+    }
+    onFinish(result);
+  };
+
+  // The top-left button must never silently throw away a run that has data.
+  const hasRunData = started && (state.distanceKm > 0 || state.elapsedSec > 0);
+  const leave = () => (hasRunData ? setConfirmDiscard(true) : onCancel());
+
+  const discardConfirm = confirmDiscard && (
+    <div className="notice notice-error" role="alertdialog" aria-label="Discard this run?">
+      <div>Discard this run? Distance and route will be lost.</div>
+      <div className="wizard-nav">
+        <button className="btn" onClick={() => setConfirmDiscard(false)}>Keep going</button>
+        <button className="btn danger" onClick={onCancel}>Discard</button>
+      </div>
+    </div>
+  );
+  const backLabel = hasRunData ? "Discard" : "Back";
 
   if (manual) {
     return (
       <div className="cardio-player">
         <div className="player-top">
-          <button className="link-btn back-link" onClick={onCancel}>
-            <ChevronLeft size={16} /> End
+          <button className="link-btn back-link" onClick={leave}>
+            <ChevronLeft size={16} /> {backLabel}
           </button>
           {available && (
-            <button className="link-btn" onClick={() => setManual(false)}>Use GPS</button>
+            <button className="link-btn" onClick={() => { setEmptyNotice(false); setManual(false); }}>Use GPS</button>
           )}
         </div>
         <h2 className="cardio-title">{workout.name}</h2>
-        <ManualCardioEntry units={units} onSave={onFinish} onCancel={onCancel} />
+        {discardConfirm}
+        {emptyNotice && (
+          <div className="notice notice-error">
+            No GPS distance was recorded, so there is nothing to save. Enter your distance and time below.
+          </div>
+        )}
+        <ManualCardioEntry units={units} onSave={onFinish} onCancel={leave} />
       </div>
     );
   }
@@ -40,11 +87,13 @@ export function CardioPlayer({ workout, units, onFinish, onCancel }: Props) {
   return (
     <div className="cardio-player">
       <div className="player-top">
-        <button className="link-btn back-link" onClick={onCancel}>
-          <ChevronLeft size={16} /> End
+        <button className="link-btn back-link" onClick={leave}>
+          <ChevronLeft size={16} /> {backLabel}
         </button>
         <button className="link-btn" onClick={() => setManual(true)}>Enter manually</button>
       </div>
+
+      {discardConfirm}
 
       <div className="cardio-stats">
         <div className="cardio-distance">
@@ -62,14 +111,18 @@ export function CardioPlayer({ workout, units, onFinish, onCancel }: Props) {
           </div>
         </div>
         {state.autoPaused && <div className="cardio-autopause">Auto-paused</div>}
-        {started && !state.gps && <div className="muted small">Waiting for GPS…</div>}
+        {started && !state.gps && (
+          state.gpsError
+            ? <div className="muted small">GPS unavailable: {state.gpsError}. You can enter your run manually.</div>
+            : <div className="muted small">Waiting for GPS…</div>
+        )}
       </div>
 
       {state.splits.length > 0 && (
         <div className="cardio-splits">
           {state.splits.map((s, i) => (
             <span key={i} className="split-chip">
-              {distanceUnit(units)} {i + 1} · {fmtPace(s, units)}
+              {splitChipLabel(i, s)}
             </span>
           ))}
         </div>
@@ -83,7 +136,7 @@ export function CardioPlayer({ workout, units, onFinish, onCancel }: Props) {
             <button className="btn" onClick={() => (state.running ? pause() : resume())}>
               {state.running ? "Pause" : "Resume"}
             </button>
-            <button className="btn primary" onClick={() => onFinish(stop())}>Finish</button>
+            <button className="btn primary" onClick={finishGps}>Finish</button>
           </>
         )}
       </div>
