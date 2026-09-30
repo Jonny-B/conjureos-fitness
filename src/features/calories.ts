@@ -5,7 +5,7 @@
  * deterministic, offline, and instant. When the formula can't run (no stored
  * bodyweight) we fall back to an AI estimate, and to a coarse per-minute default
  * if neither is available. The result is always shown to the user as an
- * ESTIMATE they can edit before it's added to the day's calorie ring.
+ * ESTIMATE they can edit before it's saved on the session.
  */
 
 import type { Profile, Workout, WorkoutSession } from "../types";
@@ -18,7 +18,7 @@ import { complete, isAiAvailable } from "../bridge/ai";
  */
 export type BurnMethod = "formula" | "ai" | "default";
 /** An estimated calorie burn plus its provenance. The user can always
- *  override `kcal` before it reaches the diary. */
+ *  override `kcal` before it is saved. */
 export interface BurnEstimateResult {
   kcal: number;
   method: BurnMethod;
@@ -72,7 +72,7 @@ export async function estimateWorkoutBurn(
     if (ai != null && Number.isFinite(ai) && ai > 0) return { kcal: Math.round(ai), method: "ai" };
   }
 
-  // Last resort: ~6 kcal/min of moderate effort so the ring isn't left at 0.
+  // Last resort: ~6 kcal/min of moderate effort so the workout isn't left at 0.
   return { kcal: Math.max(0, Math.round(6 * min)), method: "default" };
 }
 

@@ -1,57 +1,41 @@
 /**
  * Plan service — the single API surface for the active plan.
  *
- * Everything that reads or writes a plan goes through here: the wizard (create),
- * the settings editor (mode / targets / program edits), and the workouts screen
+ * Everything that reads or writes a plan goes through here: the wizard (create
+ * and edit), the program editor, and the workouts screen
  * (post-session adaptation). Screens never call `getRepository()` for plan ops
  * or hand-spread `{ ...plan }` inline anymore — that glue lived in three places
- * and drifted. This module also owns the reconciliation between the three
- * previously-disjoint stores (Plan ↔ Profile ↔ Goals) so a plan actually
- * informs the diary and body stats aren't entered twice.
+ * and drifted. This module also reconciles the plan with the Profile, so body
+ * stats aren't entered twice.
  *
  * A write that fails is reported through `persist` (logged, and the user is
  * told) and the returned in-memory plan stays authoritative for the session.
  */
 
-import type {
-  AgeBand,
-  Goals,
-  Plan,
-  PlanGoal,
-  PlanTargets,
-  Profile,
-  WorkoutProgram,
-  WorkoutSession,
-} from "../../types";
+import type { AgeBand, Plan, PlanGoal, Profile, WorkoutProgram, WorkoutSession } from "../../types";
 import { DEFAULT_PROFILE } from "../../types";
 import { getRepository } from "../../data/repository";
 import { persist } from "../../data/saveFailure";
 import { newId } from "../../data/id";
-import { todayISO } from "../diary";
+import { todayISO } from "../dates";
 import { measureSession, recordBenchmarkResult } from "./program";
 import { calibrateToBenchmark, maybeAdapt } from "./analyze";
 import { advanceToNextGroup, setWorkoutDone } from "./groups";
-import { modeTracksFood } from "./model";
-import { deriveDirection, macrosForCalories, recommendGoals } from "../goals";
 import { loadMemory, summarizeMemoryForProgram } from "../coach/memory";
-import { clamp } from "../num";
 
 /** Body stats the wizard collects, reconciled into the Profile on commit. */
 export interface WizardBody {
   sex?: Profile["sex"];
-  heightCm?: number;
   weightKg?: number;
-  goalWeightKg?: number;
   /** Exact age (preferred); ageBand is the coarse fallback. */
   age?: number;
   ageBand?: AgeBand;
   activityLevel?: Profile["activityLevel"];
   experienceLevel?: Profile["experienceLevel"];
-  direction?: Profile["direction"];
   units?: Profile["units"];
 }
 
-/** Coarse age bands → a representative age for Mifflin-based recompute later. */
+/** Coarse age bands → a representative age when only the band is known. */
 const AGE_FOR_BAND: Record<AgeBand, number> = {
   under_18: 16,
   "18_39": 28,
@@ -59,46 +43,17 @@ const AGE_FOR_BAND: Record<AgeBand, number> = {
   "60_plus": 68,
 };
 
-/** Load the active plan, or null (Supabase throws → treated as no plan). */
+/** Load the active plan, or null (a failed read is treated as no plan). */
 export async function loadPlan(): Promise<Plan | null> {
   const repo = await getRepository();
   return repo.getPlan().catch(() => null);
 }
 
-/**
- * The effective daily targets the diary should show: the plan's targets when it
- * tracks food, else the separately-stored Goals. Missing macros fall back to
- * the stored ones so a plan that only pinned calories still shows sane macros.
- */
-export function targetsToGoals(plan: Plan | null, stored: Goals): Goals {
-  const t = plan?.targets;
-  if (t && t.dailyCalories != null) {
-    return {
-      calories: t.dailyCalories,
-      protein: t.protein ?? stored.protein,
-      carbs: t.carbs ?? stored.carbs,
-      fat: t.fat ?? stored.fat,
-    };
-  }
-  return stored;
-}
-
-/** Build PlanTargets from an explicit Goals object (settings edits). */
-export function goalsToTargets(goals: Goals): PlanTargets {
-  return {
-    dailyCalories: goals.calories,
-    protein: goals.protein,
-    carbs: goals.carbs,
-    fat: goals.fat,
-  };
-}
-
-/** What a plan commit produced. All three are already persisted; they're
- *  returned so the caller can update React state without re-reading. */
+/** What a plan commit produced. Both are already persisted; they're returned
+ *  so the caller can update React state without re-reading. */
 export interface CommitResult {
   plan: Plan;
   profile: Profile | null;
-  goals: Goals;
 }
 
 /**
@@ -111,28 +66,22 @@ export function mergeBodyIntoProfile(base: Profile, b: WizardBody): Profile {
   return {
     ...base,
     sex: b.sex ?? base.sex,
-    heightCm: b.heightCm ?? base.heightCm,
     weightKg: b.weightKg ?? base.weightKg,
-    goalWeightKg: b.goalWeightKg ?? base.goalWeightKg,
     // Prefer the exact age; fall back to the age-band's representative age.
     age: b.age ?? (b.ageBand ? AGE_FOR_BAND[b.ageBand] : base.age),
     activityLevel: b.activityLevel ?? base.activityLevel,
     experienceLevel: b.experienceLevel ?? base.experienceLevel,
-    direction: b.direction ?? base.direction,
     units: b.units ?? base.units,
   };
 }
 
 /**
- * Persist a newly-created plan and reconcile the other two stores:
- *  - merge the wizard's body stats into the Profile (so Trends/BMI work and the
- *    user never re-enters height/weight in settings), and
- *  - project the plan's targets into stored Goals (so the diary rings match even
- *    on code paths that read Goals directly).
+ * Persist a newly-created plan and merge the wizard's body stats into the
+ * Profile, so the user never re-enters them.
  */
 export async function commitNewPlan(
   plan: Plan,
-  ctx: { body?: WizardBody; currentProfile: Profile | null; currentGoals: Goals },
+  ctx: { body?: WizardBody; currentProfile: Profile | null },
 ): Promise<CommitResult> {
   const repo = await getRepository();
   // Seed the adaptation cursor with the sessions already logged, so a new plan
@@ -149,7 +98,7 @@ export async function commitNewPlan(
   const current = stored ?? ctx.currentProfile;
   let profile = current;
   const b = ctx.body;
-  if (b && (b.heightCm != null || b.weightKg != null || b.sex != null || b.age != null)) {
+  if (b && (b.weightKg != null || b.sex != null || b.age != null)) {
     profile = mergeBodyIntoProfile(current ?? DEFAULT_PROFILE, b);
   }
   // ALWAYS persist a profile once a plan exists — never leave store.json.profile
@@ -159,12 +108,7 @@ export async function commitNewPlan(
   const finalProfile: Profile = profile ?? { ...DEFAULT_PROFILE };
   await persist("your profile", repo.saveProfile(finalProfile));
   profile = finalProfile;
-
-  const goals = targetsToGoals(plan, ctx.currentGoals);
-  if (plan.targets?.dailyCalories != null) {
-    await persist("your daily targets", repo.saveGoals(goals));
-  }
-  return { plan, profile, goals };
+  return { plan, profile };
 }
 
 /** Persist a program edit. (ProgramEditor validates before calling this.) */
@@ -182,7 +126,6 @@ export interface PlanPatch {
   /** Weekly exercise-days target; 0 clears it (see Plan.weeklyExerciseDays). */
   weeklyExerciseDays?: number;
   goals?: PlanGoal[];
-  targets?: PlanTargets;
   startDate?: string;
   endDate?: string;
   durationWeeks?: number;
@@ -194,8 +137,7 @@ const PLAN_ARCHIVE_PATH = "plan-archive.json";
  * Archive the outgoing plan so history/insight survives a "start a new plan"
  * reset. Keeps the 20 most recent, newest first.
  *
- * Diary, weight, and workout-session history live in separate stores and are
- * never touched here. Best-effort: a failed write is swallowed rather than
+ * Workout-session history lives in a separate store and is never touched here. Best-effort: a failed write is swallowed rather than
  * blocking the new plan.
  */
 export async function archivePlan(plan: Plan): Promise<void> {
@@ -211,23 +153,12 @@ export async function archivePlan(plan: Plan): Promise<void> {
   }
 }
 
-/**
- * Patch the plan (mode / plan-goals / targets) from the settings editor, persist
- * it, and re-project targets into stored Goals when they changed.
- */
-export async function updatePlan(
-  plan: Plan,
-  patch: PlanPatch,
-  ctx: { currentGoals: Goals },
-): Promise<{ plan: Plan; goals: Goals }> {
+/** Patch the plan and persist it. */
+export async function updatePlan(plan: Plan, patch: PlanPatch): Promise<Plan> {
   const next: Plan = { ...plan, ...patch };
   const repo = await getRepository();
   await persist("your plan", repo.savePlan(next));
-  const goals = targetsToGoals(next, ctx.currentGoals);
-  if (patch.targets && next.targets?.dailyCalories != null) {
-    await persist("your daily targets", repo.saveGoals(goals));
-  }
-  return { plan: next, goals };
+  return next;
 }
 
 // ── Editing an existing plan: new vs modify-in-place ───────────────────
@@ -249,9 +180,9 @@ const normGoal = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
  * Decide whether editing a plan should regenerate a brand-new plan or modify
  * the existing one in place. Owner-locked trigger: a change to the GOAL TEXT,
  * the MODE, or the START DATE means the plan itself is different → new plan
- * (archive + regenerate workouts). Everything else (end date, calories/macros,
- * goal weight, activity, experience, days/week, equipment) is a tune of the
- * same plan → modify in place, keeping the plan id + program/group progress.
+ * (archive + regenerate workouts). Everything else (end date, experience,
+ * days/week, equipment, bodyweight) is a tune of the same plan → modify in
+ * place, keeping the plan id + program/group progress.
  *
  * A plan with no stored `goalText` (made with the box blank, or before it was
  * persisted) counts as having an empty goal, so typing one later forks a new
@@ -267,38 +198,24 @@ export function decidePlanEdit(plan: Plan, next: PlanEditAnswers): PlanEditDecis
 /**
  * Modify the active plan in place from an edit that didn't change its identity.
  * Keeps the plan id, the workout program (group progress, benchmark history,
- * every `completedAt`), and the plan goals — but re-merges body stats into the
- * profile and RECOMPUTES the daily calorie target from that updated profile.
- *
- * The recompute is the fix for the old cog behaviour, where editing goal weight
- * only moved `profile.direction` and never touched the calorie target, so the
- * diary ring never changed. Targets only recompute when the mode tracks food; a
- * workouts-only plan keeps whatever (null) target it had.
+ * every `completedAt`), and the plan goals, and re-merges body stats into the
+ * profile.
  */
 export async function modifyPlanInPlace(
   plan: Plan,
   body: WizardBody,
   patch: { endDate?: string; durationWeeks?: number; weeklyExerciseDays?: number },
-  ctx: { currentProfile: Profile | null; currentGoals: Goals },
+  ctx: { currentProfile: Profile | null },
 ): Promise<CommitResult> {
   const repo = await getRepository();
   // Build on the stored profile, not the caller's cached copy (see commitNewPlan).
   const stored = await repo.getProfile().catch(() => null);
   const profile = mergeBodyIntoProfile(stored ?? ctx.currentProfile ?? DEFAULT_PROFILE, body);
   await persist("your profile", repo.saveProfile(profile));
-
-  const targets: PlanTargets = modeTracksFood(plan.mode)
-    ? goalsToTargets(recommendGoals(profile))
-    : plan.targets ?? { dailyCalories: null };
-
   // Patch intentionally omits program / goals / mode → updatePlan's spread
   // preserves them, so group progress and benchmark history survive untouched.
-  const { plan: next, goals } = await updatePlan(
-    plan,
-    { targets, ...patch },
-    { currentGoals: ctx.currentGoals },
-  );
-  return { plan: next, profile, goals };
+  const next = await updatePlan(plan, patch);
+  return { plan: next, profile };
 }
 
 /** Drop the active plan. */
@@ -408,15 +325,11 @@ async function coachPreferences(): Promise<string> {
 }
 
 /** A plan-level change the coach can apply from chat (ask-first, like program
- *  tweaks). All fields optional; kg + kcal are validated/clamped on apply. */
+ *  tweaks): a new end date, to extend or shorten the plan. */
 export interface CoachPlanChange {
   summary: string;
-  /** New goal weight in KILOGRAMS. Updates profile + recomputes calorie target. */
-  goalWeightKg?: number;
-  /** New daily calorie target. */
-  dailyCalories?: number;
   /** New plan end date, YYYY-MM-DD. */
-  endDate?: string;
+  endDate: string;
 }
 
 const weeksBetweenIso = (start: string, end: string): number => {
@@ -425,46 +338,22 @@ const weeksBetweenIso = (start: string, end: string): number => {
 };
 
 /**
- * Apply a coach-proposed PLAN-LEVEL change (goal weight, daily calories, end
- * date) — the confirmation-gated counterpart to program tweaks. Persists the
- * profile (for goal weight, which also recomputes the calorie target) and the
- * plan/goals. Returns the updated trio, or null when nothing valid changed.
+ * Apply a coach-proposed PLAN-LEVEL change — the confirmation-gated counterpart
+ * to program tweaks. Returns the updated plan, or null when nothing valid
+ * changed.
  */
 export async function applyCoachPlanChange(
   plan: Plan | null,
-  profile: Profile | null,
-  goals: Goals,
   change: CoachPlanChange,
-): Promise<CommitResult | null> {
+): Promise<{ plan: Plan } | null> {
   if (!plan) return null;
-  const repo = await getRepository();
-  let nextProfile = profile;
-  const patch: PlanPatch = {};
-
-  const goalWeightChange = change.goalWeightKg != null && Number.isFinite(change.goalWeightKg);
-  // Build on the stored profile, not the caller's cached copy (see commitNewPlan).
-  const base = goalWeightChange ? ((await repo.getProfile().catch(() => null)) ?? profile) : profile;
-  if (goalWeightChange && base) {
-    const gw = Math.round(clamp(change.goalWeightKg!, 25, 400) * 10) / 10;
-    nextProfile = { ...base, goalWeightKg: gw, direction: deriveDirection(base.weightKg, gw) };
-    await persist("your profile", repo.saveProfile(nextProfile));
-    if (modeTracksFood(plan.mode)) patch.targets = goalsToTargets(recommendGoals(nextProfile));
-  }
-  if (change.dailyCalories != null && Number.isFinite(change.dailyCalories) && modeTracksFood(plan.mode)) {
-    const cal = clamp(Math.round(change.dailyCalories), 800, 10000);
-    const weightKg = nextProfile?.weightKg ?? 70;
-    patch.targets = { dailyCalories: cal, ...macrosForCalories(cal, weightKg) };
-  }
-  if (change.endDate && /^\d{4}-\d{2}-\d{2}$/.test(change.endDate) && change.endDate > plan.startDate) {
-    patch.endDate = change.endDate;
-    patch.durationWeeks = weeksBetweenIso(plan.startDate, change.endDate);
-  }
-
-  const changedProfile = nextProfile !== profile;
-  if (Object.keys(patch).length === 0 && !changedProfile) return null;
-
-  const { plan: next, goals: ng } = await updatePlan(plan, patch, { currentGoals: goals });
-  return { plan: next, profile: nextProfile, goals: ng };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(change.endDate) || change.endDate <= plan.startDate) return null;
+  if (change.endDate === plan.endDate) return null;
+  const next = await updatePlan(plan, {
+    endDate: change.endDate,
+    durationWeeks: weeksBetweenIso(plan.startDate, change.endDate),
+  });
+  return { plan: next };
 }
 
 /** One manually-entered benchmark result: the Benchmark id + the value in the

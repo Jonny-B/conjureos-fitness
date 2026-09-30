@@ -1,17 +1,16 @@
 /**
- * Post-generation plan validator (P2 / safety layer 4). Runs on the AI's plan
- * before it can be saved. Enforces three rails from the design:
- *   1. Kcal floor — a food-tracking plan's daily target can't dip below the
- *      sex-specific floor (1200 F / 1500 M / 1500 default).
- *   2. Injury exclusion — no workout goal may name a movement excluded by a
- *      declared injury region (reuses the P1 exclusion map).
- *   3. Intensity cap — no absurd number of workout goals.
+ * Post-generation plan validator (safety layer 4). Runs on the AI's plan
+ * before it can be saved. Enforces the rails from the design:
+ *   1. Injury exclusion — no workout goal may name a movement excluded by a
+ *      declared injury region (reuses the exclusion map).
+ *   2. Intensity cap — no absurd number of workout goals.
+ *   3. The safety gate — a logging-only plan prescribes no exercise.
  * A failing plan is retried once, then replaced by a fallback template.
  */
 
-import type { PlanMode, SafetyIntake, Sex, WorkoutProgram } from "../../types";
+import type { PlanMode, SafetyIntake, WorkoutProgram } from "../../types";
 import type { GeneratedGoal, GeneratedPlan } from "./model";
-import { kcalFloor, modeHasWorkouts, modeTracksFood } from "./model";
+import { modeHasWorkouts } from "./model";
 import { isExerciseExcluded } from "../safety/injuryExclusions";
 
 const MAX_WORKOUT_GOALS = 6;
@@ -23,7 +22,7 @@ const MAX_BENCHMARKS = 4;
  * don't hit the way a raw substring match would). The model's `kind` label is
  * not trusted for the safety gates: a "go for a run" goal labelled "habit" is
  * still exercise. Deliberately not `inferKind`, which tests nutrition words
- * first and so calls "burn fat with sprints" a nutrition goal.
+ * first (to drop food goals) and so calls "burn fat with sprints" a nutrition goal.
  */
 const WORKOUT_WORDS =
   /\b(workouts?|exercis(?:e|es|ing)|runs?|running|jog(?:s|ging)?|walk(?:s|ing)?|bik(?:e|es|ing)|cycling|lift(?:s|ing)?|deadlifts?|squats?|lunges?|burpees?|sprint(?:s|ing)?|hiit|cardio|strength|train(?:s|ing)?|planks?|push-?ups?|pull-?ups?|sit-?ups?|swim(?:s|ming)?|yoga|pilates|gym|\d+k|miles?)\b/i;
@@ -112,7 +111,6 @@ export function validateProgram(
  *  user's safety intake (age band, flags, injuries). */
 export interface ValidationContext {
   mode: PlanMode;
-  sex?: Sex;
   safety: SafetyIntake;
 }
 
@@ -127,23 +125,13 @@ export interface ValidationResult {
  * Safety-check an AI-generated plan before it can be shown or stored.
  *
  * This is the gate, not a warning: a plan that fails here is regenerated or
- * replaced by the fallback template, never surfaced. Checks the calorie floor
- * for food-tracking modes, injury-excluded movements, and per-session volume.
+ * replaced by the fallback template, never surfaced. Checks injury-excluded
+ * movements, the workout-goal cap, the safety gate and the program.
  */
 export function validatePlan(gen: GeneratedPlan, ctx: ValidationContext): ValidationResult {
   const reasons: string[] = [];
 
-  // 1. Kcal floor (only for modes that actually track food).
-  if (modeTracksFood(ctx.mode)) {
-    const floor = kcalFloor(ctx.sex);
-    if (gen.dailyCalorieTarget == null) {
-      reasons.push("food-tracking plan has no daily calorie target");
-    } else if (gen.dailyCalorieTarget < floor) {
-      reasons.push(`calorie target ${gen.dailyCalorieTarget} is below the ${floor} kcal floor`);
-    }
-  }
-
-  // 2. Injury-region exclusion on every workout goal (by its text, not just its
+  // 1. Injury-region exclusion on every workout goal (by its text, not just its
   // model-supplied kind).
   const injuries = ctx.safety.injuries ?? [];
   for (const g of gen.goals) {
@@ -154,19 +142,19 @@ export function validatePlan(gen: GeneratedPlan, ctx: ValidationContext): Valida
     }
   }
 
-  // 3. Intensity cap.
+  // 2. Intensity cap.
   const workoutGoals = gen.goals.filter(isWorkoutGoal).length;
   if (workoutGoals > MAX_WORKOUT_GOALS) {
     reasons.push(`too many workout goals (${workoutGoals} > ${MAX_WORKOUT_GOALS})`);
   }
 
-  // 4. Mode/gate consistency: a food-only or logging-only plan (e.g. the
-  // under-18 / pregnancy / cardiac gate) must never prescribe exercise.
+  // 3. The safety gate's logging-only plan (under 18 / pregnancy / cardiac)
+  // must never prescribe exercise.
   if (!modeHasWorkouts(ctx.mode) && workoutGoals > 0) {
     reasons.push(`a ${ctx.mode} plan must not prescribe workouts`);
   }
 
-  // 5. Structured workout program (W4), when present.
+  // 4. The structured workout program, when present.
   if (gen.program) {
     reasons.push(...validateProgram(gen.program, ctx.mode, injuries));
   }

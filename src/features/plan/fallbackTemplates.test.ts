@@ -10,12 +10,12 @@ const gatedInput: PlanInput = {
 };
 
 describe("fallbackPlan in Fitness (no food tracking)", () => {
-  it("gives a gated logging_only plan no food goals and no calorie target", () => {
+  it("gives a gated logging_only plan no food goals", () => {
     const p = fallbackPlan("logging_only", gatedInput);
     expect(p.goals.length).toBeGreaterThan(0);
     expect(p.goals.map((g) => g.kind)).not.toContain("nutrition");
     expect(p.goals.map((g) => g.label).join(" ")).not.toMatch(/log everything you eat/i);
     expect(p.summary).not.toMatch(/food/i);
-    expect(p.dailyCalorieTarget).toBeNull();
+    expect(p.program).toBeUndefined();
   });
 });

@@ -8,7 +8,7 @@ import { HoldButton } from "../components/HoldButton";
 
 /**
  * Post-workout step: estimate calories burned (local formula → AI fallback),
- * let the user confirm or adjust, then add it to today's calorie ring. Shown
+ * let the user confirm or adjust, then save it on the session. Shown
  * after the workout finishes, before the coach reflection. `onConfirm` runs the
  * (slow) session save, so the commit is a hold-to-finish with a busy state.
  */
@@ -95,8 +95,8 @@ export function BurnEstimate({
           </label>
 
           <p className="muted small">
-            This is an estimate from your workout and stats — it gets added back into today's
-            calorie budget.
+            This is an estimate from your workout and stats. It's saved with the workout, where
+            Conjure Health can count it if you allow it.
           </p>
 
           <div className="wizard-nav burn-actions">

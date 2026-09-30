@@ -160,9 +160,8 @@ export function aiErrorMessage(err: unknown, fallback = "The AI didn't answer. T
  * and models still wrap it in ```fences``` or a sentence of preamble often
  * enough that parsing the raw string is a reliable source of failures.
  *
- * Worse, a model may answer TWICE — Sonnet reliably does this for the meal
- * prompt, emitting an object, then "Let me correct that — carbs must be a
- * number:", then a corrected object. Taking the widest `{…}` span (what this
+ * Worse, a model may answer TWICE — emitting an object, then "Let me correct
+ * that — reps must be a number:", then a corrected object. Taking the widest `{…}` span (what this
  * used to do) swallows the prose between them and produces something that
  * cannot parse, so a perfectly good answer was reported to the user as
  * unreadable. So: scan for balanced top-level objects and return the LAST one
@@ -217,8 +216,8 @@ function lastParseable(candidates: string[]): string | null {
 /**
  * Every balanced top-level `{…}` span in the text, in order.
  *
- * Brace counting has to ignore braces inside string literals — a food named
- * `Rice {special}` would otherwise close the object early — so this tracks
+ * Brace counting has to ignore braces inside string literals — a workout named
+ * `Legs {heavy}` would otherwise close the object early — so this tracks
  * quoting and backslash escapes as it walks.
  */
 function balancedObjects(raw: string): string[] {
@@ -254,35 +253,12 @@ function balancedObjects(raw: string): string[] {
 }
 
 /**
- * Dev-mode mock for natural-language meal parsing. Returns a deterministic
- * structured payload so the logging UI is exercisable via `npm run dev`. The
- * real model output will differ in detail but matches this shape.
+ * Dev-mode stand-in when no host is present (`npm run dev`, or a test that
+ * doesn't mock `complete`). Answers with an empty JSON object, which every
+ * caller's parser reads as "no usable answer", so each flow takes its non-AI
+ * fallback exactly as it would when the model fails.
  */
-async function mockComplete(req: CompleteRequest): Promise<string> {
-  await new Promise((r) => setTimeout(r, 500));
-  const text = req.messages.at(-1)?.content?.toLowerCase() ?? "";
-  const items: Array<Record<string, unknown>> = [];
-  const push = (name: string, m: number[], serving: string) =>
-    items.push({
-      name,
-      servingSize: serving,
-      calories: m[0],
-      protein: m[1],
-      carbs: m[2],
-      fat: m[3],
-    });
-
-  if (text.includes("egg")) push("Scrambled eggs", [180, 12, 2, 13], "2 eggs");
-  if (text.includes("coffee")) push("Coffee, black", [5, 0, 1, 0], "1 cup");
-  if (text.includes("chicken")) push("Grilled chicken breast", [280, 52, 0, 6], "6 oz");
-  if (text.includes("sandwich")) push("Sandwich", [350, 15, 45, 12], "1 sandwich");
-  if (text.includes("beer")) push("Beer", [153, 2, 13, 0], "1 can (355 ml)");
-  if (text.includes("rice")) push("White rice, cooked", [205, 4, 45, 0], "1 cup");
-  if (text.includes("salad")) push("Garden salad", [120, 4, 14, 6], "1 bowl");
-  if (text.includes("banana")) push("Banana", [105, 1, 27, 0], "1 medium");
-
-  if (items.length === 0) {
-    push("Mixed meal (estimate)", [400, 20, 40, 15], "1 serving");
-  }
-  return JSON.stringify({ items });
+async function mockComplete(_req: CompleteRequest): Promise<string> {
+  await new Promise((r) => setTimeout(r, 300));
+  return "{}";
 }

@@ -8,7 +8,7 @@
 
 import type { Plan } from "../../types";
 import { complete, extractJson, isAiAvailable, type ChatMessage } from "../../bridge/ai";
-import { todayISO } from "../diary";
+import { todayISO } from "../dates";
 import { applyAdjustment, parseAdjustment, type PlanAdjustment } from "../plan/analyze";
 import { validateProgram } from "../plan/validate";
 import { applyCoachPlanChange, saveProgram, type CoachPlanChange } from "../plan/planService";
@@ -28,9 +28,9 @@ import type {
 const ADJUSTMENT_SHAPE = `{ "summary": string, "deload"?: boolean, "benchmarkTargetDelta"?: number, "benchmarkKey"?: string (the ONE benchmark the delta moves, in its own unit; default the first; negative = harder when lower is better),
   "changes": [ { "op": "setReps"|"setWeight"|"setRest"|"swap", "exerciseKey": string, "reps"?: number, "weightKg"?: number, "restSec"?: number, "toName"?: string } ] }`;
 
-const PLAN_CHANGE_SHAPE = `{ "summary": string, "goalWeightKg"?: number (KILOGRAMS), "dailyCalories"?: number, "endDate"?: "YYYY-MM-DD" }`;
+const PLAN_CHANGE_SHAPE = `{ "summary": string, "endDate": "YYYY-MM-DD" }`;
 
-const EVAL_SYSTEM = `You are the user's wellness coach inside their fitness app. Friendly, brief, specific — never a doctor.
+const EVAL_SYSTEM = `You are the user's personal trainer inside their fitness app. Friendly, brief, specific — never a doctor.
 They just answered a short check-in. Reply with ONLY a JSON object:
   { "reply": string,
     "notes": string[],
@@ -43,8 +43,8 @@ Rules:
 - "adjustment": null unless their answers CLEARLY warrant a small program tweak (e.g. everything too hard -> ease off; too easy -> nudge up). Prefer null. "exerciseKey" must be a key from the program exercises listed in the context. Keep changes tiny and safe.
 - Output ONLY the JSON. No prose, no markdown fences.`;
 
-const CHAT_SYSTEM_BASE = `You are the user's personal trainer + nutrition coach inside their fitness app ("Conjure Fitness"). Warm, direct, practical. You are NOT a doctor — for pain, injury, or medical questions, advise seeing a professional.
-You can see their real data (plan, food, weight, workouts, check-ins, past plans) and your own memory of them — use it; reference specifics instead of generic advice.
+const CHAT_SYSTEM_BASE = `You are the user's personal trainer inside their fitness app ("Conjure Fitness"). Warm, direct, practical. You are NOT a doctor — for pain, injury, or medical questions, advise seeing a professional. Food and weight are out of scope here: this app doesn't track them (Conjure Health does).
+You can see their real data (plan, workouts, check-ins, past plans) and your own memory of them — use it; reference specifics instead of generic advice.
 
 CHANGING THEIR PROGRAM — always ASK first, never apply silently. When you want to change the workout program (they asked, or you can see they need it), include ONE block:
 <propose>{ "rationale": string, "question": string, "type": "single" | "multi", "options": [ { "label": string } ] }</propose>
@@ -52,7 +52,7 @@ CHANGING THEIR PROGRAM — always ASK first, never apply silently. When you want
 - "type": "single" when the options are mutually exclusive, "multi" when they could stack.
 ONLY AFTER the user answers a proposal, apply the change with ONE block:
 - Workout program (reps/weights/rest/swaps): <adjust>${ADJUSTMENT_SHAPE}</adjust> using ONLY exerciseKeys listed in the context.
-- Plan-level (their goal weight, daily calorie target, or plan end date): <planchange>${PLAN_CHANGE_SHAPE}</planchange>. You CAN change these now — changing goal weight also recomputes their calorie target. goalWeightKg is in KILOGRAMS (convert if they speak in lb).
+- The plan's end date (to extend or shorten the plan): <planchange>${PLAN_CHANGE_SHAPE}</planchange>.
 The app validates + applies whichever block(s) you include. If they decline, leave things and say so warmly. Ask AT MOST ONE follow-up <propose> before you apply or drop it. Never mention these tags.
 
 MEMORY — when the user shares something durable worth remembering (a preference, dislike, constraint, injury, schedule, or goal — e.g. "I hate burpees", "I train early", "my knee is cranky"), silently record it by including ONE block: <remember>{ "notes": string[], "summary"?: string }</remember> — 0-3 short notes, optionally an updated one-paragraph running summary. This shapes their FUTURE workouts too. Never mention this tag.
@@ -225,20 +225,11 @@ function parsePlanChange(raw: string): CoachPlanChange | null {
   } catch {
     return null;
   }
-  const numOf = (v: unknown): number | undefined => {
-    const n = typeof v === "number" ? v : Number(v);
-    return Number.isFinite(n) ? n : undefined;
-  };
-  const change: CoachPlanChange = {
+  if (typeof o.endDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(o.endDate)) return null;
+  return {
     summary: typeof o.summary === "string" && o.summary.trim() ? o.summary.trim().slice(0, 200) : "Updated your plan",
+    endDate: o.endDate,
   };
-  const gw = numOf(o.goalWeightKg);
-  if (gw != null) change.goalWeightKg = gw;
-  const cal = numOf(o.dailyCalories);
-  if (cal != null) change.dailyCalories = cal;
-  if (typeof o.endDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.endDate)) change.endDate = o.endDate;
-  if (change.goalWeightKg == null && change.dailyCalories == null && change.endDate == null) return null;
-  return change;
 }
 
 /** Per-turn switches that govern how much authority the coach has to change
@@ -304,7 +295,7 @@ export async function coachChat(
       let plan = ctx.plan;
       const summaries: string[] = [];
       if (planChange) {
-        const res = await applyCoachPlanChange(plan, ctx.profile, ctx.goals, planChange).catch(() => null);
+        const res = await applyCoachPlanChange(plan, planChange).catch(() => null);
         if (res) {
           plan = res.plan;
           summaries.push(planChange.summary);

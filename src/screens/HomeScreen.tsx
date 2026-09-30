@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 import type { Plan, Profile, WorkoutSession } from "../types";
 import { getRepository } from "../data/repository";
 import { currentGroup, workoutsInGroup } from "../features/plan/groups";
-import { planModeLabel, visiblePlanGoals } from "../features/plan/display";
+import { planModeLabel } from "../features/plan/display";
 import { fmtDistance, fmtDuration } from "../features/units";
 import { CoachLauncher } from "./PlanScreen";
 import { ChevronRight, CoachIcon, WorkoutsIcon } from "../components/icons";
@@ -59,7 +59,7 @@ export function HomeScreen({
     ? workoutsInGroup(program, currentGroup(program)).find((w) => !w.completedAt)
     : undefined;
   const loggingOnly = plan?.mode === "logging_only";
-  const topGoals = plan ? visiblePlanGoals(plan).slice(0, 3) : [];
+  const topGoals = plan ? plan.goals.slice(0, 3) : [];
 
   return (
     <div className="workouts">

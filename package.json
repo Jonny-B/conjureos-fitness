@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Conjure Fitness: guided workouts, run tracking, an adaptive training plan and an AI coach for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -354,7 +354,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "barcode-detector": "^3.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

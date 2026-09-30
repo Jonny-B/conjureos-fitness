@@ -2,11 +2,11 @@
  * "Something outside the UI just changed the data."
  *
  * The app's own screens bump App's `nonce` after a write, but a write that
- * arrives through a cross-app action (another app logging a food, the
- * assistant fixing a quantity) happens outside React entirely. Without a
- * signal, an open diary kept showing the old day until the user navigated
- * away and back. Actions call `notifyDataChanged()` after a successful write;
- * App listens and refreshes, which also rewrites the shared summary file.
+ * arrives through a cross-app action (another app, or the assistant, logging a
+ * workout) happens outside React entirely. Without a signal, an open Workouts
+ * tab kept showing the old day until the user navigated away and back.
+ * Actions call `notifyDataChanged()` after a successful write; App listens and
+ * refreshes.
  */
 
 type Listener = () => void;

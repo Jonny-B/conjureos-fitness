@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { Plan } from "../../types";
-import { DEFAULT_GOALS } from "../../types";
 import { EMPTY_MEMORY, type CoachContext } from "./model";
 
 const { complete, remember } = vi.hoisted(() => ({
@@ -20,7 +19,7 @@ import { STOP_SYMPTOM_REPLY } from "../safety/symptomKeywords";
 
 const plan: Plan = {
   id: "p",
-  mode: "both",
+  mode: "get_fit",
   durationWeeks: 4,
   startDate: "2026-07-01",
   endDate: "2026-07-28",
@@ -52,7 +51,6 @@ const plan: Plan = {
 const ctx: CoachContext = {
   plan,
   profile: null,
-  goals: DEFAULT_GOALS,
   memory: EMPTY_MEMORY,
   rendered: "Program exercises (use these exact keys): squat.",
 };

@@ -86,19 +86,17 @@ describe("extractJson", () => {
   });
 
   it("takes the corrected object when the model answers twice", () => {
-    // The real Sonnet reply that broke prod on 2026-09-04: a first attempt
-    // with carbs as a string, a sentence of self-correction, then a fixed
+    // The shape of a real reply that broke prod on 2026-09-04: a first attempt
+    // with a number as a string, a sentence of self-correction, then a fixed
     // object. The widest-span heuristic swallowed the prose between them and
     // produced something unparseable.
     const raw =
-      '{"groupName":"Large DQ Twist Cone","items":[{"name":"DQ Large Twist Soft Serve Cone",' +
-      '"servingSize":"1 large cone","calories":500,"protein":10,"carbs":"72","fat":17}]}\n\n' +
-      "Let me correct that — carbs must be a number:\n\n" +
-      '{"groupName":"Large DQ Twist Cone","items":[{"name":"DQ Large Twist Soft Serve Cone",' +
-      '"servingSize":"1 large cone","calories":500,"protein":10,"carbs":72,"fat":17}]}';
-    const parsed = JSON.parse(extractJson(raw)) as { items: { carbs: number }[] };
+      '{"summary":"Full body","items":[{"name":"Goblet Squat","sets":3,"reps":"10","restSec":60}]}\n\n' +
+      "Let me correct that — reps must be a number:\n\n" +
+      '{"summary":"Full body","items":[{"name":"Goblet Squat","sets":3,"reps":10,"restSec":60}]}';
+    const parsed = JSON.parse(extractJson(raw)) as { items: { reps: number }[] };
     expect(parsed.items).toHaveLength(1);
-    expect(parsed.items[0]?.carbs).toBe(72);
+    expect(parsed.items[0]?.reps).toBe(10);
   });
 
   it("prefers the last parseable fence when the model fences twice", () => {
@@ -107,14 +105,14 @@ describe("extractJson", () => {
   });
 
   it("ignores braces inside string values", () => {
-    const raw = 'Here: {"name":"Rice {special}","items":[]} done';
-    expect(JSON.parse(extractJson(raw))).toEqual({ name: "Rice {special}", items: [] });
+    const raw = 'Here: {"name":"Legs {heavy}","items":[]} done';
+    expect(JSON.parse(extractJson(raw))).toEqual({ name: "Legs {heavy}", items: [] });
   });
 
   it("handles an escaped quote before a brace", () => {
-    const raw = '{"name":"12\\" pizza {big}","items":[]}';
+    const raw = '{"name":"24\\" box jump {max}","items":[]}';
     const parsed = JSON.parse(extractJson(raw)) as { name: string };
-    expect(parsed.name).toBe('12" pizza {big}');
+    expect(parsed.name).toBe('24" box jump {max}');
   });
 
   it("still returns the widest span when nothing parses, so the caller reports it", () => {
@@ -124,7 +122,7 @@ describe("extractJson", () => {
   });
 
   it("survives prose with no JSON in it", () => {
-    expect(extractJson("  I could not identify any food.  ")).toBe("I could not identify any food.");
+    expect(extractJson("  I could not build a program.  ")).toBe("I could not build a program.");
   });
 
   it("handles uppercase fence language tags (```JSON)", () => {

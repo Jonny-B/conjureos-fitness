@@ -1,30 +1,26 @@
 /**
  * Coach context assembly — one compact snapshot of everything the coach may
- * reason about: the active plan, recent food days vs goal, weight trend,
- * recent workout sessions, check-in history, archived (past) plans, and the
- * coach's own memory. Built once per surface and shared by every coach call
+ * reason about: the active plan, recent workout sessions, check-in history,
+ * archived (past) plans, and the coach's own memory. Built once per surface and shared by every coach call
  * in that surface so the prompts stay consistent.
  */
 
-import type { DailyCheckoff, DiaryEntry, Goals, Plan, WeightEntry, WorkoutSession } from "../../types";
-import { DEFAULT_GOALS } from "../../types";
+import type { DailyCheckoff, Plan, WorkoutSession } from "../../types";
 import { getRepository } from "../../data/repository";
 import { readJson } from "../../bridge/vfs";
-import { buildDayView, shiftDate, todayISO } from "../diary";
+import { shiftDate, todayISO } from "../dates";
 import { normalizeExerciseKey } from "../explainers/normalizeKey";
 import { summarize } from "../workoutHistory";
-import { targetsToGoals } from "../plan/planService";
 import { loadMemory } from "./memory";
 import type { CoachContext } from "./model";
 
 const ARCHIVE_PATH = "plan-archive.json";
-const FOOD_DAYS = 7;
+const CHECKIN_DAYS = 7;
 const SESSION_WINDOW = 8;
 
 /**
  * Assemble everything the coach is allowed to know: active plan, profile,
- * goals, recent weigh-ins, recent sessions, its own memory, and archived
- * plans. Every read is individually fault-tolerant — a missing or failing
+ * recent sessions, recent check-ins, its own memory, and archived plans. Every read is individually fault-tolerant — a missing or failing
  * store degrades that slice to a default rather than failing the whole turn,
  * so the coach still answers with partial context.
  */
@@ -32,37 +28,25 @@ export async function buildCoachContext(): Promise<CoachContext> {
   const repo = await getRepository();
   const today = todayISO();
 
-  const [plan, profile, storedGoals, weights, sessions, memory, archived] = await Promise.all([
+  const [plan, profile, sessions, memory, archived] = await Promise.all([
     repo.getPlan().catch(() => null),
     repo.getProfile().catch(() => null),
-    repo.getGoals().catch(() => ({ ...DEFAULT_GOALS })),
-    repo.listWeights().catch(() => [] as WeightEntry[]),
     repo.listWorkoutSessions(SESSION_WINDOW).catch(() => [] as WorkoutSession[]),
     loadMemory(),
     readJson<Plan[]>(ARCHIVE_PATH, []),
   ]);
-  const goals = targetsToGoals(plan, storedGoals);
-
-  // Last N calendar days of food, oldest first, with the day's check-off.
+  // The last few days' check-offs, oldest first (the evening check-ins).
   const days: string[] = [];
-  for (let i = FOOD_DAYS - 1; i >= 0; i--) days.push(shiftDate(today, -i));
-  const [diaryDays, dayLogs] = await Promise.all([
-    Promise.all(days.map((d) => repo.listDiary(d).catch(() => []))),
-    Promise.all(days.map((d) => repo.getDayLog(d).catch(() => null))),
-  ]);
-
-  const rendered = render({ plan, goals, weights, sessions, archived, days, diaryDays, dayLogs, today });
-  return { plan, profile, goals, memory, rendered };
+  for (let i = CHECKIN_DAYS - 1; i >= 0; i--) days.push(shiftDate(today, -i));
+  const dayLogs = await Promise.all(days.map((d) => repo.getDayLog(d).catch(() => null)));
+  const rendered = render({ plan, sessions, archived, dayLogs, today });
+  return { plan, profile, memory, rendered };
 }
 
 function render(x: {
   plan: Plan | null;
-  goals: Goals;
-  weights: WeightEntry[];
   sessions: WorkoutSession[];
   archived: Plan[];
-  days: string[];
-  diaryDays: DiaryEntry[][];
   dayLogs: (DailyCheckoff | null)[];
   today: string;
 }): string {
@@ -74,7 +58,6 @@ function render(x: {
     lines.push(
       `Active plan: ${p.mode}, ${p.startDate} → ${p.endDate}. Goals: ${p.goals.map((g) => g.label).join("; ")}.`,
     );
-    if (p.targets?.dailyCalories != null) lines.push(`Daily calorie target: ${p.targets.dailyCalories}.`);
     const prog = p.program;
     if (prog) {
       lines.push(`Program workouts: ${prog.workouts.map((w) => w.workout.name).join(", ")}.`);
@@ -91,26 +74,7 @@ function render(x: {
       }
     }
   } else {
-    lines.push("No active plan (logging only right now).");
-  }
-
-  // Food: last week vs goal, one line per day with data.
-  const foodLines: string[] = [];
-  x.days.forEach((d, i) => {
-    const entries = x.diaryDays[i] ?? [];
-    if (entries.length === 0) return;
-    const total = buildDayView(d, entries).total;
-    foodLines.push(`  ${d}: ${total.calories} kcal (goal ${x.goals.calories}), ${total.protein}g protein`);
-  });
-  lines.push(foodLines.length ? `Food, last ${FOOD_DAYS} days:\n${foodLines.join("\n")}` : "No food logged this week.");
-
-  if (x.weights.length) {
-    const recent = x.weights.slice(0, 5);
-    const newest = recent[0]!;
-    const oldest = x.weights[x.weights.length - 1]!;
-    lines.push(
-      `Weight: ${newest.weightKg} kg on ${newest.date} (was ${oldest.weightKg} kg on ${oldest.date}).`,
-    );
+    lines.push("No active plan yet.");
   }
 
   if (x.sessions.length) {

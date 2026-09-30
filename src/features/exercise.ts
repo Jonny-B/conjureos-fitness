@@ -8,15 +8,15 @@
  * storing a kcal override — both per-day on `DailyCheckoff` (reversible). In-app
  * sessions are edited/deleted for real.
  *
- * Single source of truth for exercise calories: the diary ring and the cross-app
- * `todayTotals` action both call `exerciseCaloriesForDate`.
+ * Single source of truth for a day's exercise calories: the Workouts tab's day
+ * total and the Plan tab's weekly count both come from `listCompletedWorkouts`.
  */
 
 import type { WorkoutSession } from "../types";
 import { getRepository } from "../data/repository";
 import { persist } from "../data/saveFailure";
 import { readWorkouts, type WorkoutBurn } from "../bridge/health";
-import { shiftDate, todayISO } from "./diary";
+import { shiftDate, todayISO } from "./dates";
 import { newId } from "../data/id";
 
 /** Where a completed workout came from: run inside this app, or synced from
@@ -158,7 +158,7 @@ export interface ManualExerciseInput {
   name: string;
   /** Minutes, optional. */
   durationMin?: number;
-  /** Calories burned, required: this is what reaches the budget. */
+  /** Calories burned, required: other apps read it (Conjure Health's ring). */
   calories: number;
 }
 
@@ -267,9 +267,9 @@ export function weekToDate(date: string): string[] {
 /**
  * How many days this week the user has moved, against their plan's target.
  *
- * Counts a day when ANY exercise reached the calorie budget that day — wearable
- * or logged in-app — so it stays consistent with the ring rather than inventing
- * a second definition of "did I exercise".
+ * Counts a day with any workout that burned calories — wearable or logged
+ * in-app, the same set the Workouts tab totals — rather than inventing a
+ * second definition of "did I exercise".
  */
 export async function weekExerciseProgress(
   target: number,

@@ -15,27 +15,21 @@ vi.mock("../../bridge/ai", async (orig) => ({
 import { createPlan } from "./generate";
 
 const input: PlanInput = {
-  mode: "both",
-  goalText: "lose a few pounds and feel less winded",
+  mode: "get_fit",
+  goalText: "run a 5K and feel less winded",
   durationWeeks: 8,
   daysPerWeek: 3,
   experienceLevel: "beginner",
   equipment: "none",
-  heightCm: 178,
-  weightKg: 80,
-  age: 30,
-  sex: "male",
-  calorieTarget: 1800,
   safety: { ageBand: "18_39", pregnant: false, cardiacFlag: false, injuries: [], activityLevel: "light" },
 };
 const liability: LiabilityAck = { acknowledged: true, acceptedAt: "2026-07-16T00:00:00Z" };
 
 const GOOD_CORE = JSON.stringify({
-  summary: "A balanced plan to lose weight and get moving.",
-  dailyCalorieTarget: 1800,
+  summary: "A steady plan to build stamina and strength.",
   goals: [
-    { label: "Stay around 1800 kcal", kind: "nutrition" },
-    { label: "Protein at every meal", kind: "nutrition" },
+    { label: "Two easy runs a week", kind: "workout" },
+    { label: "Stretch for five minutes each evening", kind: "habit" },
     { label: "Three short strength sessions", kind: "workout" },
   ],
 });
@@ -94,7 +88,7 @@ describe("createPlan (two-phase generation)", () => {
   });
 
   it("falls back with a 'too long' reason when the core JSON is truncated on both attempts", async () => {
-    const TRUNCATED_CORE = '{"summary":"A plan","goals":[{"label":"Stay around 1800 kcal","kind":"nutri';
+    const TRUNCATED_CORE = '{"summary":"A plan","goals":[{"label":"Two easy runs a week","kind":"work';
     complete.mockResolvedValue(TRUNCATED_CORE);
     const res = await createPlan(input, liability);
     expect(res.usedFallback).toBe(true);
@@ -108,23 +102,20 @@ describe("createPlan (two-phase generation)", () => {
     expect(res.failureReason).toMatch(/didn't include any goals/i);
   });
 
-  it("writes imperial numbers + a units directive into the prompt when the user reads imperial", async () => {
+  it("adds a units directive to the prompt when the user reads imperial", async () => {
     complete.mockResolvedValueOnce(GOOD_CORE).mockResolvedValueOnce(GOOD_PROGRAM);
-    await createPlan({ ...input, units: "imperial", goalWeightKg: 72 }, liability);
+    await createPlan({ ...input, units: "imperial" }, liability);
     const msg = (complete.mock.calls[0]![0] as unknown as { messages: { content: string }[] }).messages[0]!.content;
-    expect(msg).toContain(`5'10"`); // 178 cm
-    expect(msg).toContain("176 lb"); // 80 kg
-    expect(msg).toContain("159 lb"); // 72 kg goal
     expect(msg).toContain("UNITS: the user reads IMPERIAL");
   });
 
-  it("keeps metric prompts unchanged when the user reads metric", async () => {
+  it("keeps metric prompts free of the directive, and sends no body stats either way", async () => {
     complete.mockResolvedValueOnce(GOOD_CORE).mockResolvedValueOnce(GOOD_PROGRAM);
     await createPlan({ ...input, units: "metric" }, liability);
     const msg = (complete.mock.calls[0]![0] as unknown as { messages: { content: string }[] }).messages[0]!.content;
-    expect(msg).toContain("178 cm");
-    expect(msg).toContain("80 kg");
     expect(msg).not.toContain("UNITS:");
+    expect(msg).not.toMatch(/\b(height|weight|sex|kcal|calories?)\b/i);
+    expect(msg).toContain("Workout days per week: 3");
   });
 
   it("detects truncation from the raw reply even when complete inner objects precede the cut", async () => {
@@ -144,7 +135,7 @@ describe("createPlan (two-phase generation)", () => {
 
   it("reports a core reply cut off after complete goals as 'too long', not invalid JSON", async () => {
     const CUT_CORE =
-      '{"summary":"A plan","goals":[{"label":"Stay around 1800 kcal","kind":"nutrition"},{"label":"Protein at every me';
+      '{"summary":"A plan","goals":[{"label":"Two easy runs a week","kind":"workout"},{"label":"Stretch every eve';
     complete.mockResolvedValue(CUT_CORE);
     const res = await createPlan(input, liability);
     expect(res.usedFallback).toBe(true);
@@ -159,7 +150,7 @@ describe("createPlan (two-phase generation)", () => {
   });
 
   describe("Fitness: no calorie target or nutrition goals", () => {
-    const fitInput: PlanInput = { ...input, mode: "get_fit", calorieTarget: null };
+    const fitInput: PlanInput = { ...input, mode: "get_fit" };
 
     it("ignores the AI's calorie target and drops nutrition goals for get_fit", async () => {
       const core = JSON.stringify({
@@ -174,9 +165,8 @@ describe("createPlan (two-phase generation)", () => {
       complete.mockResolvedValueOnce(core).mockResolvedValueOnce(GOOD_PROGRAM);
       const res = await createPlan(fitInput, liability);
       expect(res.usedFallback).toBe(false);
-      expect(res.plan.targets?.dailyCalories).toBeNull();
-      expect(res.plan.targets?.protein).toBeUndefined();
-      expect(res.gen.dailyCalorieTarget).toBeNull();
+      expect(res.plan).not.toHaveProperty("targets");
+      expect(res.gen).not.toHaveProperty("dailyCalorieTarget");
       expect(res.plan.goals.map((g) => g.kind)).not.toContain("nutrition");
       expect(res.plan.goals).toHaveLength(2);
       // The core prompt doesn't ask for calories or food goals either.
@@ -186,7 +176,7 @@ describe("createPlan (two-phase generation)", () => {
   });
 
   describe("gated logging_only plans", () => {
-    const gated: PlanInput = { ...input, mode: "logging_only", calorieTarget: null };
+    const gated: PlanInput = { ...input, mode: "logging_only" };
 
     it("tells the model no exercise goals are allowed", async () => {
       complete.mockResolvedValueOnce(JSON.stringify({ summary: "s", goals: [{ label: "Weekly check-in", kind: "habit" }] }));
@@ -204,7 +194,7 @@ describe("createPlan (two-phase generation)", () => {
       expect(res.failureReason).toMatch(/must not prescribe workouts/);
       expect(res.plan.goals.map((g) => g.kind)).not.toContain("nutrition");
       expect(res.plan.goals.map((g) => g.label).join(" ")).not.toMatch(/\beat\b|food/i);
-      expect(res.plan.targets?.dailyCalories).toBeNull();
+      expect(res.plan).not.toHaveProperty("targets");
     });
   });
 
@@ -213,7 +203,7 @@ describe("createPlan (two-phase generation)", () => {
   // trips vitest's uncaught-error guard, so it isn't re-asserted here.)
 });
 
-describe("createPlan calorie target by mode", () => {
+describe("createPlan stores no calorie target", () => {
   // Habit-only goals so the core passes validation for every mode (no fallback).
   const HABIT_CORE = JSON.stringify({
     summary: "Build a steady routine.",
@@ -221,24 +211,19 @@ describe("createPlan calorie target by mode", () => {
     goals: [
       { label: "Log how you feel each day", kind: "habit" },
       { label: "Note your energy each evening", kind: "habit" },
-      { label: "Sleep on a regular schedule", kind: "habit" },
+      { label: "Lay out your gear the night before", kind: "habit" },
     ],
   });
   it("drops the AI's calorie number for a logging_only plan", async () => {
     complete.mockResolvedValueOnce(HABIT_CORE);
-    const res = await createPlan({ ...input, mode: "logging_only", calorieTarget: null }, liability);
+    const res = await createPlan({ ...input, mode: "logging_only" }, liability);
     expect(res.usedFallback).toBe(false);
-    expect(res.plan.targets).toEqual({ dailyCalories: null });
+    expect(res.plan).not.toHaveProperty("targets");
   });
   it("drops the AI's calorie number for a get_fit plan", async () => {
     complete.mockResolvedValueOnce(HABIT_CORE).mockResolvedValueOnce(GOOD_PROGRAM);
-    const res = await createPlan({ ...input, mode: "get_fit", calorieTarget: null }, liability);
+    const res = await createPlan({ ...input, mode: "get_fit" }, liability);
     expect(res.usedFallback).toBe(false);
-    expect(res.plan.targets).toEqual({ dailyCalories: null });
-  });
-  it("keeps the AI's calorie number for a food-tracking plan", async () => {
-    complete.mockResolvedValueOnce(HABIT_CORE).mockResolvedValueOnce(GOOD_PROGRAM);
-    const res = await createPlan({ ...input, mode: "both", calorieTarget: null }, liability);
-    expect(res.plan.targets?.dailyCalories).toBe(2000);
+    expect(res.plan).not.toHaveProperty("targets");
   });
 });

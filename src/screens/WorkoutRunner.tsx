@@ -5,7 +5,7 @@ import { normalizeExerciseKey } from "../features/explainers/normalizeKey";
 import { recordSessionAndAdapt } from "../features/plan/planService";
 import { lastSetFor } from "../features/workoutHistory";
 import { getRepository } from "../data/repository";
-import { ProgressRing } from "../components/rings";
+import { ProgressRing } from "../components/ProgressRing";
 import { SetRecorder, type SetEntry } from "../components/SetRecorder";
 import { ExplainerDropdown } from "../components/ExplainerDropdown";
 import { CardioPlayer } from "./CardioPlayer";

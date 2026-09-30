@@ -10,20 +10,16 @@
  * assembled, ready-to-save domain `Plan` plus whether the fallback was used.
  */
 
-import type { LiabilityAck, Plan, PlanGoal, PlanTargets, WorkoutProgram } from "../../types";
+import type { LiabilityAck, Plan, PlanGoal, WorkoutProgram } from "../../types";
 import { complete, extractJson, isAiAvailable } from "../../bridge/ai";
 import { newId } from "../../data/id";
-import { shiftDate, todayISO } from "../diary";
-import { macrosForCalories } from "../goals";
-import { fmtHeight, kgToLb } from "../units";
+import { shiftDate, todayISO } from "../dates";
 import { movementsExcludedFor } from "../safety/injuryExclusions";
 import type { GeneratedGoal, GeneratedPlan, PlanInput } from "./model";
-import { modeHasWorkouts, modeTracksFood } from "./model";
+import { modeHasWorkouts } from "./model";
 import { parseProgram } from "./program";
 import { validatePlan, validateProgram } from "./validate";
 import { fallbackPlan, fallbackProgram } from "./fallbackTemplates";
-import { toIntInRange } from "../num";
-import { NUTRITION_ENABLED } from "../flags";
 
 /**
  * Generation is split into TWO calls, not one, on purpose. A single call for
@@ -34,13 +30,13 @@ import { NUTRITION_ENABLED } from "../flags";
  * truncation-proof core first, then the bulky program as a separate best-effort
  * step whose failure can't sink the plan.
  */
-const systemCore = (tracksFood: boolean): string => `You are a wellness coach, not a doctor. You give friendly suggestions, not medical prescriptions.
-Design a specific, personalized wellness plan from the user's inputs — tailored to THEIR stated goal, experience level, and schedule. Avoid generic filler. Return ONLY a small JSON object:
+const SYSTEM_CORE = `You are a fitness coach, not a doctor. You give friendly suggestions, not medical prescriptions.
+Design a specific, personalized training plan from the user's inputs — tailored to THEIR stated goal, experience level, and schedule. Avoid generic filler. Return ONLY a small JSON object:
   { "summary": string,
-${tracksFood ? `    "dailyCalorieTarget": number | null,\n` : ""}    "goals": [ { "label": string, "kind": ${NUTRITION_ENABLED ? '"nutrition" | "workout" | "habit"' : '"workout" | "habit"'}, "detail"?: string } ] }
+    "goals": [ { "label": string, "kind": "workout" | "habit", "detail"?: string } ] }
 Rules:
 - "summary" is one encouraging sentence naming what THIS plan will do for their specific goal.
-${tracksFood ? `- "dailyCalorieTarget" is optional — if unsure, use null; the app supplies its own number.\n` : ""}- 3 to 6 goals, each a short daily/weekly action tied to their goal. ${NUTRITION_ENABLED ? 'Use "nutrition" for food, "workout" for exercise, "habit" for everything else.' : 'Use "workout" for exercise, "habit" for everything else. No food or calorie goals.'} For a "workout" goal, put the specific movements in "detail".
+- 3 to 6 goals, each a short daily/weekly action tied to their goal. Use "workout" for exercise, "habit" for everything else. No food, diet or calorie goals: this app doesn't track food. For a "workout" goal, put the specific movements in "detail".
 - Do NOT include a workout program here — only the fields above. Keep it short.
 - Respect any HARD SAFETY avoid-list exactly.
 - Output ONLY the JSON. No prose, no markdown fences.`;
@@ -80,25 +76,6 @@ function buildUserPrompt(input: PlanInput, priorReasons?: string[]): string {
     lines.push(`Equipment: ${input.equipment?.trim() || "none / bodyweight"}.`);
   }
   const imperial = input.units === "imperial";
-  if (modeTracksFood(input.mode)) {
-    if (input.heightCm) {
-      lines.push(
-        `Height: ${imperial ? `${fmtHeight(input.heightCm, "imperial")} (${Math.round(input.heightCm)} cm)` : `${input.heightCm} cm`}.`,
-      );
-    }
-    if (input.weightKg) {
-      lines.push(
-        `Weight: ${imperial ? `${Math.round(kgToLb(input.weightKg))} lb (${input.weightKg} kg)` : `${input.weightKg} kg`}.`,
-      );
-    }
-    if (input.goalWeightKg) {
-      const dir = input.weightKg && input.goalWeightKg < input.weightKg ? "lose" : input.weightKg && input.goalWeightKg > input.weightKg ? "gain" : "reach";
-      const shown = imperial ? `${Math.round(kgToLb(input.goalWeightKg))} lb` : `${input.goalWeightKg} kg`;
-      lines.push(`Goal weight: ${shown} (they want to ${dir} weight to reach it) — reference it in the plan.`);
-    }
-    if (input.age) lines.push(`Age: ${input.age}.`);
-    if (input.sex) lines.push(`Sex (for calorie floor only): ${input.sex}.`);
-  }
   if (imperial) {
     lines.push(
       "UNITS: the user reads IMPERIAL. Every user-facing string (summary, goal labels/details, workout names, descriptions, exercise notes) MUST use imperial numbers (lb, miles, ft/in) — never kg/km/cm. Numeric JSON fields (weightKg, distanceKm, durationSec) stay metric.",
@@ -112,7 +89,7 @@ function buildUserPrompt(input: PlanInput, priorReasons?: string[]): string {
   }
   if (!modeHasWorkouts(input.mode)) {
     lines.push(
-      `This plan must contain NO exercise, movement or workout goals of any kind (no running, walking, sessions, reps); use only ${NUTRITION_ENABLED ? "nutrition or habit" : "habit"} goals.`,
+      `This plan must contain NO exercise, movement or workout goals of any kind (no running, walking, sessions, reps); use only habit goals.`,
     );
   }
   if (input.safety.ageBand === "60_plus") lines.push("Keep intensity gentle (older adult).");
@@ -126,20 +103,17 @@ function buildUserPrompt(input: PlanInput, priorReasons?: string[]): string {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-/** A daily calorie target from the model: null unless it's a positive, sane
- *  number of kcal (0 and negatives mean "the model didn't give us one"). */
-const clampKcal = (v: unknown): number | null => {
-  const n = toIntInRange(v, 0, 6000);
-  return n === null || n <= 0 ? null : n;
-};
+/** A goal kind as the model may label it. "nutrition" is recognised only so
+ *  such goals can be dropped: food belongs to Conjure Health. */
+type RawKind = GeneratedGoal["kind"] | "nutrition";
 
-const VALID_KINDS = new Set<GeneratedGoal["kind"]>(["nutrition", "workout", "habit"]);
+const VALID_KINDS = new Set<RawKind>(["nutrition", "workout", "habit"]);
 
 /** Keys a model might use for a goal's user-facing text (schema drift tolerance). */
 const GOAL_LABEL_KEYS = ["label", "text", "name", "title", "goal", "description"];
 
 /** Guess a goal's kind from its wording when the model omits/mislabels it. */
-function inferKind(text: string): GeneratedGoal["kind"] {
+function inferKind(text: string): RawKind {
   const t = text.toLowerCase();
   if (/\b(cal|calorie|protein|carb|fat|eat|food|meal|nutrition|hydrat|water|diet)\b/.test(t)) return "nutrition";
   if (/\b(workout|exercise|run|walk|jog|bike|lift|rep|set|squat|push|pull|plank|cardio|strength|train|session|mile|5k|murph)\b/.test(t))
@@ -154,7 +128,7 @@ function inferKind(text: string): GeneratedGoal["kind"] {
  * forced the fallback ("AI response couldn't be understood"). Accept strings,
  * alternate label keys, and a missing/odd kind (inferred from the wording).
  */
-function coerceGoal(g: unknown): GeneratedGoal | null {
+function coerceGoal(g: unknown): (Omit<GeneratedGoal, "kind"> & { kind: RawKind }) | null {
   if (typeof g === "string") {
     const label = g.trim().slice(0, 120);
     return label ? { label, kind: inferKind(label) } : null;
@@ -171,8 +145,8 @@ function coerceGoal(g: unknown): GeneratedGoal | null {
   }
   if (!label) return null;
   const detail = typeof go.detail === "string" ? go.detail.trim().slice(0, 200) : undefined;
-  const kind = VALID_KINDS.has(go.kind as GeneratedGoal["kind"])
-    ? (go.kind as GeneratedGoal["kind"])
+  const kind = VALID_KINDS.has(go.kind as RawKind)
+    ? (go.kind as RawKind)
     : inferKind(`${label} ${detail ?? ""}`);
   return detail ? { label, kind, detail } : { label, kind };
 }
@@ -208,7 +182,7 @@ type CoreFail = "truncated" | "invalid_json" | "no_goals";
 type CoreParse = { plan: GeneratedPlan } | { plan: null; kind: CoreFail };
 
 /**
- * Parse the CORE response (summary + calories + goals; no program). A valid plan
+ * Parse the CORE response (summary + goals; no program). A valid plan
  * needs only goals, so this is the truncation-proof half. Returns a typed
  * failure so the caller can tell "came back too long" from "no goals" instead of
  * the old catch-all "couldn't be understood".
@@ -237,8 +211,8 @@ function parseCore(raw: string): CoreParse {
   const goals: GeneratedGoal[] = [];
   for (const g of rawGoals.slice(0, MAX_GOALS)) {
     const goal = coerceGoal(g);
-    // Food goals can't be fulfilled in a build without food tracking.
-    if (goal && (NUTRITION_ENABLED || goal.kind !== "nutrition")) goals.push(goal);
+    // Food goals can't be fulfilled here: food tracking is Conjure Health's.
+    if (goal && goal.kind !== "nutrition") goals.push({ ...goal, kind: goal.kind });
   }
   if (goals.length === 0) return { plan: null, kind: "no_goals" };
   const summary =
@@ -246,11 +220,7 @@ function parseCore(raw: string): CoreParse {
     : typeof inner.overview === "string" ? (inner.overview as string).trim().slice(0, 200)
     : "Your plan";
   return {
-    plan: {
-      summary,
-      dailyCalorieTarget: clampKcal(inner.dailyCalorieTarget ?? inner.calorieTarget ?? inner.calories),
-      goals,
-    },
+    plan: { summary, goals },
   };
 }
 
@@ -264,7 +234,7 @@ function buildProgramPrompt(input: PlanInput, goals: GeneratedGoal[]): string {
 /** Generate the core plan (goals). Throws on transport error; typed failure otherwise. */
 async function generateCore(input: PlanInput, priorReasons?: string[]): Promise<CoreParse> {
   const raw = await complete({
-    system: systemCore(modeTracksFood(input.mode)),
+    system: SYSTEM_CORE,
     messages: [{ role: "user", content: buildUserPrompt(input, priorReasons) }],
     maxTokens: 900,
     tier: "capable",
@@ -366,7 +336,7 @@ const CORE_FAIL_MESSAGE: Record<CoreFail, string> = {
 };
 
 const CORE_RETRY_HINT = [
-  'return ONLY a short JSON object with a top-level "goals" array of 3-6 items, each { "label": string, "kind": "nutrition"|"workout"|"habit" } — no workout program',
+  'return ONLY a short JSON object with a top-level "goals" array of 3-6 items, each { "label": string, "kind": "workout"|"habit" } — no workout program',
 ];
 
 /** Convert a generated plan + wizard inputs + ack into the persisted domain Plan. */
@@ -375,17 +345,10 @@ export function buildPlan(gen: GeneratedPlan, input: PlanInput, liability: Liabi
   const endDate = input.endDate ?? shiftDate(startDate, input.durationWeeks * 7 - 1);
   const goals: PlanGoal[] = gen.goals.map((g, i) => {
     const goal: PlanGoal = { id: `${i}-${newId()}`, label: g.label, kind: g.kind };
-    // Carry the AI's movement/nutrition detail through for future automation.
+    // Carry the AI's movement detail through for future automation.
     if (g.detail) goal.detail = g.detail;
     return goal;
   });
-  // Structured targets: the calorie target plus a macro split, so the plan — not
-  // a free-text goal string — is the source of truth the diary rings read from.
-  // Prefer the locally-computed target (Mifflin) over the AI's number.
-  // Only food-tracking modes carry a calorie target (logging_only must never show one).
-  const kcal = modeTracksFood(input.mode) ? (input.calorieTarget ?? gen.dailyCalorieTarget) : null;
-  const targets: PlanTargets =
-    kcal != null ? { dailyCalories: kcal, ...macrosForCalories(kcal, input.weightKg ?? 70) } : { dailyCalories: null };
   return {
     id: newId(),
     mode: input.mode,
@@ -393,21 +356,20 @@ export function buildPlan(gen: GeneratedPlan, input: PlanInput, liability: Liabi
     startDate,
     endDate,
     goals,
-    targets,
     safety: input.safety,
     liability,
     createdAt: new Date().toISOString(),
     // Persist the free-text goal so the plan editor can prefill it and the
     // new-vs-modify diff can tell whether the goal itself changed.
     ...(input.goalText ? { goalText: input.goalText } : {}),
-    // Attach the adaptive program (W4) when generation produced one and the
-    // mode actually prescribes workouts. Food-only plans never carry a program.
+    // Attach the adaptive program when generation produced one and the mode
+    // prescribes workouts (the safety gate's plan never carries one).
     ...(gen.program && modeHasWorkouts(input.mode) ? { program: gen.program } : {}),
   };
 }
 
 /** Coarse phase the wizard shows while a plan is being built. */
-export type PlanStage = "calories" | "workouts" | "checking";
+export type PlanStage = "goals" | "workouts" | "checking";
 
 /** Optional hooks for a `createPlan` call. */
 export interface CreatePlanOptions {
@@ -434,32 +396,24 @@ export interface CreatePlanResult {
 
 /**
  * The wizard's plan call: generate → validate → retry (with the reasons) →
- * fallback template. Never throws. The calorie target is supplied locally
- * (`input.calorieTarget`, from Mifflin) so a plan is NOT rejected just because
- * the model omitted the number — the #1 cause of unwanted fallbacks. When it
- * does fall back, `failureReason` records exactly why.
+ * fallback template. Never throws. When it does fall back, `failureReason`
+ * records exactly why.
  */
 export async function createPlan(
   input: PlanInput,
   liability: LiabilityAck,
   opts?: CreatePlanOptions,
 ): Promise<CreatePlanResult> {
-  const ctx = { mode: input.mode, sex: input.sex, safety: input.safety };
+  const ctx = { mode: input.mode, safety: input.safety };
   const onStage = opts?.onStage;
-
-  // The app owns the calorie target; the AI never needs to supply it.
-  const withTarget = (g: GeneratedPlan): GeneratedPlan =>
-    !modeTracksFood(input.mode) ? { ...g, dailyCalorieTarget: null }
-    : input.calorieTarget != null ? { ...g, dailyCalorieTarget: input.calorieTarget }
-    : g;
 
   let lastReasons: string[] = [];
   let lastError: string | undefined;
 
-  // The calorie + safety phases are near-instant, so without a small dwell the
+  // The goal + safety phases are near-instant, so without a small dwell the
   // spinner would only ever visibly show "Building your workouts". These pauses
   // make the honest three-stage readout actually readable.
-  onStage?.("calories");
+  onStage?.("goals");
   await sleep(650);
 
   if (!isAiAvailable()) {
@@ -477,7 +431,7 @@ export async function createPlan(
           lastReasons = CORE_RETRY_HINT;
           continue;
         }
-        let candidate = withTarget(core.plan);
+        let candidate = core.plan;
         onStage?.("checking");
         await sleep(300);
         const v = validatePlan(candidate, ctx);
@@ -525,7 +479,7 @@ export async function createPlan(
 
   onStage?.("checking");
   await sleep(500);
-  const gen = withTarget(fallbackPlan(input.mode, input));
+  const gen = fallbackPlan(input.mode, input);
   const failureReason = lastError ?? (lastReasons.length ? lastReasons.join("; ") : "unknown");
   return { plan: buildPlan(gen, input, liability), gen, usedFallback: true, failureReason };
 }

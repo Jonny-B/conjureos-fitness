@@ -6,7 +6,7 @@
  *   - `clamp` narrows a number you already trust (a slider position, a computed
  *     target) into a legal range.
  *   - `toNumInRange` / `toIntInRange` coerce something UNTRUSTED — a JSON field
- *     from a model reply or a third-party food API — and return `null` when it
+ *     from a model reply or another app's action params — and return `null` when it
  *     isn't a finite number, so a garbage field fails loudly instead of
  *     silently becoming 0.
  *
@@ -32,7 +32,7 @@ export const clamp = (v: number, min: number, max: number): number =>
  *
  * Exported (not just used by the two range helpers below) for callers that
  * need "is this a real number" without also wanting `toNumInRange`'s
- * clamp-to-bound behaviour on an out-of-range value — e.g. an AI-macro
+ * clamp-to-bound behaviour on an out-of-range value — e.g. an AI-supplied
  * field where out-of-range must be rejected outright, not capped.
  */
 export function coerceFinite(v: unknown): number | null {

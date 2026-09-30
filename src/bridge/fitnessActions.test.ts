@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Plan, Profile, ProgramWorkout, Workout, WorkoutSession } from "../types";
-import { shiftDate, todayISO } from "../features/diary";
+import { shiftDate, todayISO } from "../features/dates";
 import { weekToDate } from "../features/exercise";
 import { onDataChanged } from "../features/dataEvents";
 

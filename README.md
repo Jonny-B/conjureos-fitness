@@ -1,99 +1,77 @@
 # Conjure Fitness, an app for ConjureOS
 
-> **Split from Conjure Health on 2026-09-28. DEV ONLY for now.** This repo is
-> Conjure Fitness: guided workouts, run tracking, an adaptive training plan and
-> an AI coach. Calorie and food tracking moved to Conjure Health, which lives in
-> [conjureos-health](https://github.com/Jonny-B/conjureos-health) and keeps the
-> `fitness` store slug.
->
-> - Store slug `conjure-fitness`, a new listing. Never publish to `fitness`:
->   that would replace Conjure Health for everyone who has it installed.
-> - Publishes to the DEV store only (Actions → Run workflow). There is no
->   release/prod trigger yet. The dev listing was created 2026-09-28 (store
->   app id `57a80973-e0e2-4c75-97a2-cbe3691ee56e`, featured, v1 = `0.1.0`), so
->   never run `--first-publish` for `conjure-fitness` on dev again. Prod has no
->   listing yet. Bump `version` above the live one before every Run workflow.
-> - `src/features/flags.ts`: `COACH_AND_WORKOUTS_ENABLED` is on and
->   `NUTRITION_ENABLED` is off. The food code is still here, just unreachable;
->   the app opens on a new Home screen (`src/screens/HomeScreen.tsx`).
-> - No shared backend: the Supabase `fitness` schema is Health's, so this app
->   keeps its data in its local store (`src/data/repository.ts`).
-> - Cross-app actions (0.2.0): `listWorkouts`, `trainingSummary`,
->   `nextWorkout` and `logWorkout`, documented in [ACTIONS.md](ACTIONS.md).
->   `listWorkouts` feeds Conjure Health's calorie ring through its
->   `workoutSource` need; its `returns` schema is a contract.
->
-> Everything below describes the app as it was before the split.
+Guided workouts, run tracking, an adaptive training plan and an AI coach.
+Calorie and food tracking live in Conjure Health
+([conjureos-health](https://github.com/Jonny-B/conjureos-health)), which counts
+the workouts recorded here through this app's `listWorkouts` action.
 
-Calorie, nutrition, weight, and fitness tracking. A My Net Diary-style daily
-tracker: log food by search, barcode, or plain language; see calories + macros
-against your goals; weigh in; and run guided workouts with set/rest timers.
+A standalone Vite + React + TypeScript project, imported into
+[ConjureOS](https://github.com/Jonny-B/ConjureOS) by the Phase 8 bundler.
 
-A keystone (anchor) app for [ConjureOS](https://github.com/Jonny-B/ConjureOS),
-built as a standalone Vite + React + TypeScript project and imported via the
-Phase 8 bundler. **Open source app, private backend** — see below.
+## Publishing (DEV ONLY for now)
 
-## What's here today
+- Store slug `conjure-fitness`, its own listing. Never publish to `fitness`:
+  that is Conjure Health's slug, and publishing there would replace Conjure
+  Health for everyone who has it installed.
+- Publishes to the DEV store only (Actions → Run workflow). There is no
+  release/prod trigger yet. The dev listing was created 2026-09-28 (store app
+  id `57a80973-e0e2-4c75-97a2-cbe3691ee56e`, featured, v1 = `0.1.0`), so never
+  run `--first-publish` for `conjure-fitness` on dev again. Prod has no listing
+  yet. Bump `version` above the live one before every Run workflow.
 
-- **Diary** — daily food log grouped by meal, calorie ring + macro bars vs.
-  goals, per-entry quantity stepping, day-to-day navigation.
-- **Add food** — four ways to log:
-  - **Search** Open Food Facts (branded) + USDA FoodData Central (whole foods).
-  - **Scan** barcodes via the camera (`BarcodeDetector`), with manual entry as
-    a fallback where the API isn't supported (iOS Safari / Firefox).
-  - **Describe** what you ate in plain language → AI estimates structured
-    entries you adjust.
-  - **Recipes** — pull a saved recipe from the [Recipes app](https://github.com/Jonny-B/conjureos-app-recipes)
-    (cross-app actions) and log its per-serving macros, marking it cooked.
-- **Trends** — weight tracking with a trend sparkline + BMI.
-- **Workouts** — built-in workout library with a guided player: timed sets,
-  rep sets, rest countdowns, and synthesized audio cues.
-- **Profile & goals** — Mifflin-St Jeor recommendation with manual override.
+## What's here
 
-Nutrition logging is the fully-built core; weight and workouts are functional
-first slices that will deepen (custom workouts, exercise history, calories
-burned) in later passes.
+- **Home**: your next workout, your plan, a coach launcher and recent
+  sessions.
+- **Plan**: a plan built from your goal in your own words (by the AI, with a
+  known-safe starter template as the fallback). Workouts come in groups that
+  unlock one after another; the first group is a benchmark that sets your
+  starting numbers, and the program adapts every few sessions. The tab also
+  shows benchmark progress and training days this week against the plan's
+  target.
+- **Workouts**: a library of ready-to-run workouts with a guided player (timed
+  sets, rep sets, rest countdowns, audio cues), GPS run and ride tracking, and
+  a "Completed today" list that combines in-app sessions with Apple Health
+  workouts, each with its calories burned.
+- **Coach**: chat with an AI trainer that sees your plan and workouts, asks
+  before it changes your program, and learns from post-workout reflections and
+  the evening check-in.
+- **Safety**: an intake (age, pregnancy, a heart condition, injuries) that can
+  turn the plan into one with no workouts; injury exclusions enforced on every
+  generated or adapted program; and a red-flag symptom screen that answers
+  before any coach model call.
 
 ## Architecture
 
-Three layers, so a contributor can run everything locally and the backend can
-swap without touching the UI:
+Three layers, so a contributor can run everything locally:
 
-- **`src/bridge/`** — thin wrappers over the ConjureOS host surface
-  (`ai.complete`, VFS, cross-app actions, host auth), each with a dev mock so
-  the app runs outside the OS.
-- **`src/data/`** — a single `Repository` interface. A VFS-backed **mock**
-  (default) and a **Supabase** implementation sit behind it, picked at runtime.
-  Nothing above this line knows which backend is live.
-- **`src/features/`** + **`src/screens/`** — pure logic (diary math, goals,
-  food search, workout sequencing) and the React UI.
+- **`src/bridge/`**: thin wrappers over the ConjureOS host surface
+  (`ai.complete`, VFS, cross-app actions, location, Apple Health), each with a
+  dev fallback so the app runs outside the OS.
+- **`src/data/`**: a single `Repository` interface over the on-device store
+  (`MockRepository`: localStorage is authoritative, mirrored to the app's
+  VFS). Nothing above this line touches storage directly.
+- **`src/features/`** + **`src/screens/`**: pure logic (plan generation and
+  validation, the adaptive program, the coach, burn estimates, workout
+  sequencing) and the React UI.
 
 ## Appearance
 
-Conjure Health **inherits the ConjureOS theme + flavor** — whatever palette
+Conjure Fitness **inherits the ConjureOS theme + flavor**: whatever palette
 and light/dark mode the OS is wearing, this app wears too, live. There is no
-in-app override: no lock, no settings control.
+in-app override.
 
 `src/theme.ts` applies the OS appearance from the shim at boot (kills the
 launch flash) and from every broadcast after, and exposes it through
 `hostAppearance()`. No host (standalone / `npm run dev`) or no OS override
 both fall back to the Conjure default + the browser's light/dark preference,
 which `@conjureos/ui`'s tokens.css already treats as "no `data-theme`"/"no
-`data-flavor`" — the correct behavior, not a missing case.
-
-This app used to be locked to Winter dark; the lock has been lifted. It never
-meant deaf even then — `hostAppearance()` predates the unlock — but every
-literal color in `src/styles.css` had to stop assuming Winter dark once the
-palette could actually change under it.
+`data-flavor`".
 
 Never hardcode a colour. `--cui-on-accent` is dark in six of the nine
-palettes, so `color: #fff` on a filled control is a bug. The camera and
-scanner overlays are the exception: their white sits over a live video feed,
-not over a themed surface. The macro/status palette
-(`--protein`/`--carbs`/`--fat`/`--good`/`--bad`) and the timeline "kind"
-palette (`--kind-*`, one colour per journal entry type) are also exceptions,
-deliberately fixed rather than theme-following — see the comment at the top
-of `src/styles.css`.
+palettes, so `color: #fff` on a filled control is a bug. The status palette
+(`--good`/`--bad`/`--warn`) is the one exception, deliberately fixed rather
+than theme-following; see the comment at the top of `src/styles.css`.
 
 ## Development
 
@@ -102,22 +80,10 @@ npm install
 npm run dev
 ```
 
-With no configuration the app runs entirely on the **mock data layer** (in
-memory + the app's VFS scope), so logging, the diary, weight, and workouts all
-work end-to-end offline. The AI, VFS, and cross-app bridges are mocked too.
-`npm run typecheck` and `npm run build` are the CI gates.
-
-### Backend (private)
-
-The app uses a real backend only when (1) the shared ConjureOS Supabase
-project's `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` are set, **and** (2)
-ConjureOS hands the app the signed-in user's session token via its auth bridge.
-The `fitness`-schema SQL + edge functions live in a **separate private repo**;
-this app talks to them through `src/data/supabaseRepository.ts`. Single
-sign-on (use whoever is signed into ConjureOS, no per-app login) depends on a
-platform auth bridge in ConjureOS — until it ships, the app stays on the mock.
-
-See `.env.example` for configuration.
+The app runs entirely on its on-device store, so plans, workouts and the
+coach's memory all work offline. Without a ConjureOS host the AI bridge
+answers with an empty reply, so every AI flow takes its non-AI fallback.
+`npm run typecheck`, `npm test` and `npm run build` are the CI gates.
 
 ## Import into ConjureOS
 
@@ -127,15 +93,19 @@ npm run build       # dist/ — ingested by the Phase 8 bundler on ZIP import
 
 ## Cross-app integration
 
-Conjure Health registers actions other apps / the home orchestrator can call:
+Conjure Fitness registers actions other apps and the ConjureOS assistant can
+call. [ACTIONS.md](ACTIONS.md) is the contract:
 
 | Action | Scope | What it does |
 |---|---|---|
-| `logFood({ name, calories, protein?, carbs?, fat?, meal?, date? })` | write | Log a food to the diary |
-| `todayTotals()` | read | Today's totals + goals + calories remaining |
-| `logRecipeMeal({ slug, servings?, meal?, date? })` | write | Log a Recipes-app recipe by slug and mark it cooked |
+| `listWorkouts({ from?, to?, limit? })` | read | Recorded workouts, newest first, with duration and calories |
+| `trainingSummary({ date? })` | read | This week's workouts, active days, minutes, calories and distance |
+| `nextWorkout()` | read | The next workout in the plan, with its exercises and sets |
+| `logWorkout({ durationMin, name?, type?, distanceKm?, calories?, date? })` | write | Record a workout done outside the app |
 
-It also consumes the Recipes app's `listRecipes` / `getRecipe` / `markCooked`.
+`listWorkouts` feeds Conjure Health's calorie ring through its `workoutSource`
+need, so its `returns` schema is a contract: add fields, never remove or
+rename one.
 
 ## License
 

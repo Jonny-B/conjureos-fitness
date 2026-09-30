@@ -11,15 +11,15 @@ const safety = (over: Partial<SafetyIntake> = {}): SafetyIntake => ({
   activityLevel: "light",
   ...over,
 });
-const plan = (goals: GeneratedGoal[]): GeneratedPlan => ({ summary: "s", dailyCalorieTarget: null, goals });
+const plan = (goals: GeneratedGoal[]): GeneratedPlan => ({ summary: "s", goals });
 
 describe("validatePlan: goal text, not the model's kind label, decides what is exercise", () => {
   const mislabelled = plan([
     { label: "Go for a 30-minute run every day", kind: "habit" },
-    { label: "Burn fat with sprint intervals", kind: "nutrition" },
+    { label: "Burn fat with sprint intervals", kind: "habit" },
   ]);
 
-  it("rejects exercise goals mislabelled habit/nutrition for a gated logging_only plan", () => {
+  it("rejects exercise goals mislabelled habit for a gated logging_only plan", () => {
     const res = validatePlan(mislabelled, { mode: "logging_only", safety: safety({ cardiacFlag: true }) });
     expect(res.ok).toBe(false);
     expect(res.reasons).toContain("a logging_only plan must not prescribe workouts");
@@ -31,10 +31,10 @@ describe("validatePlan: goal text, not the model's kind label, decides what is e
     expect(res.reasons).toContain('workout "Burn fat with sprint intervals" conflicts with a declared injury');
   });
 
-  it("does not flag food goals that merely contain an excluded substring", () => {
+  it("does not flag habit goals that merely contain an excluded substring", () => {
     const res = validatePlan(
       plan([
-        { label: "Choose brown rice", kind: "nutrition" },
+        { label: "Throw out the snooze button", kind: "habit" },
         { label: "Plan a weekend brunch", kind: "habit" },
       ]),
       { mode: "get_fit", safety: safety({ injuries: ["lower_back"] }) },
@@ -43,7 +43,7 @@ describe("validatePlan: goal text, not the model's kind label, decides what is e
   });
 
   it("accepts a plain habit-only logging_only plan", () => {
-    const res = validatePlan(plan([{ label: "A weekly weigh-in", kind: "habit" }]), {
+    const res = validatePlan(plan([{ label: "An evening check-in", kind: "habit" }]), {
       mode: "logging_only",
       safety: safety({ pregnant: true }),
     });

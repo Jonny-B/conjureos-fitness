@@ -1,17 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { Profile } from "../types";
 import { getRepository, __resetRepository } from "../data/repository";
-import { recordAiJournalConsent, withdrawAiJournalConsent, hasAiJournalConsent } from "../features/aiConsent";
 import { saveProfileUnits } from "./SettingsSheet";
 import { vfs } from "../bridge/vfs";
 
 const profile: Profile = {
   sex: "male",
   age: 40,
-  heightCm: 180,
   weightKg: 85,
   activityLevel: "moderate",
-  direction: "lose",
   units: "metric",
 };
 
@@ -22,29 +19,16 @@ describe("saveProfileUnits writes onto the stored profile, not App's cached copy
     __resetRepository();
   });
 
-  it("does not reinstate consent withdrawn after the cache was taken", async () => {
+  it("keeps a bodyweight saved after the cache was taken", async () => {
     const repo = await getRepository();
     await repo.saveProfile(profile);
-    await recordAiJournalConsent(false);
     const cached = (await repo.getProfile())!; // what App holds
-    await withdrawAiJournalConsent();
-    expect(await hasAiJournalConsent()).toBe(false);
+    await repo.saveProfile({ ...cached, weightKg: 80 }); // e.g. the wizard, since
 
     const next = await saveProfileUnits("imperial", cached);
     expect(next.units).toBe("imperial");
-    expect((await repo.getProfile())?.units).toBe("imperial");
-    expect(await hasAiJournalConsent()).toBe(false);
-  });
-
-  it("does not erase consent granted after the cache was taken", async () => {
-    const repo = await getRepository();
-    await repo.saveProfile(profile);
-    const cached = (await repo.getProfile())!;
-    await recordAiJournalConsent(false);
-    expect(await hasAiJournalConsent()).toBe(true);
-
-    await saveProfileUnits("imperial", cached);
-    expect(await hasAiJournalConsent()).toBe(true);
+    expect(next.weightKg).toBe(80);
+    expect(await repo.getProfile()).toEqual({ ...profile, weightKg: 80, units: "imperial" });
   });
 
   it("falls back to the given profile when nothing is stored", async () => {

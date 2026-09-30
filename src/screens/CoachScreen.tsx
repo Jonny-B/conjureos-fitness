@@ -190,8 +190,8 @@ export function CoachScreen({
           <div className="coach-empty">
             <h2>Your coach</h2>
             <p className="muted">
-              Ask anything — form checks, swaps, motivation, what to eat before a workout. Your coach can
-              see your plan, food, weight, and workout history, and will ask before changing your program.
+              Ask anything — form checks, swaps, motivation, how to recover. Your coach can see your
+              plan and workout history, and will ask before changing your program.
             </p>
             <div className="coach-suggestions">
               {["How am I doing this week?", "This plan feels too hard", "What should I focus on tomorrow?"].map(

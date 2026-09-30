@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
-import type { Benchmark, Goals, Plan, ProgramWorkout, Profile, WeightEntry } from "../types";
-import { DEFAULT_GOALS } from "../types";
-import { getRepository } from "../data/repository";
-import { todayISO } from "../features/diary";
-import { bmi } from "../features/goals";
+import type { Benchmark, Plan, ProgramWorkout, Profile } from "../types";
 import { benchmarkProgress } from "../features/plan/program";
-import { modeTracksFood } from "../features/plan/model";
 import {
   currentGroup,
   isEvaluationGroup,
@@ -13,39 +8,27 @@ import {
   workoutsInGroup,
 } from "../features/plan/groups";
 import {
-  goalsToTargets,
   recordManualBenchmarkEntry,
   startNextGroup,
-  targetsToGoals,
   toggleWorkoutDone,
-  updatePlan,
   type ManualBenchmarkEntry,
 } from "../features/plan/planService";
-import { fmtClock, fmtWeight, kgToLb, kmToMi, weightToDisplay, weightToKg, weightUnit } from "../features/units";
-import { Sparkline } from "../components/Sparkline";
-import { NumberField } from "../components/NumberField";
-import { pickWeightKg } from "../components/WeightCard";
+import { fmtClock, kgToLb, kmToMi, weightToKg, weightUnit } from "../features/units";
 import { CheckIcon, PlayIcon } from "../components/icons";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { WorkoutRunner, metaLine } from "./WorkoutRunner";
-import { toIntInRange } from "../features/num";
 import { weekExerciseProgress, type WeekExerciseProgress } from "../features/exercise";
-import { COACH_AND_WORKOUTS_ENABLED, NUTRITION_ENABLED } from "../features/flags";
 
 /**
- * Plan hub — the home for the user's plan, tracking + coaching, condensing what
- * used to be the separate Trends and Coach tabs and now also owning the plan's
- * workouts (moved off the Workouts tab, which is a pure library). Sections:
+ * Plan hub — the home for the user's plan and coaching, and the owner of the
+ * plan's workouts (the Workouts tab is a pure library). Sections:
  *   1. Your plan: benchmarks + plan workouts, each tappable into the runner.
- *   2. Trends: the weight graph + weigh-in + history, with a graceful empty
- *      state that keeps the graph's footprint fixed (no layout jump).
+ *   2. This week: training days done against the plan's weekly target.
  *   3. Coach session: prefilled starter questions + a free-text box that open
  *      the full Coach chat with the question already submitted.
  */
 export function PlanScreen({
-  profile,
   plan,
-  goals,
   units,
   onPlanChange,
   onAskCoach,
@@ -54,9 +37,7 @@ export function PlanScreen({
   onStartPlan,
   nonce = 0,
 }: {
-  profile: Profile | null;
   plan: Plan | null;
-  goals: Goals;
   units: Profile["units"];
   onPlanChange: (plan: Plan | null) => void;
   onAskCoach: (question: string) => void;
@@ -91,9 +72,9 @@ export function PlanScreen({
   }
 
   // ProgramSection carries its own "Your plan / Edit plan" header, but renders
-  // nothing without a workout program — so a food-only plan needs its own
-  // header or there is no way to reach the plan editor at all.
-  const showProgram = COACH_AND_WORKOUTS_ENABLED && !!plan?.program;
+  // nothing without a workout program — so a gated (logging_only) plan needs its
+  // own header or there is no way to reach the plan editor at all.
+  const showProgram = !!plan?.program;
 
   return (
     <div className="plan-screen">
@@ -109,39 +90,22 @@ export function PlanScreen({
           onPlanChange={onPlanChange}
         />
       )}
-      {plan && modeTracksFood(plan.mode) && (
-        <PlanTargetsSection plan={plan} goals={goals} onPlanChange={onPlanChange} />
-      )}
       {plan && (plan.weeklyExerciseDays ?? 0) > 0 && (
         <ExerciseGoalSection target={plan.weeklyExerciseDays!} nonce={nonce} />
       )}
-      <TrendsPanel profile={profile} nonce={nonce} />
-      {COACH_AND_WORKOUTS_ENABLED && <CoachLauncher onAsk={onAskCoach} />}
+      <CoachLauncher onAsk={onAskCoach} />
     </div>
   );
 }
 
-/**
- * The header's one-line subtitle. A logging_only plan has no targets section
- * and never shows a calorie target, so only its end date (if any) remains.
- */
+/** The header's one-line subtitle: the plan's end date, if it has one. */
 export function headerSubtitle(plan: Plan): string {
-  const parts: string[] = [];
-  if (modeTracksFood(plan.mode)) {
-    parts.push(
-      plan.targets?.dailyCalories != null
-        ? `${plan.targets.dailyCalories.toLocaleString()} cal a day`
-        : "Daily targets below",
-    );
-  }
-  if (plan.endDate) parts.push(`until ${plan.endDate}`);
-  return parts.join(" · ");
+  return plan.endDate ? `until ${plan.endDate}` : "";
 }
 
 /**
  * The plan's headline + the "Edit plan" entry point, for plans that render no
- * program section (any food-only plan, and every plan while the coach and
- * workout program are paused — see features/flags).
+ * program section (a gated logging_only plan, or one whose program is gone).
  */
 function PlanHeaderSection({ plan, onEditPlan }: { plan: Plan; onEditPlan: () => void }) {
   const subtitle = headerSubtitle(plan);
@@ -161,116 +125,11 @@ function PlanHeaderSection({ plan, onEditPlan }: { plan: Plan; onEditPlan: () =>
   );
 }
 
-// ── Daily targets (advanced manual override) ───────────────────────────
-
-type GoalsDraft = { calories?: number; protein?: number; carbs?: number; fat?: number };
-/** A draft field the user may have blanked out: fall back to `dflt`. */
-function clampNum(v: number | undefined, min: number, max: number, dflt: number): number {
-  return toIntInRange(v, min, max) ?? dflt;
-}
-function draftToGoals(d: GoalsDraft): Goals {
-  return {
-    calories: clampNum(d.calories, 0, 10000, DEFAULT_GOALS.calories),
-    protein: clampNum(d.protein, 0, 600, DEFAULT_GOALS.protein),
-    carbs: clampNum(d.carbs, 0, 900, DEFAULT_GOALS.carbs),
-    fat: clampNum(d.fat, 0, 400, DEFAULT_GOALS.fat),
-  };
-}
-
-/**
- * Manual override of the plan's daily calorie/macro targets. Lives on the Plan
- * tab (targets are a plan property); collapsed by default. Editing here writes
- * straight to `plan.targets` so the diary ring updates — until the next plan
- * edit recomputes them from your stats.
- */
-function PlanTargetsSection({
-  plan,
-  goals,
-  onPlanChange,
-}: {
-  plan: Plan;
-  goals: Goals;
-  onPlanChange: (plan: Plan | null) => void;
-}) {
-  const current = targetsToGoals(plan, goals);
-  const [open, setOpen] = useState(false);
-  const [g, setG] = useState<GoalsDraft>(current);
-  const [busy, setBusy] = useState(false);
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      const fg = draftToGoals(g);
-      const { plan: next } = await updatePlan(plan, { targets: goalsToTargets(fg) }, { currentGoals: fg });
-      onPlanChange(next);
-      setOpen(false);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="plan-section">
-      <div className="section-label">
-        Daily targets
-        <button
-          className="link-btn section-action"
-          onClick={() => {
-            setG(current);
-            setOpen((o) => !o);
-          }}
-        >
-          {open ? "Cancel" : "Adjust"}
-        </button>
-      </div>
-
-      {!open ? (
-        <div className="summary-card targets-summary">
-          <span className="targets-cal">
-            <strong>{current.calories}</strong> cal
-          </span>
-          <span className="muted small">
-            P {current.protein} · C {current.carbs} · F {current.fat} g
-          </span>
-        </div>
-      ) : (
-        <div className="summary-card column">
-          <p className="muted small">
-            Set your own targets. This overrides what your plan computed, until your next plan edit
-            recalculates it.
-          </p>
-          <div className="form-grid">
-            <label className="field">
-              <span>Calories</span>
-              <NumberField value={g.calories} min={0} max={10000} onChange={(n) => setG({ ...g, calories: n })} aria-label="Calories" />
-            </label>
-            <label className="field">
-              <span>Protein (g)</span>
-              <NumberField value={g.protein} min={0} max={600} onChange={(n) => setG({ ...g, protein: n })} aria-label="Protein grams" />
-            </label>
-            <label className="field">
-              <span>Carbs (g)</span>
-              <NumberField value={g.carbs} min={0} max={900} onChange={(n) => setG({ ...g, carbs: n })} aria-label="Carbs grams" />
-            </label>
-            <label className="field">
-              <span>Fat (g)</span>
-              <NumberField value={g.fat} min={0} max={400} onChange={(n) => setG({ ...g, fat: n })} aria-label="Fat grams" />
-            </label>
-          </div>
-          <button className="btn primary block" disabled={busy} onClick={() => void save()}>
-            {busy ? "Saving…" : "Save targets"}
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
 /**
  * Empty-state entry point shown on the Plan tab when the user has no plan yet —
- * so the tab is a second, obvious way to start one (not a blank screen). Any
- * body stats / weigh-ins already entered are carried into the wizard, so
- * starting here never loses that data.
+ * so the tab is a second, obvious way to start one (not a blank screen). Stats
+ * already entered are carried into the wizard, so starting here never loses
+ * them.
  */
 function PlanCtaCard({ onStartPlan }: { onStartPlan: () => void }) {
   return (
@@ -279,9 +138,8 @@ function PlanCtaCard({ onStartPlan }: { onStartPlan: () => void }) {
       <div className="summary-card column plan-cta-card">
         <div className="plan-cta-title">Build your plan</div>
         <p className="muted small plan-cta-blurb">
-          {COACH_AND_WORKOUTS_ENABLED
-            ? "A personalized plan sets your daily targets and, if you want, your workouts and benchmarks. It takes a minute, and anything you've already entered — your stats and weigh-ins — is carried straight in."
-            : "A plan sets your daily calorie and macro targets from your goal, and tracks your weight against it. It takes a minute, and your stats and weigh-ins carry straight in."}
+          A personalized plan builds your workouts and benchmarks around your goal. It takes a
+          minute, and anything you've already entered is carried straight in.
         </p>
         <button className="btn primary block" onClick={onStartPlan}>
           Build your plan
@@ -714,9 +572,9 @@ function formatBenchmarkValue(v: number, b: Benchmark, units: Profile["units"]):
 }
 
 /**
- * Weekly movement goal: how many days this week the user recorded any exercise,
- * against their plan's target. Read-only — nothing is prescribed; it just
- * reflects what already reached the calorie ring, so the two can never disagree.
+ * Weekly training goal: how many days this week the user recorded any
+ * exercise, against their plan's target days. Read-only — it counts the same
+ * workouts the Workouts tab lists for each day.
  */
 function ExerciseGoalSection({ target, nonce = 0 }: { target: number; nonce?: number }) {
   const [prog, setProg] = useState<WeekExerciseProgress | null>(null);
@@ -761,110 +619,13 @@ function ExerciseGoalSection({ target, nonce = 0 }: { target: number; nonce?: nu
   );
 }
 
-// ── Trends ─────────────────────────────────────────────────────────────
-
-function TrendsPanel({ profile, nonce = 0 }: { profile: Profile | null; nonce?: number }) {
-  const [weights, setWeights] = useState<WeightEntry[]>([]);
-  const [input, setInput] = useState("");
-
-  const reload = async () => {
-    const repo = await getRepository();
-    setWeights(await repo.listWeights());
-  };
-  // Reload on nonce: Settings clearing weight history bumps it while Plan stays mounted.
-  useEffect(() => {
-    reload();
-  }, [nonce]);
-
-  const units = profile?.units ?? "metric";
-
-  const add = async () => {
-    const shown = Number(input);
-    if (!Number.isFinite(shown) || shown <= 0) return;
-    const kg = weightToKg(shown, units);
-    const repo = await getRepository();
-    // Store kg to 2 decimals so a 1-decimal lb entry (0.1 lb ≈ 0.045 kg) round-trips.
-    await repo.upsertWeight({ date: todayISO(), weightKg: Math.round(kg * 100) / 100 });
-    setInput("");
-    await reload();
-  };
-
-  // Graceful "last known weight": newest weigh-in, else the plan/profile weight;
-  // only truly empty when neither exists (then a prompt, never a bare dash).
-  const latestKg = pickWeightKg(weights);
-  const oldest = weights[weights.length - 1];
-  const latest = weights[0];
-  const changeKg = latest && oldest && weights.length > 1 ? latest.weightKg - oldest.weightKg : 0;
-  const changeDisplay =
-    units === "imperial" ? Math.round(changeKg * 2.2046226218 * 10) / 10 : Math.round(changeKg * 10) / 10;
-
-  return (
-    <section className="plan-section">
-      <div className="section-label">Trends</div>
-      {/* Fixed min-height so the card's footprint stays constant whether it's
-          empty, a single weigh-in, or a full trend. */}
-      <section className="summary-card column trends-card">
-        {latestKg != null ? (
-          <>
-            <div className="big-stat">
-              <span className="big-number">{weightToDisplay(latestKg, units)}</span>
-              <span className="big-unit">{weightUnit(units)}</span>
-            </div>
-            <div className="stat-row">
-              {weights.length > 1 && (
-                <span className={changeKg <= 0 ? "good" : "bad"}>
-                  {changeKg > 0 ? "+" : ""}
-                  {changeDisplay} {weightUnit(units)} overall
-                </span>
-              )}
-              {profile && (
-                <span className="muted">
-                  BMI {bmi({ ...profile, weightKg: latest?.weightKg ?? profile.weightKg })}
-                </span>
-              )}
-            </div>
-            <Sparkline points={[...weights].reverse().map((w) => w.weightKg)} />
-          </>
-        ) : (
-          <div className="trends-empty muted">Log your first weigh-in to start tracking your trend.</div>
-        )}
-      </section>
-
-      <div className="row gap weigh-in">
-        <input
-          className="text-input"
-          type="number"
-          inputMode="decimal"
-          placeholder={`Today's weight (${weightUnit(units)})`}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-        <button className="btn primary" disabled={!input} onClick={add}>
-          Log
-        </button>
-      </div>
-
-      {weights.length > 0 && (
-        <ul className="weight-list">
-          {weights.map((w) => (
-            <li key={w.date} className="weight-row">
-              <span>{w.date}</span>
-              <span>{fmtWeight(w.weightKg, units)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 // ── Coach session launcher ─────────────────────────────────────────────
 
 const STARTERS = [
   "How am I doing this week?",
   "What should I focus on tomorrow?",
   "This plan feels too hard",
-  "What should I eat before a workout?",
+  "Should I train or rest today?",
 ];
 
 export function CoachLauncher({ onAsk }: { onAsk: (question: string) => void }) {
@@ -879,7 +640,7 @@ export function CoachLauncher({ onAsk }: { onAsk: (question: string) => void }) 
       <div className="section-label">Talk to your coach</div>
       <p className="muted small coach-launch-hint">
         Start with a question below or ask your own — it opens a full chat with your coach, who can
-        see your plan{NUTRITION_ENABLED ? ", food, weight," : ""} and workouts.
+        see your plan and workouts.
       </p>
       <div className="coach-launch-chips">
         {STARTERS.map((s) => (

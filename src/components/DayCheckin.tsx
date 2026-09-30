@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import type { Plan } from "../types";
 import { getRepository } from "../data/repository";
 import { persist } from "../data/saveFailure";
-import { buildDayView } from "../features/diary";
 import { buildCoachContext } from "../features/coach/context";
 import { evaluateCheckin } from "../features/coach/coach";
 import { dayQuestions } from "../features/coach/questions";
@@ -65,15 +64,13 @@ export function DayCheckinSheet({
     let alive = true;
     (async () => {
       const repo = await getRepository();
-      const [context, entries, dayLog] = await Promise.all([
+      const [context, dayLog] = await Promise.all([
         buildCoachContext(),
-        repo.listDiary(date).catch(() => []),
         repo.getDayLog(date).catch(() => null),
       ]);
-      const total = buildDayView(date, entries).total;
       const done = new Set(dayLog?.goalsCompleted ?? []);
       const missedGoals = (context.plan?.goals ?? []).filter((g) => !done.has(g.id)).map((g) => g.label);
-      const qs = await dayQuestions({ calories: total.calories, goal: context.goals.calories, missedGoals });
+      const qs = await dayQuestions({ missedGoals });
       if (!alive) return;
       setCtx(context);
       setQuestions(qs);

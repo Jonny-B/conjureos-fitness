@@ -4,7 +4,7 @@
  * `window.__conjureos.native.health`). Mirrors bridge/location.ts: it degrades
  * gracefully to empty when the native op is absent (web `npm run dev`, desktop,
  * or a mobile build without the health entitlement) so nothing hard-fails —
- * the diary just shows no wearable calories.
+ * the Workouts tab just lists no wearable workouts.
  *
  * One integration per OS aggregator captures EVERY wearable that writes to it:
  * an Apple Watch run lands in HealthKit automatically; Fitbit/Strava/Oura land
@@ -90,14 +90,4 @@ export async function readWorkouts(
   } catch {
     return [];
   }
-}
-
-/** Sum of workout calories burned on a local calendar day (YYYY-MM-DD). */
-export async function readBurnedForDate(date: string): Promise<number> {
-  // Local-day bounds (no trailing Z → parsed in the device's timezone).
-  const start = new Date(`${date}T00:00:00`).getTime();
-  const end = new Date(`${date}T23:59:59.999`).getTime();
-  if (Number.isNaN(start) || Number.isNaN(end)) return 0;
-  const workouts = await readWorkouts(start, end);
-  return workouts.reduce((sum, w) => sum + (w.caloriesBurned || 0), 0);
 }

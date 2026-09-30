@@ -3,7 +3,7 @@ import type { Profile, Workout, WorkoutSession } from "../types";
 import { estimateWorkoutBurn, sessionMinutes } from "./calories";
 
 const profile = (weightKg: number): Profile =>
-  ({ sex: "male", age: 40, heightCm: 180, weightKg, activityLevel: "moderate", direction: "maintain", units: "metric" });
+  ({ sex: "male", age: 40, weightKg, activityLevel: "moderate", units: "metric" });
 
 const strengthWorkout: Workout = { id: "w1", name: "Full body", exercises: [] };
 const runWorkout: Workout = { id: "w2", name: "Run", kind: "run", exercises: [] };

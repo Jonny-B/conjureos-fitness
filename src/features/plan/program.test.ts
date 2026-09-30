@@ -100,7 +100,7 @@ describe("recordBenchmarkResult — an assessment sets several baselines at once
 
 describe("fallbackProgram — scaled to experience", () => {
   it("gives an advanced user a real session, never the beginner Sit-to-Stand", () => {
-    const prog = fallbackProgram("both", [], "advanced")!;
+    const prog = fallbackProgram("get_fit", [], "advanced")!;
     expect(prog.workouts[0]!.workout.name).not.toBe("Bodyweight Starter");
     const bench = prog.benchmarks[0]!;
     expect(bench.name).toBe("Push-ups");
@@ -111,7 +111,7 @@ describe("fallbackProgram — scaled to experience", () => {
   });
 
   it("keeps the beginner default gentle", () => {
-    const prog = fallbackProgram("both", [], "beginner")!;
+    const prog = fallbackProgram("get_fit", [], "beginner")!;
     expect(prog.workouts[0]!.workout.name).toBe("Bodyweight Starter");
     expect(prog.benchmarks[0]!.name).toBe("Sit-to-Stand");
   });

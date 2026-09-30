@@ -3,13 +3,13 @@
  *
  * v1 ships a small built-in library (no persistence) so the guided player —
  * the part with real value: set timers, rest timers, audio cues — is usable
- * immediately. Saved/custom workouts and exercise history are the next slice
- * and would route through the repository like the diary does.
+ * immediately. Finished sessions are saved through the repository; saved
+ * custom workouts would route through it too.
  */
 
 import type { CardioActual, Exercise, ExerciseActual, ExerciseSet, Workout, WorkoutSession } from "../types";
 import { newId } from "../data/id";
-import { todayISO } from "./diary";
+import { todayISO } from "./dates";
 
 let n = 0;
 const id = () => `seed-${n++}`;

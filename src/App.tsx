@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Goals, MealType, Plan, Profile } from "./types";
-import { DEFAULT_GOALS } from "./types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Plan, Profile } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
-import { todayISO } from "./features/diary";
+import { todayISO } from "./features/dates";
 import { rollSelectedDate } from "./features/dayRollover";
 import { onDataChanged } from "./features/dataEvents";
 import {
@@ -11,70 +10,41 @@ import {
   commitNewPlan,
   loadPlan,
   modifyPlanInPlace,
-  targetsToGoals,
   type WizardBody,
 } from "./features/plan/planService";
-import { DiaryScreen } from "./screens/DiaryScreen";
-import { MealDetailScreen } from "./screens/MealDetailScreen";
 import { WizardScreen } from "./screens/WizardScreen";
 import { PlanBanner } from "./components/PlanBanner";
 import { DayCheckinBanner, DayCheckinSheet, isEvening } from "./components/DayCheckin";
 import { recordPlanStarted } from "./features/coach/memory";
-import { AddFoodScreen, type AddMode } from "./screens/AddFoodScreen";
 import { PlanScreen } from "./screens/PlanScreen";
-import { JournalScreen } from "./screens/JournalScreen";
 import { WorkoutsScreen } from "./screens/WorkoutsScreen";
-import { COACH_AND_WORKOUTS_ENABLED, NUTRITION_ENABLED } from "./features/flags";
 import { HomeScreen } from "./screens/HomeScreen";
 import { CoachScreen } from "./screens/CoachScreen";
 import { SettingsSheet, type SettingsView } from "./screens/SettingsSheet";
 import { AppHeader } from "./components/AppHeader";
 import { SaveFailedNotice } from "./components/SaveFailedNotice";
-import {
-  AddIcon,
-  CalendarIcon,
-  CoachIcon,
-  DiaryIcon,
-  HomeIcon,
-  TrendsIcon,
-  WorkoutsIcon,
-} from "./components/icons";
-import { MEAL_LABELS } from "./types";
+import { CoachIcon, HomeIcon, TrendsIcon, WorkoutsIcon } from "./components/icons";
 import type { ComponentType } from "react";
 
-type Tab = "home" | "diary" | "meal" | "add" | "plan" | "journal" | "workouts" | "coach";
-
-/** Where the app opens, and where it returns after building a plan. With food
- *  tracking off (features/flags) the Diary is unreachable, so Home it is. */
-const START_TAB: Tab = NUTRITION_ENABLED ? "diary" : "home";
-
-/** Sensible default meal when opening Add from the tab bar (no meal context) —
- *  by time of day. The user can still switch it in the Add screen. */
-function mealForNow(): MealType {
-  const h = new Date().getHours();
-  if (h < 11) return "breakfast";
-  if (h < 15) return "lunch";
-  if (h < 21) return "dinner";
-  return "snacks";
-}
+type Tab = "home" | "plan" | "workouts" | "coach";
 
 /**
  * Root component and the app's single source of navigation + shared state.
  *
- * Owns the active tab, the selected date, and the cached profile/goals/plan
- * that most screens read, passing them down rather than letting screens hit the
+ * Owns the active tab, the selected date, and the cached profile/plan that most
+ * screens read, passing them down rather than letting screens hit the
  * repository independently. A `nonce` counter is bumped after any write so
  * mounted children re-read; that's the app-wide invalidation signal.
  */
 export function App() {
-  const [tab, setTab] = useState<Tab>(START_TAB);
+  const [tab, setTab] = useState<Tab>("home");
   const [date, setDate] = useState<string>(todayISO());
-  const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [profile, setProfile] = useState<Profile | null>(null);
-  // Units picked in Settings before any profile exists; seeds the plan wizard.
+  // Units picked in Settings before any profile exists; every screen uses them
+  // until the first plan saves a profile.
   const [pendingUnits, setPendingUnits] = useState<Profile["units"]>("metric");
-  // v2: the active plan. null → show the "build your plan" banner (no longer a
-  // full-screen gate; the app is usable for logging without a plan).
+  // The active plan. null → show the "build your plan" banner; the app is
+  // usable without a plan (the workout library, the coach).
   const [plan, setPlan] = useState<Plan | null>(null);
   const [ready, setReady] = useState(false);
   // Settings sheet: closed, or open on a specific sub-view (main / program editor).
@@ -87,19 +57,10 @@ export function App() {
   // Both open the same full-screen WizardScreen.
   const [planEditor, setPlanEditor] = useState<Plan | null>(null);
   const [planBannerDismissed, setPlanBannerDismissed] = useState(false);
-  // The meal the Add flow should default to when opened from a meal's "+".
-  const [addMeal, setAddMeal] = useState<MealType>("breakfast");
-  // Which input the Add screen opens on (Scan when launched from a meal's Scan CTA).
-  const [addMode, setAddMode] = useState<AddMode>("search");
-  // Where the Add screen returns on log/cancel: back to the meal it came from,
-  // or the diary. Keeps "add another to lunch" flowing without a detour.
-  const [addReturn, setAddReturn] = useState<Tab>("diary");
-  // The meal shown by the meal-detail screen.
-  const [activeMeal, setActiveMeal] = useState<MealType>("breakfast");
-  // A question submitted from the Plan tab's coach launcher — handed to the
-  // Coach chat so it opens already-answering. Cleared when consumed.
+  // A question submitted from a coach launcher — handed to the Coach chat so it
+  // opens already-answering. Cleared when consumed.
   const [coachInitialPrompt, setCoachInitialPrompt] = useState<string | null>(null);
-  // Bumped after any write so the Diary reloads from the repository.
+  // Bumped after any write so mounted screens reload from the repository.
   const [nonce, setNonce] = useState(0);
   // End-of-day coach check-in (banner only): whether today is already checked
   // in, a per-session dismiss, and the sheet's open state.
@@ -112,6 +73,8 @@ export function App() {
   const [evening, setEvening] = useState<boolean>(isEvening());
   const prevToday = useRef(today);
 
+  const units = profile?.units ?? pendingUnits;
+
   /**
    * Re-read everything a reset can have changed. Bumping `nonce` alone only
    * makes mounted screens refetch THEIR data — the plan lives in App state, so
@@ -119,8 +82,7 @@ export function App() {
    */
   const onDataCleared = useCallback(async () => {
     const repo = await getRepository();
-    const [g, p, existingPlan] = await Promise.all([repo.getGoals(), repo.getProfile(), loadPlan()]);
-    setGoals(g);
+    const [p, existingPlan] = await Promise.all([repo.getProfile(), loadPlan()]);
     setProfile(p);
     setPlan(existingPlan);
     setNonce((n) => n + 1);
@@ -130,15 +92,12 @@ export function App() {
     let alive = true;
     (async () => {
       const repo = await getRepository();
-      const [g, p, existingPlan] = await Promise.all([repo.getGoals(), repo.getProfile(), loadPlan()]);
+      const [p, existingPlan] = await Promise.all([repo.getProfile(), loadPlan()]);
       if (!alive) return;
-      setGoals(g);
       setProfile(p);
       setPlan(existingPlan);
       setReady(true);
     })();
-    // The fitness actions always; the food ones only while food tracking is on
-    // (registerActions decides, to match what package.json declares).
     registerActions().catch(() => {
       /* cross-app integration is non-fatal */
     });
@@ -192,27 +151,7 @@ export function App() {
     };
   }, [nonce, today]);
 
-  // The diary's rings read from the plan's targets when it tracks food, falling
-  // back to the separately-stored goals otherwise.
-  const effectiveGoals = useMemo(() => targetsToGoals(plan, goals), [plan, goals]);
-
-  const openAdd = useCallback(
-    (meal: MealType, mode: AddMode = "search", returnTo: Tab = "diary") => {
-      setAddMeal(meal);
-      setAddMode(mode);
-      setAddReturn(returnTo);
-      setTab("add");
-    },
-    [],
-  );
-
-  const openMeal = useCallback((meal: MealType) => {
-    setActiveMeal(meal);
-    setTab("meal");
-  }, []);
-
-  // Open the Coach chat from the Plan launcher, optionally auto-submitting a
-  // starter question. Back from the chat returns to Plan.
+  // Open the Coach chat, optionally auto-submitting a starter question.
   const openCoach = useCallback((question?: string) => {
     setCoachInitialPrompt(question ?? null);
     setTab("coach");
@@ -223,58 +162,42 @@ export function App() {
     setSettingsOpen(true);
   }, []);
 
-  const onLogged = useCallback(() => {
-    setNonce((n) => n + 1);
-    setTab(addReturn);
-  }, [addReturn]);
-
-  const onSaveGoals = useCallback((g: Goals, p: Profile | null) => {
-    setGoals(g);
-    if (p) setProfile(p);
-  }, []);
-
   const onWizardComplete = useCallback(
     async (created: Plan, body: WizardBody) => {
       // Rebuilding over an existing plan: archive the outgoing one first so
-      // history/insight survives (diary/weight/workout history is separate and
-      // untouched).
+      // history/insight survives (workout history is separate and untouched).
       if (plan) await archivePlan(plan);
-      const res = await commitNewPlan(created, { body, currentProfile: profile, currentGoals: goals });
+      const res = await commitNewPlan(created, { body, currentProfile: profile });
       // Coach continuity: the plan swap is a new episode on an unbroken
       // history — record it so the coach references the archive, not confusion.
       // Never throws: a failed write is reported to the user inside remember().
       void recordPlanStarted(res.plan, plan);
       setPlan(res.plan);
       setProfile(res.profile);
-      setGoals(res.goals);
       setPlanWizardOpen(false);
       setPlanEditor(null);
       setPlanBannerDismissed(false);
       setNonce((n) => n + 1);
-      setTab(START_TAB);
+      setTab("home");
     },
-    [plan, profile, goals],
+    [plan, profile],
   );
 
   // Edit-mode, non-forking change: modify the current plan in place (keep id,
-  // program, group progress) and recompute the calorie target. No archive, no
-  // recordPlanStarted — this is the same plan, not a new episode.
+  // program, group progress). No archive, no recordPlanStarted — this is the
+  // same plan, not a new episode.
   const onModifyPlan = useCallback(
     async (body: WizardBody, patch: { endDate?: string; durationWeeks?: number }) => {
       if (!plan) return;
-      const res = await modifyPlanInPlace(plan, body, patch, {
-        currentProfile: profile,
-        currentGoals: goals,
-      });
+      const res = await modifyPlanInPlace(plan, body, patch, { currentProfile: profile });
       setPlan(res.plan);
       if (res.profile) setProfile(res.profile);
-      setGoals(res.goals);
       setPlanWizardOpen(false);
       setPlanEditor(null);
       setNonce((n) => n + 1);
       setTab("plan");
     },
-    [plan, profile, goals],
+    [plan, profile],
   );
 
   /** Open the wizard to build a brand-new plan (no plan to edit). */
@@ -297,7 +220,7 @@ export function App() {
   if (ready && planWizardOpen) {
     // The notice sits at the same child index as in the main return below (the
     // null stands in for the header), so React keeps its state when the wizard
-    // closes; a failed plan/profile/targets save is then still shown.
+    // closes; a failed plan/profile save is then still shown.
     return (
       <div className="app">
         {null}
@@ -311,7 +234,7 @@ export function App() {
               setPlanWizardOpen(false);
               setPlanEditor(null);
             }}
-            units={profile?.units ?? pendingUnits}
+            units={units}
             profile={profile}
           />
         </main>
@@ -319,6 +242,7 @@ export function App() {
     );
   }
 
+  // The safety gate's plan prescribes no workouts, so the Workouts tab goes.
   const loggingOnly = plan?.mode === "logging_only";
 
   const planBanner =
@@ -327,9 +251,9 @@ export function App() {
     ) : null;
 
   // Evening-only, banner-only (no notifications by design): nudge a coach
-  // check-in until today has one. Paused with the coach.
+  // check-in until today has one.
   const checkinBanner =
-    COACH_AND_WORKOUTS_ENABLED && ready && !checkinDone && !checkinDismissed && evening ? (
+    ready && !checkinDone && !checkinDismissed && evening ? (
       <DayCheckinBanner onOpen={() => setCheckinOpen(true)} onDismiss={() => setCheckinDismissed(true)} />
     ) : null;
 
@@ -341,60 +265,11 @@ export function App() {
       </>
     ) : null;
 
-  const homeScreen = (
-    <HomeScreen
-      plan={plan}
-      units={profile?.units ?? pendingUnits}
-      nonce={nonce}
-      banner={banners}
-      onOpenWorkouts={() => setTab("workouts")}
-      onOpenPlan={() => setTab("plan")}
-      onAskCoach={openCoach}
-    />
-  );
-
-  const diaryScreen = (
-    <DiaryScreen
-      date={date}
-      goals={effectiveGoals}
-      onMutated={() => setNonce((n) => n + 1)}
-      banner={banners}
-      nonce={nonce}
-      plan={plan}
-      profile={profile}
-      onChangeDate={setDate}
-      onOpenMeal={openMeal}
-      onOpenPlan={() => setTab("plan")}
-      onOpenWorkouts={() => setTab("workouts")}
-    />
-  );
-
-  // Context-aware header: title + optional back per current surface.
-  const header: { title: string; onBack?: () => void } =
-    tab === "meal"
-      ? { title: MEAL_LABELS[activeMeal], onBack: () => setTab("diary") }
-      : tab === "add"
-        ? {
-            title: addMode === "scan" ? "Scan Barcode" : addMode === "ai" ? "AI" : "Search",
-            onBack: () => setTab(addReturn),
-          }
-        : tab === "plan"
-          ? { title: "Plan" }
-          : tab === "journal"
-            ? { title: "Journal" }
-          : tab === "workouts"
-            ? COACH_AND_WORKOUTS_ENABLED
-              ? { title: "Workouts" }
-              : { title: "Exercise", onBack: () => setTab("diary") }
-            : tab === "coach"
-              ? NUTRITION_ENABLED
-                ? { title: "Coach", onBack: () => setTab("plan") }
-                : { title: "Coach" }
-              : { title: "Conjure Fitness" };
+  const title = tab === "plan" ? "Plan" : tab === "workouts" ? "Workouts" : tab === "coach" ? "Coach" : "Conjure Fitness";
 
   return (
     <div className="app">
-      <AppHeader title={header.title} onBack={header.onBack} onSettings={() => openSettings("main")} />
+      <AppHeader title={title} onSettings={() => openSettings("main")} />
       <SaveFailedNotice />
 
       <main className="screen">
@@ -402,41 +277,11 @@ export function App() {
           <div className="center-fill">
             <div className="spinner" />
           </div>
-        ) : tab === "home" ? (
-          homeScreen
-        ) : tab === "diary" && NUTRITION_ENABLED ? (
-          diaryScreen
-        ) : tab === "meal" ? (
-          <MealDetailScreen
-            date={date}
-            meal={activeMeal}
-            goals={effectiveGoals}
-            nonce={nonce}
-            onScan={() => openAdd(activeMeal, "scan", "meal")}
-            onSearch={() => openAdd(activeMeal, "search", "meal")}
-            onAi={() => openAdd(activeMeal, "ai", "meal")}
-            onMutated={() => setNonce((n) => n + 1)}
-            units={profile?.units ?? pendingUnits}
-          />
-        ) : tab === "add" ? (
-          <AddFoodScreen
-            date={date}
-            defaultMeal={addMeal}
-            defaultMode={addMode}
-            onLogged={onLogged}
-            onCancel={() => setTab(addReturn)}
-            onModeChange={setAddMode}
-            units={profile?.units ?? pendingUnits}
-          />
-        ) : tab === "journal" ? (
-          <JournalScreen units={profile?.units ?? pendingUnits} nonce={nonce} />
         ) : tab === "plan" ? (
           <PlanScreen
             nonce={nonce}
-            profile={profile}
             plan={plan}
-            goals={effectiveGoals}
-            units={profile?.units ?? pendingUnits}
+            units={units}
             onPlanChange={setPlan}
             onAskCoach={openCoach}
             onEditPlan={editPlan}
@@ -445,20 +290,25 @@ export function App() {
           />
         ) : tab === "workouts" && !loggingOnly ? (
           <WorkoutsScreen
-            exerciseOnly={!COACH_AND_WORKOUTS_ENABLED}
-            units={profile?.units ?? pendingUnits}
+            units={units}
             plan={plan}
             onPlanChange={setPlan}
             date={date}
             nonce={nonce}
             onMutated={() => setNonce((n) => n + 1)}
           />
-        ) : tab === "coach" && COACH_AND_WORKOUTS_ENABLED ? (
+        ) : tab === "coach" ? (
           <CoachScreen onPlanChange={setPlan} initialPrompt={coachInitialPrompt} />
-        ) : NUTRITION_ENABLED ? (
-          diaryScreen
         ) : (
-          homeScreen
+          <HomeScreen
+            plan={plan}
+            units={units}
+            nonce={nonce}
+            banner={banners}
+            onOpenWorkouts={() => setTab("workouts")}
+            onOpenPlan={() => setTab("plan")}
+            onAskCoach={openCoach}
+          />
         )}
       </main>
 
@@ -472,28 +322,17 @@ export function App() {
           </span>
           <span className="rail-brand-name">Conjure Fitness</span>
         </div>
-        {NUTRITION_ENABLED ? (
-          <>
-            <TabButton label="Diary" Icon={DiaryIcon} active={tab === "diary" || tab === "meal"} onClick={() => setTab("diary")} />
-            <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(mealForNow())} />
-            <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan" || tab === "coach"} onClick={() => setTab("plan")} />
-            <TabButton label="Journal" Icon={CalendarIcon} active={tab === "journal"} onClick={() => setTab("journal")} />
-          </>
-        ) : (
-          <>
-            <TabButton label="Home" Icon={HomeIcon} active={tab === "home"} onClick={() => setTab("home")} />
-            <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan"} onClick={() => setTab("plan")} />
-            <TabButton label="Coach" Icon={CoachIcon} active={tab === "coach"} onClick={() => openCoach()} />
-          </>
-        )}
-        {!loggingOnly && COACH_AND_WORKOUTS_ENABLED && (
+        <TabButton label="Home" Icon={HomeIcon} active={tab === "home"} onClick={() => setTab("home")} />
+        <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan"} onClick={() => setTab("plan")} />
+        <TabButton label="Coach" Icon={CoachIcon} active={tab === "coach"} onClick={() => openCoach()} />
+        {!loggingOnly && (
           <TabButton label="Workouts" Icon={WorkoutsIcon} active={tab === "workouts"} onClick={() => setTab("workouts")} />
         )}
       </nav>
 
       <div className="app-version">v{__APP_VERSION__}</div>
 
-      {checkinOpen && COACH_AND_WORKOUTS_ENABLED && (
+      {checkinOpen && (
         <DayCheckinSheet
           date={today}
           onClose={() => setCheckinOpen(false)}
@@ -507,12 +346,11 @@ export function App() {
 
       {settingsOpen && (
         <SettingsSheet
-          goals={goals}
           profile={profile}
           plan={plan}
           initialView={settingsView}
           onClose={() => setSettingsOpen(false)}
-          onSave={onSaveGoals}
+          onProfileChange={setProfile}
           onPlanChange={setPlan}
           onDataCleared={onDataCleared}
           pendingUnits={pendingUnits}

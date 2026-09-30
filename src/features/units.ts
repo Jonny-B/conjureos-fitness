@@ -1,7 +1,7 @@
 /**
- * Unit conversion + formatting (WU). Storage is ALWAYS metric (kg, cm, km) — as
- * the Profile.units comment dictates. These convert only at the input/display
- * edges. Calories (kcal) + macros (grams) are unit-agnostic and not touched.
+ * Unit conversion + formatting (WU). Storage is ALWAYS metric (kg, km) — as the
+ * Profile.units comment dictates. These convert only at the input/display
+ * edges. Calories (kcal) are unit-agnostic and not touched.
  */
 
 import type { Profile } from "../types";
@@ -10,17 +10,12 @@ import type { Profile } from "../types";
 type Units = Profile["units"];
 
 const LB_PER_KG = 2.2046226218;
-const IN_PER_CM = 1 / 2.54;
 const MI_PER_KM = 0.621371;
 
 /** Kilograms → pounds. */
 export const kgToLb = (kg: number) => kg * LB_PER_KG;
 /** Pounds → kilograms (the storage unit). */
 export const lbToKg = (lb: number) => lb / LB_PER_KG;
-/** Centimetres → inches. */
-export const cmToIn = (cm: number) => cm * IN_PER_CM;
-/** Inches → centimetres (the storage unit). */
-export const inToCm = (inch: number) => inch / IN_PER_CM;
 /** Kilometres → miles. */
 export const kmToMi = (km: number) => km * MI_PER_KM;
 /** Miles → kilometres (the storage unit). */
@@ -28,8 +23,6 @@ export const miToKm = (mi: number) => mi / MI_PER_KM;
 
 /** Weight suffix for the user's units: "lb" or "kg". */
 export const weightUnit = (u: Units) => (u === "imperial" ? "lb" : "kg");
-/** Height suffix for the user's units: "in" or "cm". */
-export const heightUnit = (u: Units) => (u === "imperial" ? "in" : "cm");
 /** Distance suffix for the user's units: "mi" or "km". */
 export const distanceUnit = (u: Units) => (u === "imperial" ? "mi" : "km");
 /** Pace suffix for the user's units: "/mi" or "/km". */
@@ -40,26 +33,6 @@ export const weightToDisplay = (kg: number, u: Units) =>
   u === "imperial" ? Math.round(kgToLb(kg) * 10) / 10 : Math.round(kg * 10) / 10;
 /** A display weight (in the user's units) → kg for storage. */
 export const weightToKg = (v: number, u: Units) => (u === "imperial" ? lbToKg(v) : v);
-
-/** cm → the display number in the user's units, rounded to a whole in/cm. */
-export const heightToDisplay = (cm: number, u: Units) =>
-  u === "imperial" ? Math.round(cmToIn(cm)) : Math.round(cm);
-/** A display height (in the user's units) → cm for storage. */
-export const heightToCm = (v: number, u: Units) => (u === "imperial" ? inToCm(v) : v);
-
-/** A stored weight rendered with its unit: "182.5 lb" / "82.8 kg". */
-export function fmtWeight(kg: number, u: Units): string {
-  return u === "imperial" ? `${Math.round(kgToLb(kg) * 10) / 10} lb` : `${Math.round(kg * 10) / 10} kg`;
-}
-
-/** A stored height rendered per units: `5'11"` imperial, "180 cm" metric. */
-export function fmtHeight(cm: number, u: Units): string {
-  if (u === "imperial") {
-    const totalIn = Math.round(cmToIn(cm));
-    return `${Math.floor(totalIn / 12)}'${totalIn % 12}"`;
-  }
-  return `${Math.round(cm)} cm`;
-}
 
 /**
  * Seconds → a clock reading: `m:ss`, widening to `h:mm:ss` past an hour.

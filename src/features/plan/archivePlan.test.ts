@@ -3,7 +3,7 @@ import type { Plan } from "../../types";
 import { vfs } from "../../bridge/vfs";
 import { archivePlan } from "./planService";
 
-const plan = (id: string) => ({ id, mode: "eat_better", goals: [] }) as unknown as Plan;
+const plan = (id: string) => ({ id, mode: "get_fit", goals: [] }) as unknown as Plan;
 
 describe("archivePlan", () => {
   beforeEach(async () => {

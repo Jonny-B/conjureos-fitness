@@ -20,7 +20,7 @@ function installWindow(): string[] {
 
 const plan = {
   id: "p1",
-  mode: "eat_better",
+  mode: "get_fit",
   durationWeeks: 2,
   startDate: "2026-09-24",
   endDate: "2026-10-07",

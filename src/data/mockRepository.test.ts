@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import type { Profile } from "../types";
+import type { Plan, Profile, WorkoutSession } from "../types";
 import { DEFAULT_PROFILE } from "../types";
 import { vfs } from "../bridge/vfs";
 import { MockRepository } from "./mockRepository";
@@ -97,15 +97,10 @@ describe("MockRepository device-local persistence", () => {
     const tabB = new MockRepository();
     await tabB.init();
 
-    // Tab A logs a diary entry and flushes.
-    await tabA.addDiaryEntry({
-      date: "2026-01-01",
-      meal: "breakfast",
-      quantity: 1,
-      food: aFood(),
-    });
+    // Tab A saves a workout and flushes.
+    await tabA.saveWorkoutSession(aSession("s1", "2026-01-01"));
 
-    // Tab B, still holding its OLDER in-memory snapshot (without A's entry),
+    // Tab B, still holding its OLDER in-memory snapshot (without A's workout),
     // now saves an unrelated profile change and flushes.
     await tabB.saveProfile(imperial());
 
@@ -113,11 +108,11 @@ describe("MockRepository device-local persistence", () => {
     // whole document with its stale pre-A snapshot.
     const reopened = new MockRepository();
     await reopened.init();
-    expect(await reopened.listDiary("2026-01-01")).toHaveLength(1);
+    expect(await reopened.listWorkoutSessions()).toHaveLength(1);
     expect((await reopened.getProfile())?.units).toBe("imperial");
   });
 
-  it("tab A's own diary entry survives even when read back through tab B", async () => {
+  it("tab A's own workout survives even when read back through tab B", async () => {
     // Same setup as above, but assert on tabB directly (no reopen) — the
     // storage-event listener should also keep tabB's in-memory copy fresh.
     const tabA = new MockRepository();
@@ -125,17 +120,12 @@ describe("MockRepository device-local persistence", () => {
     const tabB = new MockRepository();
     await tabB.init();
 
-    await tabA.addDiaryEntry({
-      date: "2026-01-02",
-      meal: "lunch",
-      quantity: 1,
-      food: aFood(),
-    });
+    await tabA.saveWorkoutSession(aSession("s2", "2026-01-02"));
     await tabB.saveProfile(imperial());
 
     // tabB's own flush() re-reads localStorage immediately beforehand, so its
-    // in-memory copy (and anything persisted) reflects A's entry too.
-    expect(await tabB.listDiary("2026-01-02")).toHaveLength(1);
+    // in-memory copy (and anything persisted) reflects A's workout too.
+    expect(await tabB.listWorkoutSessions()).toHaveLength(1);
   });
 
   // ── Bug 2: a failed write must not resolve as success ───────────────
@@ -171,13 +161,6 @@ describe("MockRepository storage failures", () => {
     await vfs.write("store.json", JSON.stringify({ v: 2 }));
   });
 
-  const entry = (meal: "breakfast" | "lunch" | "dinner") => ({
-    date: "2026-01-05",
-    meal,
-    quantity: 1,
-    food: aFood(),
-  });
-
   it("keeps every later change, and survives a reload, after a localStorage write fails", async () => {
     const repo = new MockRepository();
     await repo.init();
@@ -185,16 +168,16 @@ describe("MockRepository storage failures", () => {
 
     // Quota fills up: from here the VFS mirror is the only copy that lands.
     failNextLocalStorageWrites();
-    await repo.addDiaryEntry(entry("breakfast"));
-    await repo.addDiaryEntry(entry("lunch"));
+    await repo.saveWorkoutSession(aSession("a", "2026-01-05"));
+    await repo.saveWorkoutSession(aSession("b", "2026-01-05"));
 
     // The second change must build on the first, not on the stale local copy.
-    expect(await repo.listDiary("2026-01-05")).toHaveLength(2);
-    expect(JSON.parse(await vfs.read("store.json")).diary).toHaveLength(2);
+    expect(await repo.listWorkoutSessions()).toHaveLength(2);
+    expect(JSON.parse(await vfs.read("store.json")).workoutSessions).toHaveLength(2);
 
     const reopened = new MockRepository();
     await reopened.init();
-    expect(await reopened.listDiary("2026-01-05")).toHaveLength(2);
+    expect(await reopened.listWorkoutSessions()).toHaveLength(2);
     expect((await reopened.getProfile())?.units).toBe("imperial");
   });
 
@@ -212,30 +195,18 @@ describe("MockRepository storage failures", () => {
     await tabB.init(); // local copy exists
     expect(listeners).toHaveLength(2);
 
-    await tabA.addDiaryEntry(entry("dinner"));
-    expect(await tabB.listDiary("2026-01-05")).toHaveLength(0);
+    await tabA.saveWorkoutSession(aSession("c", "2026-01-05"));
+    expect(await tabB.listWorkoutSessions()).toHaveLength(0);
     // The browser delivers the storage event to the other tab only.
     const key = [...ls.keys()][0]!;
     listeners[1]!({ key, newValue: ls.get(key)! });
-    expect(await tabB.listDiary("2026-01-05")).toHaveLength(1);
+    expect(await tabB.listWorkoutSessions()).toHaveLength(1);
   });
 
   describe("when the VFS store cannot be read on a device with no local copy", () => {
     let writes: Array<[string, string]>;
     let failReads: boolean;
-    const synced = {
-      v: 3,
-      profile: null,
-      goals: null,
-      diary: [] as unknown[],
-      weights: [],
-      plan: null,
-      dayLogs: {},
-      workoutSessions: [],
-      sleep: [],
-      water: [],
-      symptoms: [],
-    };
+    const synced = { v: 3, profile: null, plan: null, dayLogs: {}, workoutSessions: [] as unknown[] };
 
     beforeEach(() => {
       writes = [];
@@ -244,8 +215,7 @@ describe("MockRepository storage failures", () => {
         exists: async () => true,
         read: async () => {
           if (failReads) throw new Error("vfs timeout");
-          const row = { ...entry("lunch"), id: "synced", loggedAt: "2026-01-05T12:00:00Z" };
-          return JSON.stringify({ ...synced, diary: [row] });
+          return JSON.stringify({ ...synced, workoutSessions: [aSession("synced", "2026-01-05")] });
         },
         write: async (path: string, content: string) => void writes.push([path, content]),
         ls: async () => [],
@@ -274,9 +244,9 @@ describe("MockRepository storage failures", () => {
       await repo.init();
       failReads = false;
       await repo.saveProfile(imperial());
-      expect(await repo.listDiary("2026-01-05")).toHaveLength(1);
+      expect(await repo.listWorkoutSessions()).toHaveLength(1);
       const mirror = JSON.parse(writes[writes.length - 1]![1]);
-      expect(mirror.diary).toHaveLength(1);
+      expect(mirror.workoutSessions).toHaveLength(1);
       expect(mirror.profile.units).toBe("imperial");
     });
   });
@@ -291,23 +261,111 @@ function failNextLocalStorageWrites(): void {
   };
 }
 
-function aFood() {
+function aSession(id: string, date: string): WorkoutSession {
   return {
-    id: "egg",
-    source: "custom" as const,
-    name: "Egg",
-    perServing: { calories: 70, protein: 6, carbs: 1, fat: 5 },
-    servingSize: "1 egg",
+    id,
+    date,
+    workoutName: "Full body",
+    planned: [],
+    actual: [],
+    reprompts: [],
+    completedAt: `${date}T08:00:00Z`,
+    caloriesBurned: 250,
   };
 }
 
 const EMPTY_STORE = {
-  v: 2 as const,
+  v: 3 as const,
   profile: null,
-  goals: null,
-  diary: [],
-  weights: [],
   plan: null,
   dayLogs: {},
   workoutSessions: [],
 };
+
+describe("MockRepository upgrade from a Conjure Health-era store", () => {
+  beforeEach(() => {
+    installLocalStorage();
+  });
+
+  const plan = (over: Record<string, unknown>) => ({
+    id: "p1",
+    durationWeeks: 4,
+    startDate: "2026-09-01",
+    endDate: "2026-09-28",
+    safety: { ageBand: "18_39", pregnant: false, cardiacFlag: false, injuries: [], activityLevel: "moderate" },
+    liability: { acknowledged: true, acceptedAt: "2026-09-01T00:00:00Z" },
+    createdAt: "2026-09-01T00:00:00Z",
+    ...over,
+  });
+  const v3 = (over: Record<string, unknown> = {}) => ({
+    v: 3,
+    profile: {
+      ...DEFAULT_PROFILE,
+      heightCm: 180,
+      direction: "lose",
+      goalWeightKg: 80,
+      aiJournalConsent: { version: 1, acceptedAt: "2026-09-01T00:00:00Z", includeNotes: false },
+    },
+    goals: { calories: 2000, protein: 150, carbs: 200, fat: 60 },
+    diary: [{ id: "d1", date: "2026-09-02", meal: "lunch", quantity: 1 }],
+    weights: [{ date: "2026-09-02", weightKg: 90 }],
+    sleep: [{ id: "s", date: "2026-09-02" }],
+    water: [{ id: "w", date: "2026-09-02" }],
+    symptoms: [{ id: "y", date: "2026-09-02" }],
+    plan: plan({
+      mode: "both",
+      goals: [
+        { id: "g1", label: "Hit your protein", kind: "nutrition" },
+        { id: "g2", label: "Run 3x a week", kind: "workout" },
+      ],
+      targets: { dailyCalories: 2000 },
+    }),
+    dayLogs: { "2026-09-02": { date: "2026-09-02", checkoffs: {} } },
+    workoutSessions: [aSession("kept", "2026-09-02")],
+    ...over,
+  });
+
+  const open = async (doc: unknown) => {
+    await vfs.write("store.json", JSON.stringify(doc));
+    const repo = new MockRepository();
+    await repo.init();
+    return repo;
+  };
+
+  it("keeps the profile, plan, check-offs and workouts, and leaves the food data behind", async () => {
+    const repo = await open(v3());
+    expect(await repo.listWorkoutSessions()).toHaveLength(1);
+    expect(await repo.getDayLog("2026-09-02")).not.toBeNull();
+    await repo.saveProfile({ ...(await repo.getProfile())!, units: "imperial" });
+    const stored = JSON.parse(await vfs.read("store.json"));
+    // Still v3: an older build open elsewhere must be able to read it.
+    expect(stored.v).toBe(3);
+    expect(Object.keys(stored).sort()).toEqual(["dayLogs", "plan", "profile", "updatedAt", "v", "workoutSessions"]);
+  });
+
+  it("drops the profile fields only Conjure Health uses", async () => {
+    const profile = (await (await open(v3())).getProfile()) as unknown as Record<string, unknown>;
+    for (const k of ["heightCm", "direction", "goalWeightKg", "aiJournalConsent"]) {
+      expect(profile).not.toHaveProperty(k);
+    }
+    expect(profile.weightKg).toBe(DEFAULT_PROFILE.weightKg);
+  });
+
+  it("reads a food plan as its training half, without food goals or targets", async () => {
+    const p = (await (await open(v3())).getPlan()) as Plan & Record<string, unknown>;
+    expect(p.mode).toBe("get_fit");
+    expect(p.goals.map((g) => g.label)).toEqual(["Run 3x a week"]);
+    expect(p).not.toHaveProperty("targets");
+  });
+
+  it("keeps a gated logging_only plan gated", async () => {
+    const repo = await open(v3({ plan: plan({ mode: "logging_only", goals: [] }) }));
+    expect((await repo.getPlan())?.mode).toBe("logging_only");
+  });
+
+  it("starts empty rather than guessing at a store from a future version", async () => {
+    const repo = await open({ ...v3(), v: 4 });
+    expect(await repo.getProfile()).toBeNull();
+    expect(await repo.listWorkoutSessions()).toEqual([]);
+  });
+});

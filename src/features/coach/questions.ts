@@ -8,7 +8,6 @@
 import type { WorkoutSession } from "../../types";
 import { complete, isAiAvailable } from "../../bridge/ai";
 import { detectPRs } from "../workoutHistory";
-import { NUTRITION_ENABLED } from "../flags";
 import type { CheckinKind, CoachQuestion } from "./model";
 
 const MAX_QUESTIONS = 4;
@@ -30,9 +29,6 @@ const WORKOUT_CLOSER: CoachQuestion = { id: "w_free", text: "Anything else your 
 
 const DAY_BANK: CoachQuestion[] = [
   { id: "d_rating", text: "How did your day go overall?", kind: "scale", low: "Rough", high: "Great", metricKey: "day_rating" },
-  { id: "d_over", text: "You finished over your calorie budget — what got in the way?", kind: "text" },
-  { id: "d_under", text: "You logged well under budget. Intentional, or did some food go unlogged?", kind: "text" },
-  { id: "d_nolog", text: "Nothing logged today — how did eating actually go?", kind: "text" },
   { id: "d_goals", text: "Which of your plan goals felt hardest today?", kind: "text" },
   { id: "d_energy", text: "How was your energy?", kind: "scale", low: "Drained", high: "Energized", metricKey: "day_energy" },
   { id: "d_tomorrow", text: "One thing you want to do differently tomorrow?", kind: "text" },
@@ -75,8 +71,6 @@ export function workoutStatsFrom(session: WorkoutSession, prior: WorkoutSession[
 
 /** End-of-day signals the check-in question bank filters on. */
 export interface DayStats {
-  calories: number;
-  goal: number;
   /** Labels of plan goals NOT checked off today. */
   missedGoals: string[];
 }
@@ -99,10 +93,6 @@ function workoutCandidates(s: WorkoutStats): CoachQuestion[] {
 function dayCandidates(s: DayStats): CoachQuestion[] {
   const ok = (q: CoachQuestion): boolean => {
     switch (q.id) {
-      // Food questions only make sense where food can be logged.
-      case "d_over": return NUTRITION_ENABLED && s.calories > s.goal * 1.05 && s.goal > 0;
-      case "d_under": return NUTRITION_ENABLED && s.calories > 0 && s.calories < s.goal * 0.6;
-      case "d_nolog": return NUTRITION_ENABLED && s.calories === 0;
       case "d_goals": return s.missedGoals.length > 0;
       default: return true;
     }
@@ -112,7 +102,7 @@ function dayCandidates(s: DayStats): CoachQuestion[] {
 
 // ── AI pick with deterministic fallback ──────────────────────────────
 
-const PICK_SYSTEM = `You are a wellness coach choosing which short check-in questions to ask right now.
+const PICK_SYSTEM = `You are a personal trainer choosing which short check-in questions to ask right now.
 From the numbered candidates, pick the ${MAX_QUESTIONS - 1} MOST relevant to the stats (most specific first).
 Return ONLY a JSON array of question ids, e.g. ["w_pr","w_difficulty","w_pain"]. No prose.`;
 
@@ -171,8 +161,5 @@ export async function workoutQuestions(
 /** Questions for the end-of-day check-in. */
 export async function dayQuestions(stats: DayStats): Promise<CoachQuestion[]> {
   const missed = `plan goals missed today: ${stats.missedGoals.length ? stats.missedGoals.join(", ") : "none"}.`;
-  const statsLine = NUTRITION_ENABLED
-    ? `End of day: ${stats.calories} kcal eaten vs a ${stats.goal} kcal goal; ${missed}`
-    : `End of day; ${missed}`;
-  return pick("day", statsLine, dayCandidates(stats));
+  return pick("day", `End of day; ${missed}`, dayCandidates(stats));
 }

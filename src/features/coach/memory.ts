@@ -116,11 +116,11 @@ const planLine = (p: Plan): string =>
 /**
  * Continuity across a "Start a new plan" reset: record the episode boundary so
  * the coach references the archived plan instead of being confused by the swap.
- * Diary/weight/workout history is continuous; only the plan changed.
+ * Workout history is continuous; only the plan changed.
  */
 export async function recordPlanStarted(created: Plan, previous: Plan | null): Promise<void> {
   const text = previous
-    ? `Started a new plan (${planLine(created)}). Previous ${planLine(previous)} was archived; food/weight/workout history continues unbroken.`
+    ? `Started a new plan (${planLine(created)}). Previous ${planLine(previous)} was archived; workout history continues unbroken.`
     : `Started their first plan (${planLine(created)}).`;
   await remember({ events: [{ at: new Date().toISOString(), kind: "plan_started", text }] });
 }

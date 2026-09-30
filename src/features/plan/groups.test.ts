@@ -27,7 +27,7 @@ import {
 import { measureSession, parseProgram, recordBenchmarkResult } from "./program";
 import { __resetRepository, getRepository } from "../../data/repository";
 import { commitNewPlan, recordManualBenchmarkEntry, recordSessionAndAdapt } from "./planService";
-import { todayISO } from "../diary";
+import { todayISO } from "../dates";
 import { vfs } from "../../bridge/vfs";
 
 // With no `window`, vfs is an in-memory store that outlives each test's repository.
@@ -84,7 +84,7 @@ function makeProgram(): WorkoutProgram {
 
 const makePlan = (program: WorkoutProgram): Plan => ({
   id: "p1",
-  mode: "both",
+  mode: "get_fit",
   durationWeeks: 4,
   startDate: "2026-07-01",
   endDate: "2026-07-28",
@@ -366,10 +366,7 @@ describe("commitNewPlan seeds the adaptation cursor", () => {
         completedAt: `2026-06-01T10:00:${String(i).padStart(2, "0")}Z`,
       });
     }
-    const res = await commitNewPlan(makePlan(makeProgram()), {
-      currentProfile: null,
-      currentGoals: { calories: 2000, protein: 100, carbs: 200, fat: 60 },
-    });
+    const res = await commitNewPlan(makePlan(makeProgram()), { currentProfile: null });
     expect(res.plan.program?.analysisCursor).toBe(41);
     expect((await repo.getPlan())?.program?.analysisCursor).toBe(41);
   });

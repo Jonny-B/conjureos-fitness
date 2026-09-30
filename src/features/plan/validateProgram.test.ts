@@ -75,6 +75,6 @@ describe("validateProgram — generated programs still pass", () => {
       benchmark: { exercise: "Bench Press", metric: "reps", target: 12 },
     })!;
     expect(validateProgram(parsed, "get_fit", [])).toEqual([]);
-    expect(validateProgram(fallbackProgram("both", [], "beginner")!, "both", [])).toEqual([]);
+    expect(validateProgram(fallbackProgram("get_fit", [], "beginner")!, "get_fit", [])).toEqual([]);
   });
 });

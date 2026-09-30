@@ -1,51 +1,29 @@
-import { useEffect, useRef, useState } from "react";
-import type {
-  ActivityLevel,
-  AgeBand,
-  ExperienceLevel,
-  GoalDirection,
-  Plan,
-  PlanMode,
-  Profile,
-  SafetyIntake,
-  Sex,
-} from "../types";
+import { useRef, useState } from "react";
+import type { ActivityLevel, AgeBand, ExperienceLevel, Plan, PlanMode, Profile, SafetyIntake, Sex } from "../types";
 import { INJURY_REGIONS } from "../features/safety/injuryExclusions";
 import { requiresLoggingOnly, resolveSafeMode } from "../features/safety/intakeGate";
-import { activityForDaysPerWeek, deriveDirection, recommendGoals } from "../features/goals";
+import { activityForDaysPerWeek } from "../features/activity";
 import {
   buildWizardBody,
   createCommitGuard,
   DAYS_OPTIONS,
-  gatedNoticeCopy,
-  goalDaysFor,
+  GATED_NOTICE,
   seedDaysPerWeek,
   seedSafety,
-  seedWizardMode,
   wizardInputsValid,
-  wizardNeedsBody,
 } from "./wizardLogic";
 import { fmtSeconds } from "../features/units";
-import { shiftDate, todayISO } from "../features/diary";
+import { shiftDate, todayISO } from "../features/dates";
 import { DisclaimerCard, DISCLAIMER_SHORT } from "../components/DisclaimerCard";
 import { ProgramEditor } from "../components/ProgramEditor";
-import {
-  AgeField,
-  BodyStatsFields,
-  GoalWeightField,
-  PlanDatesField,
-  SexField,
-  weeksBetween,
-} from "../components/PlanFields";
+import { AgeField, BodyStatsFields, PlanDatesField, SexField, weeksBetween } from "../components/PlanFields";
 import { AlertTriangle, CheckIcon, CloseIcon } from "../components/icons";
 import { createPlan, regenerateProgram, type CreatePlanResult, type PlanStage } from "../features/plan/generate";
-import { getRepository } from "../data/repository";
 import type { PlanInput } from "../features/plan/model";
-import { modeHasWorkouts, modeTracksFood } from "../features/plan/model";
+import { modeHasWorkouts } from "../features/plan/model";
 import type { WizardBody } from "../features/plan/planService";
 import { decidePlanEdit } from "../features/plan/planService";
 import type { ExerciseSet, ProgramWorkout } from "../types";
-import { COACH_AND_WORKOUTS_ENABLED, NUTRITION_ENABLED } from "../features/flags";
 
 type Step = "disclaimer" | "mode" | "safety" | "inputs" | "review";
 
@@ -68,7 +46,7 @@ interface Props {
    * prefills every answer from this plan and, on commit, decides via
    * `decidePlanEdit` whether the change forks a brand-new plan (`onComplete`,
    * archive + regenerate) or modifies this one in place (`onModify`, keep id +
-   * workout progress, recompute calories). Absent → create mode as before.
+   * workout progress). Absent → create mode as before.
    */
   editPlan?: Plan | null;
   /** Commit an in-place modification (edit mode, non-forking change). */
@@ -78,14 +56,17 @@ interface Props {
   ) => void | Promise<void>;
 }
 
-const MODE_CARDS: { mode: PlanMode; title: string; blurb: string; recommended?: boolean }[] = [
-  { mode: "eat_better", title: "Eat better", blurb: "Nutrition only — calories, protein, habits." },
-  { mode: "both", title: "Both", blurb: "Food and movement together.", recommended: true },
-  { mode: "get_fit", title: "Get fit", blurb: "Movement only — short, guided sessions." },
-];
+/**
+ * Every plan the wizard builds is a training plan. There is no mode picker: the
+ * safety intake alone turns it into `logging_only` (see resolveSafeMode). A
+ * stored logging_only plan is therefore never carried into an edit — the
+ * intake, prefilled from the plan, re-derives it, so correcting a mistaken
+ * answer can lift the gate.
+ */
+const REQUESTED_MODE: PlanMode = "get_fit";
 
 const STAGE_LABELS: Record<PlanStage, string> = {
-  calories: "Calculating your calories…",
+  goals: "Setting your goals…",
   workouts: "Building your workouts…",
   checking: "Checking it's safe for you…",
 };
@@ -110,13 +91,6 @@ const EXPERIENCE_OPTIONS: { value: ExperienceLevel; label: string }[] = [
   { value: "intermediate", label: "Intermediate" },
   { value: "advanced", label: "Advanced" },
 ];
-const EXERCISE_DAY_OPTIONS = [0, 2, 3, 4, 5, 6] as const;
-const EATER_ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
-  { value: "sedentary", label: "Mostly sitting" },
-  { value: "light", label: "Lightly active" },
-  { value: "moderate", label: "Moderately active" },
-  { value: "active", label: "Very active" },
-];
 
 /**
  * The plan questionnaire — used both to CREATE a plan and to EDIT one.
@@ -133,19 +107,6 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
   // the disclaimer gate and open on the first real question.
   const [step, setStep] = useState<Step>(editMode ? "mode" : "disclaimer");
 
-  // Step 1 — mode + free-text goal prefill from the plan being edited.
-  const [weeklyExerciseDays, setWeeklyExerciseDays] = useState<number>(editPlan?.weeklyExerciseDays ?? 0);
-  // Seeding straight from editPlan.mode stranded legacy plans: with the mode
-  // picker hidden, a "both" plan could never stop being one, so decidePlanEdit
-  // saw an unchanged mode, chose "modify", and carried every workout goal
-  // forward through each edit. While workouts are paused, editing any plan
-  // lands on the food-only mode — which also makes the edit fork a fresh plan
-  // instead of patching the old one. A stored logging_only is not carried over
-  // either: it came from the safety intake, which is prefilled below, so it
-  // re-derives (and a corrected intake can leave it).
-  const [mode, setMode] = useState<PlanMode>(() =>
-    seedWizardMode(editPlan?.mode, { coachAndWorkouts: COACH_AND_WORKOUTS_ENABLED, nutrition: NUTRITION_ENABLED }),
-  );
   // Step 2 (safety intake) — age is a number now; the band is derived.
   // Prefill every body-stat field from the existing profile so nothing entered
   // in the cog is lost or re-typed; fall back to the same defaults as before
@@ -162,35 +123,14 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
   const [endDate, setEndDate] = useState(editPlan?.endDate ?? shiftDate(todayISO(), 13)); // ~2 weeks
   // Seed days/week so the editor re-derives the SAME activity the plan was built
   // with — otherwise a trivial edit would silently downgrade a 6-day trainer's
-  // activity (and calorie target) back to the 3-day default. The plan's stored
-  // days win (activity alone can't tell 3 from 4).
+  // activity back to the 3-day default. The plan's stored days win (activity
+  // alone can't tell 3 from 4).
   const [daysPerWeek, setDaysPerWeek] = useState(() => seedDaysPerWeek(editPlan, profile, editMode));
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(profile?.experienceLevel ?? "beginner");
   const [equipment, setEquipment] = useState("");
   const [unitPref, setUnitPref] = useState<Profile["units"]>(profile?.units ?? units);
-  const [heightCm, setHeightCm] = useState<number | undefined>(profile?.heightCm);
   const [weightKg, setWeightKg] = useState<number | undefined>(profile?.weightKg);
-  const [goalWeightKg, setGoalWeightKg] = useState<number | undefined>(profile?.goalWeightKg);
   const [sex, setSex] = useState<Sex>(profile?.sex ?? "female");
-  const [activityLevel, setActivityLevel] = useState<ActivityLevel>(profile?.activityLevel ?? "moderate");
-  // No lose/maintain/gain selector — the goal weight vs current weight already
-  // says it. Below = lose, above = gain, blank/equal = maintain.
-  const direction: GoalDirection = deriveDirection(weightKg, goalWeightKg);
-  // The user's current weight is best represented by their latest weigh-in (a
-  // real measurement) over the profile's stored number, so seed from it when
-  // present — but never stomp a value the user has already typed in the wizard.
-  const weightTouched = useRef(false);
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const repo = await getRepository();
-      const ws = await repo.listWeights();
-      if (alive && ws.length && !weightTouched.current) setWeightKg(ws[0]!.weightKg);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
   // Step 4 (review)
   const [preview, setPreview] = useState<CreatePlanResult | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -228,11 +168,9 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
   };
 
   const ageBand = ageToBand(age ?? 30);
-  // Activity is DERIVED from training days for workout modes — asking "how
-  // active are you" next to "how many days will you train" was a duplicate.
-  // The explicit chips remain only for food-only plans (no days/week there).
-  const effectiveActivity: ActivityLevel =
-    mode === "eat_better" ? activityLevel : activityForDaysPerWeek(daysPerWeek);
+  // Activity is DERIVED from training days — asking "how active are you" next
+  // to "how many days will you train" was a duplicate.
+  const effectiveActivity: ActivityLevel = activityForDaysPerWeek(daysPerWeek);
   const intake: SafetyIntake = {
     ageBand,
     pregnant,
@@ -241,29 +179,13 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
     activityLevel: effectiveActivity,
   };
   const gated = requiresLoggingOnly(intake);
-  const effectiveMode = resolveSafeMode(mode, intake);
-  const tracksFood = modeTracksFood(effectiveMode);
+  const effectiveMode = resolveSafeMode(REQUESTED_MODE, intake);
+  // Workout plans need bodyweight and sex (calorie-burn estimates read them);
+  // a gated plan prescribes no workouts, so it asks for neither.
   const hasWorkouts = modeHasWorkouts(effectiveMode);
-  // Workout plans need bodyweight too (calorie-burn estimates read it).
-  const needsBody = wizardNeedsBody(tracksFood, hasWorkouts);
-  // The plan's weekly-days target: the training days for a workout plan.
-  const goalDays = goalDaysFor(hasWorkouts, daysPerWeek, weeklyExerciseDays);
-
-  /** Calorie target computed from the profile (Mifflin) — the app owns this, so
-   *  a plan is never rejected just because the AI omitted the number. */
-  const localCalorieTarget = (): number | null => {
-    if (!tracksFood || heightCm == null || weightKg == null) return null;
-    const p: Profile = {
-      sex,
-      age: age ?? 30,
-      heightCm,
-      weightKg,
-      activityLevel: effectiveActivity,
-      direction,
-      units: unitPref,
-    };
-    return recommendGoals(p).calories;
-  };
+  // The plan's weekly-days target: the training days for a workout plan, none
+  // (0 = not tracking) for a gated one.
+  const goalDays = hasWorkouts ? daysPerWeek : 0;
 
   const buildInput = (extraGoal = ""): PlanInput => ({
     mode: effectiveMode,
@@ -274,12 +196,6 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
     daysPerWeek: hasWorkouts ? daysPerWeek : undefined,
     experienceLevel: hasWorkouts ? experienceLevel : undefined,
     equipment: hasWorkouts ? equipment : undefined,
-    heightCm: tracksFood ? heightCm : undefined,
-    weightKg: tracksFood ? weightKg : undefined,
-    goalWeightKg: tracksFood && direction !== "maintain" ? goalWeightKg : undefined,
-    age: tracksFood ? age : undefined,
-    sex: tracksFood ? sex : undefined,
-    calorieTarget: localCalorieTarget(),
     units: unitPref,
     safety: intake,
   });
@@ -298,7 +214,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
   const runPreview = async (extraGoal = "") => {
     setPreviewLoading(true);
     setPreview(null);
-    setStage("calories");
+    setStage("goals");
     try {
       const result = await createPlan(buildInput(extraGoal), PLACEHOLDER_ACK, { onStage: setStage });
       setPreview(result);
@@ -310,7 +226,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
 
   // In edit mode, whether the current answers fork a brand-new plan or modify
   // the existing one in place. Drives whether we regenerate (createPlan) or just
-  // recompute targets — see decidePlanEdit for the locked trigger.
+  // patch the dates and days — see decidePlanEdit for the locked trigger.
   const editDecision = editMode && editPlan
     ? decidePlanEdit(editPlan, { mode: effectiveMode, goalText, startDate })
     : "new";
@@ -319,24 +235,20 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
   const goReview = () => {
     setStep("review");
     // A modify keeps the existing workouts + goals, so there's nothing to
-    // generate — we only recompute the calorie target locally. Regenerating
-    // here would throw away the program/progress we intend to preserve.
+    // generate. Regenerating here would throw away the program/progress we
+    // intend to preserve.
     if (!isModify) void runPreview();
   };
 
-  const inputsValid = wizardInputsValid({ age, tracksFood, hasWorkouts, heightCm, weightKg });
+  const inputsValid = wizardInputsValid({ age, hasWorkouts, weightKg });
 
   /** The body stats to reconcile into the profile on commit (shared by the
    *  new-plan and modify-in-place paths). */
   const buildBody = (): WizardBody =>
     buildWizardBody({
-      tracksFood,
       hasWorkouts,
       sex,
-      heightCm,
       weightKg,
-      goalWeightKg,
-      direction,
       age,
       ageBand,
       activityLevel: effectiveActivity,
@@ -385,47 +297,19 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
 
       {step === "mode" && (
         <div className="mode-body wizard-step">
-          <WizardHead
-            n={1}
-            title={COACH_AND_WORKOUTS_ENABLED ? "What do you want to focus on?" : "What's your goal?"}
-          />
-          {COACH_AND_WORKOUTS_ENABLED && NUTRITION_ENABLED && (
-            <div className="mode-cards">
-              {MODE_CARDS.map((c) => (
-                <button
-                  key={c.mode}
-                  className={`mode-card${mode === c.mode ? " active" : ""}`}
-                  onClick={() => setMode(c.mode)}
-                >
-                  <span className="mode-card-title">
-                    {c.title}
-                    {c.recommended && <span className="mode-card-badge">Recommended</span>}
-                  </span>
-                  <span className="mode-card-blurb">{c.blurb}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          <WizardHead n={1} title="What do you want to focus on?" />
 
           <label className="field goal-describe">
             <span className="field-label">Describe it in your own words (optional)</span>
             <textarea
               className="text-area"
               rows={2}
-              placeholder={
-                !NUTRITION_ENABLED
-                  ? "e.g. get better at the Murph, or run a 5K"
-                  : COACH_AND_WORKOUTS_ENABLED
-                  ? "e.g. lose a few pounds and get better at the Murph"
-                  : "e.g. lose a couple of pounds"
-              }
+              placeholder="e.g. get better at the Murph, or run a 5K"
               value={goalText}
               onChange={(e) => setGoalText(e.target.value)}
             />
             <span className="muted small field-hint">
-              {COACH_AND_WORKOUTS_ENABLED
-                ? "The more specific you are, the better your plan and benchmark fit."
-                : "The more specific you are, the better your plan fits."}
+              The more specific you are, the better your plan and benchmark fit.
             </span>
           </label>
 
@@ -441,36 +325,16 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
         <div className="mode-body wizard-step">
           <WizardHead n={2} title="About you" />
           <p className="muted small">
-            Everything about your body in one place. Nothing leaves your device.
+            Used to keep your plan safe and to estimate the calories your workouts burn.
           </p>
 
           <div className="form-grid">
             <AgeField age={age} onChange={setAge} />
-            {needsBody && <SexField sex={sex} onChange={setSex} />}
+            {hasWorkouts && <SexField sex={sex} onChange={setSex} />}
           </div>
 
-          {needsBody && (
-            <>
-              <BodyStatsFields
-                units={unitPref}
-                heightCm={heightCm}
-                weightKg={weightKg}
-                onUnits={setUnitPref}
-                onHeightCm={setHeightCm}
-                onWeightKg={(kg) => {
-                  weightTouched.current = true;
-                  setWeightKg(kg);
-                }}
-              />
-              {tracksFood && (
-                <GoalWeightField
-                  units={unitPref}
-                  goalWeightKg={goalWeightKg}
-                  onChange={setGoalWeightKg}
-                  optional
-                />
-              )}
-            </>
+          {hasWorkouts && (
+            <BodyStatsFields units={unitPref} weightKg={weightKg} onUnits={setUnitPref} onWeightKg={setWeightKg} />
           )}
 
           <div className="section-label">Safety check</div>
@@ -501,9 +365,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
           {gated && (
             <div className="notice notice-soft">
               <AlertTriangle />
-              <span>
-                {gatedNoticeCopy({ coachAndWorkouts: COACH_AND_WORKOUTS_ENABLED, nutrition: NUTRITION_ENABLED })}
-              </span>
+              <span>{GATED_NOTICE}</span>
             </div>
           )}
 
@@ -574,46 +436,6 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
             </>
           )}
 
-          {!hasWorkouts && tracksFood && (
-            <div className="field">
-              <span className="field-label">How active is a typical day?</span>
-              <div className="chip-row">
-                {EATER_ACTIVITY_OPTIONS.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    className={`chip${activityLevel === o.value ? " active" : ""}`}
-                    onClick={() => setActivityLevel(o.value)}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-              <span className="muted small field-hint">Used only to estimate your daily calories.</span>
-            </div>
-          )}
-
-          {!hasWorkouts && (
-            <div className="field">
-              <span className="field-label">Want to move most days?</span>
-              <div className="chip-row">
-                {EXERCISE_DAY_OPTIONS.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    className={`chip${weeklyExerciseDays === d ? " active" : ""}`}
-                    onClick={() => setWeeklyExerciseDays(d)}
-                  >
-                    {d === 0 ? "Not tracking" : `${d}× a week`}
-                  </button>
-                ))}
-              </div>
-              <span className="muted small field-hint">
-                We just count the days you record any exercise — nothing is prescribed.
-              </span>
-            </div>
-          )}
-
           <div className="wizard-nav">
             <button className="btn" onClick={() => setStep("safety")}>Back</button>
             <button className="btn primary" disabled={!inputsValid} onClick={goReview}>
@@ -630,21 +452,6 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
           <p className="plan-summary">
             We'll update your plan and keep your workouts, groups, and progress exactly where they are.
           </p>
-
-          {tracksFood && localCalorieTarget() != null ? (
-            <div className="calorie-callout">
-              <div className="calorie-callout-num">
-                <span className="big-number">{Math.round(localCalorieTarget()!)}</span>
-                <span className="big-unit">kcal / day</span>
-              </div>
-              <span className="muted small">
-                Your new daily calorie target, recomputed from your stats and goal weight. This is
-                what the ring on your home screen tracks.
-              </span>
-            </div>
-          ) : (
-            <p className="muted small">Your daily targets stay the same for this kind of plan.</p>
-          )}
 
           <div className="wizard-nav">
             <button className="btn" onClick={() => setStep("inputs")}>Back</button>
@@ -689,19 +496,6 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
                 </div>
               )}
               <p className="plan-summary">{preview.gen.summary}</p>
-
-              {tracksFood && preview.plan.targets?.dailyCalories != null && (
-                <div className="calorie-callout">
-                  <div className="calorie-callout-num">
-                    <span className="big-number">{Math.round(preview.plan.targets.dailyCalories)}</span>
-                    <span className="big-unit">kcal / day</span>
-                  </div>
-                  <span className="muted small">
-                    Your daily calorie target, computed from your stats and goal weight. This is
-                    what the ring on your home screen tracks.
-                  </span>
-                </div>
-              )}
 
               {preview.plan.program && preview.plan.program.workouts.length > 0 && (
                 <div className="plan-workouts">

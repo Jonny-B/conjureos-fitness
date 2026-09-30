@@ -6,7 +6,7 @@
  * (coach.json / coach-chat.json) — no new backend surface.
  */
 
-import type { Goals, Plan, Profile } from "../../types";
+import type { Plan, Profile } from "../../types";
 
 // ── Memory ───────────────────────────────────────────────────────────
 
@@ -90,13 +90,12 @@ export interface CoachAnswer {
 
 /**
  * Everything the coach knows at prompt time. `rendered` is the compact
- * history block (recent food days, weight trend, sessions, check-ins, past
- * plans, memory) built once by context.ts and shared by every coach call.
+ * history block (sessions, check-ins, past plans) built once by context.ts
+ * and shared by every coach call.
  */
 export interface CoachContext {
   plan: Plan | null;
   profile: Profile | null;
-  goals: Goals;
   memory: CoachMemory;
   rendered: string;
 }

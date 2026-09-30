@@ -36,7 +36,7 @@
 import type { ExerciseSet, Plan, WorkoutSession } from "../types";
 import { getRepository } from "../data/repository";
 import { newId } from "../data/id";
-import { shiftDate, todayISO } from "../features/diary";
+import { shiftDate, todayISO } from "../features/dates";
 import { weekToDate } from "../features/exercise";
 import { notifyDataChanged } from "../features/dataEvents";
 import { sessionMinutes } from "../features/calories";
