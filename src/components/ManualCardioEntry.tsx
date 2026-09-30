@@ -31,7 +31,7 @@ export function ManualCardioEntry({ units, onSave, onCancel }: Props) {
     <div className="mode-body manual-cardio">
       <label className="field">
         <span className="field-label">Distance ({distanceUnit(units)})</span>
-        <NumberField value={dist} min={0} max={500} onChange={setDist} aria-label="Distance" />
+        <NumberField value={dist} min={0} max={500} decimals={2} onChange={setDist} aria-label="Distance" />
       </label>
       <label className="field">
         <span className="field-label">Duration (minutes)</span>
