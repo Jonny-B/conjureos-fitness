@@ -212,3 +212,33 @@ describe("createPlan (two-phase generation)", () => {
   // try/catch path in createPlan, unchanged by the split; a mock that throws
   // trips vitest's uncaught-error guard, so it isn't re-asserted here.)
 });
+
+describe("createPlan calorie target by mode", () => {
+  // Habit-only goals so the core passes validation for every mode (no fallback).
+  const HABIT_CORE = JSON.stringify({
+    summary: "Build a steady routine.",
+    dailyCalorieTarget: 2000,
+    goals: [
+      { label: "Log how you feel each day", kind: "habit" },
+      { label: "Take a short walk", kind: "habit" },
+      { label: "Sleep on a regular schedule", kind: "habit" },
+    ],
+  });
+  it("drops the AI's calorie number for a logging_only plan", async () => {
+    complete.mockResolvedValueOnce(HABIT_CORE);
+    const res = await createPlan({ ...input, mode: "logging_only", calorieTarget: null }, liability);
+    expect(res.usedFallback).toBe(false);
+    expect(res.plan.targets).toEqual({ dailyCalories: null });
+  });
+  it("drops the AI's calorie number for a get_fit plan", async () => {
+    complete.mockResolvedValueOnce(HABIT_CORE).mockResolvedValueOnce(GOOD_PROGRAM);
+    const res = await createPlan({ ...input, mode: "get_fit", calorieTarget: null }, liability);
+    expect(res.usedFallback).toBe(false);
+    expect(res.plan.targets).toEqual({ dailyCalories: null });
+  });
+  it("keeps the AI's calorie number for a food-tracking plan", async () => {
+    complete.mockResolvedValueOnce(HABIT_CORE).mockResolvedValueOnce(GOOD_PROGRAM);
+    const res = await createPlan({ ...input, mode: "both", calorieTarget: null }, liability);
+    expect(res.plan.targets?.dailyCalories).toBe(2000);
+  });
+});

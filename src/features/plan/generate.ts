@@ -382,6 +382,7 @@ export function buildPlan(gen: GeneratedPlan, input: PlanInput, liability: Liabi
   // Structured targets: the calorie target plus a macro split, so the plan — not
   // a free-text goal string — is the source of truth the diary rings read from.
   // Prefer the locally-computed target (Mifflin) over the AI's number.
+  // Only food-tracking modes carry a calorie target (logging_only must never show one).
   const kcal = modeTracksFood(input.mode) ? (input.calorieTarget ?? gen.dailyCalorieTarget) : null;
   const targets: PlanTargets =
     kcal != null ? { dailyCalories: kcal, ...macrosForCalories(kcal, input.weightKg ?? 70) } : { dailyCalories: null };

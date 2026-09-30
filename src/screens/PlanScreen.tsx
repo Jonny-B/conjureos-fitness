@@ -115,10 +115,27 @@ export function PlanScreen({
       {plan && (plan.weeklyExerciseDays ?? 0) > 0 && (
         <ExerciseGoalSection target={plan.weeklyExerciseDays!} nonce={nonce} />
       )}
-      <TrendsPanel profile={profile} />
+      <TrendsPanel profile={profile} nonce={nonce} />
       {COACH_AND_WORKOUTS_ENABLED && <CoachLauncher onAsk={onAskCoach} />}
     </div>
   );
+}
+
+/**
+ * The header's one-line subtitle. A logging_only plan has no targets section
+ * and never shows a calorie target, so only its end date (if any) remains.
+ */
+export function headerSubtitle(plan: Plan): string {
+  const parts: string[] = [];
+  if (modeTracksFood(plan.mode)) {
+    parts.push(
+      plan.targets?.dailyCalories != null
+        ? `${plan.targets.dailyCalories.toLocaleString()} cal a day`
+        : "Daily targets below",
+    );
+  }
+  if (plan.endDate) parts.push(`until ${plan.endDate}`);
+  return parts.join(" · ");
 }
 
 /**
@@ -127,6 +144,7 @@ export function PlanScreen({
  * workout program are paused — see features/flags).
  */
 function PlanHeaderSection({ plan, onEditPlan }: { plan: Plan; onEditPlan: () => void }) {
+  const subtitle = headerSubtitle(plan);
   return (
     <section className="plan-section">
       <div className="section-label">
@@ -138,12 +156,7 @@ function PlanHeaderSection({ plan, onEditPlan }: { plan: Plan; onEditPlan: () =>
         </span>
       </div>
       {plan.goalText && <p className="plan-goal-text">{plan.goalText}</p>}
-      <p className="muted small">
-        {plan.targets?.dailyCalories != null
-          ? `${plan.targets.dailyCalories.toLocaleString()} cal a day`
-          : "Daily targets below"}
-        {plan.endDate ? ` · until ${plan.endDate}` : ""}
-      </p>
+      {subtitle && <p className="muted small">{subtitle}</p>}
     </section>
   );
 }
@@ -750,7 +763,7 @@ function ExerciseGoalSection({ target, nonce = 0 }: { target: number; nonce?: nu
 
 // ── Trends ─────────────────────────────────────────────────────────────
 
-function TrendsPanel({ profile }: { profile: Profile | null }) {
+function TrendsPanel({ profile, nonce = 0 }: { profile: Profile | null; nonce?: number }) {
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [input, setInput] = useState("");
 
@@ -758,9 +771,10 @@ function TrendsPanel({ profile }: { profile: Profile | null }) {
     const repo = await getRepository();
     setWeights(await repo.listWeights());
   };
+  // Reload on nonce: Settings clearing weight history bumps it while Plan stays mounted.
   useEffect(() => {
     reload();
-  }, []);
+  }, [nonce]);
 
   const units = profile?.units ?? "metric";
 
