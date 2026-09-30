@@ -19,8 +19,8 @@ export const DISCLAIMER_HEADLINE = "Read this before we build your plan";
 /** The full disclaimer, one paragraph per entry. Legal copy — change it in
  *  one place and every surface follows. */
 export const DISCLAIMER_BODY = [
-  "Conjure Fitness creates general fitness and nutrition suggestions. It is not medical advice, diagnosis, or treatment, and it does not replace a doctor, dietitian, or physical therapist.",
-  "Talk to a healthcare professional before starting a new exercise or eating plan, especially if you have a health condition, an injury, are pregnant, or take medication.",
+  "Conjure Fitness creates general exercise suggestions. It is not medical advice, diagnosis, or treatment, and it does not replace a doctor or physical therapist.",
+  "Talk to a healthcare professional before starting a new exercise program, especially if you have a health condition, an injury, are pregnant, or take medication.",
   "Stop and seek help if you feel chest pain, shortness of breath, dizziness, or any symptom that worries you. You are always in control; skip anything that doesn't feel right.",
 ];
 

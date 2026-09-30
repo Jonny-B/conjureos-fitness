@@ -1,26 +1,28 @@
 /**
- * The Consumer Health Data Privacy Policy.
+ * Conjure Fitness's Consumer Health Data Privacy Policy.
  *
- * Deliberately a SEPARATE document rather than a section of a general privacy
- * policy: Washington's My Health My Data Act requires a distinct consumer
- * health data policy, linked in its own right, and Nevada's SB 370 is close
- * enough that one document serves both.
+ * A SEPARATE document rather than a section of a general privacy policy:
+ * Washington's My Health My Data Act requires a distinct consumer health data
+ * policy, linked in its own right, and Nevada's SB 370 is close enough that one
+ * document serves both.
  *
- * Two rules for editing this file. It must describe what the code actually
- * does — the "what we send" list renders from the same `DISCLOSURE_SENDS`
- * constant the consent sheet uses, so the two cannot drift into saying
- * different things. And a material change here means bumping
- * `DISCLOSURE_VERSION`, which re-asks everyone rather than assuming old
- * agreement covers new wording.
+ * Written for Fitness as it is after the split from Conjure Health: nutrition
+ * is off (NUTRITION_ENABLED), so the Journal tab, Find patterns and the food
+ * coach are unreachable and this page does not describe them. If nutrition
+ * comes back on, this page must describe those flows again (Conjure Health's
+ * version renders them from DISCLOSURE_SENDS).
  *
- * This is a plain-language policy written against how the app behaves. It is
- * not legal advice and has not been through counsel.
+ * The rule for editing it: describe what the code actually does. Every AI call
+ * site that sends personal data (plan/generate, coach/coach + context,
+ * plan/groups, calories, explainers) is listed under "When it leaves"; add one
+ * here when you add one there.
+ *
+ * Plain-language policy written against how the app behaves. Not legal advice
+ * and not yet reviewed by counsel.
  */
 
-import { DISCLOSURE_SENDS, DISCLOSURE_WITHHOLDS } from "../features/aiConsent";
-
 /** Last material revision. Shown so a reader can tell what they agreed to. */
-export const POLICY_UPDATED = "2026-09-04";
+export const POLICY_UPDATED = "2026-09-30";
 
 export function HealthDataPolicy({ onClose }: { onClose: () => void }) {
   return (
@@ -35,78 +37,116 @@ export function HealthDataPolicy({ onClose }: { onClose: () => void }) {
 
           <h3>What this covers</h3>
           <p>
-            Conjure Fitness records things about your body: what you ate, what you weigh, how
-            you slept, how much you drank, symptoms you noticed, and workouts you did. Some
+            Conjure Fitness records things about your body and your training: your plan and its
+            goals, the workouts you do and how they went, your benchmark results, your weight
+            if you log it, and anything you tell the coach, including injuries or limits. Some
             privacy laws call this <strong>consumer health data</strong>. This page explains
             what happens to it.
           </p>
           <p>
-            Conjure Fitness is not a doctor, a clinic, an insurer, or any other kind of
-            healthcare provider, and it is not part of one. That means your entries here are
-            not medical records and HIPAA does not apply to them. The protections described
-            on this page are the ones we actually implement, not ones HIPAA imposes on us.
+            Conjure Fitness is made by ConjureOS LLC. It is not a doctor, a clinic, an insurer, or
+            any other kind of healthcare provider, and it is not part of one. That means your
+            entries here are not medical records and HIPAA does not apply to them. The
+            protections described on this page are the ones we actually implement, not ones
+            HIPAA imposes on us.
           </p>
 
           <h3>Where it lives</h3>
           <p>
-            Your journal is stored on your device and in your own ConjureOS account, so it can
-            follow you between devices you sign in on. Nobody else can read it there. It is
-            never sold, and it is never used for advertising or marketing — not by us, and not
-            by anyone we send it to.
+            Your entries are stored on your device and in your own ConjureOS account, so they can
+            follow you between devices you sign in on. Your conversation with the coach also
+            appears in the ConjureOS Chat panel, in the same account. Other people cannot see
+            any of it. ConjureOS LLC can access stored data only to run and secure the service,
+            or when the law requires it. It is never sold, and it is never used for advertising
+            or marketing, by us or by anyone we send it to.
           </p>
 
           <h3>When it leaves</h3>
           <p>
-            One feature sends part of your journal outside the app: <strong>Find patterns</strong>{" "}
-            on the Journal tab, which asks an AI to look for things that go together. It runs
-            only when you press the button. Nothing is sent on a schedule, in the background,
-            or while the app is closed.
+            Some features need an AI to work. Each one sends only what that request needs, and
+            only when you use it. Nothing is sent on a schedule, in the background, or while
+            the app is closed.
           </p>
-          <p>The AI receives, for the range you asked about:</p>
           <ul className="consent-list">
-            {DISCLOSURE_SENDS.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
+            <li>
+              <strong>Building or changing your plan</strong> sends your goal in your own words,
+              the plan length, your training experience, days per week, equipment, whether you
+              are 60 or older, and, if you told us about an injury, a list of movements to avoid.
+            </li>
+            <li>
+              <strong>Talking to the coach</strong> sends your message and the recent
+              conversation, together with your plan, your profile, your recent weigh-ins, your
+              last 8 workouts, your past plans, and what the coach has remembered from earlier
+              conversations, such as an injury or your schedule.
+            </li>
+            <li>
+              <strong>Finishing a group of workouts</strong> sends that group and your results,
+              so the next group can progress from them.
+            </li>
+            <li>
+              <strong>Estimating calories burned</strong> uses a formula. Only when the formula
+              is missing something does it ask the AI, sending the workout, its length and
+              distance, and your sex, age and weight.
+            </li>
+            <li>
+              <strong>Explaining an exercise</strong> sends only the exercise's name.
+            </li>
           </ul>
-          <p>It does not receive:</p>
-          <ul className="consent-list withheld">
-            {DISCLOSURE_WITHHOLDS.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
+          <p>None of these send your name, email, or account details.</p>
+
+          <h3>Other apps</h3>
+          <p>
+            Other ConjureOS apps can ask Conjure Fitness for your workout list and a training
+            summary, for example so Conjure Health can count your workouts on its calorie ring.
+            ConjureOS asks you before any app can read them, and you can turn cross-app
+            connections off in ConjureOS Settings.
+          </p>
 
           <h3>Who processes it</h3>
           <p>
-            The request goes through ConjureOS, which routes it to{" "}
-            <strong>Anthropic</strong> as the AI provider. Anthropic processes it to produce
-            the answer and does not use commercial API data to train its models. They are the
-            only third party your journal is disclosed to.
+            AI requests go through ConjureOS. By default they are sent to{" "}
+            <strong>Anthropic</strong>, our AI provider, which processes them to produce the
+            answer and, under its commercial terms, does not train its models on them. If you
+            have added your own AI provider key in ConjureOS Settings, requests go to that
+            provider instead, under your own agreement with them. We do not disclose your health
+            data to anyone else, except where the law requires it.
           </p>
 
-          <h3>Your choices</h3>
+          <h3>Your choices and rights</h3>
           <ul className="consent-list">
             <li>
-              Nothing is sent until you agree to it. The first time you press Find patterns,
-              you are shown exactly what would be sent and can decline.
+              Nothing is sent unless you use a feature that needs it. If you would rather keep
+              something away from the AI, don't tell the coach.
             </li>
             <li>
-              The free-text note on a symptom is a separate choice, off unless you turn it on.
+              You can delete your data, all of it or one kind at a time, in Settings, under Reset
+              health data. Deleting is permanent.
             </li>
             <li>
-              You can withdraw your agreement at any time in Settings → Privacy. Future
-              analysis stops immediately. Withdrawing cannot recall something already sent.
-            </li>
-            <li>
-              You can delete your journal — all of it, or one kind at a time — in Settings →
-              Reset health data. Deleting is permanent.
+              To ask what we hold about you, get a copy of it, or delete it along with your
+              ConjureOS account, email{" "}
+              <a href="mailto:abuse@conjureos.com">abuse@conjureos.com</a>. We answer within 45
+              days. If we turn down a request, reply to ask us to reconsider; if you live in
+              Washington and still disagree, you can contact the Washington State Attorney
+              General.
             </li>
           </ul>
 
           <h3>If something goes wrong</h3>
           <p>
             If health data is ever exposed to someone who should not have it, we will tell you
-            and any regulator we are required to notify. Report a concern from Settings, or
-            through your ConjureOS account.
+            and any regulator we are required to notify.
+          </p>
+
+          <h3>Contact</h3>
+          <p>
+            ConjureOS LLC, Ohio, USA.{" "}
+            <a href="mailto:abuse@conjureos.com">abuse@conjureos.com</a>. This page sits
+            alongside the ConjureOS{" "}
+            <a href="https://www.conjureos.com/privacy.html" target="_blank" rel="noreferrer">
+              privacy policy
+            </a>
+            , which covers your ConjureOS account as a whole.
           </p>
         </div>
 
