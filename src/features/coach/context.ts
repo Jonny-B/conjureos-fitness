@@ -83,11 +83,10 @@ function render(x: {
         for (const ex of pw.workout.exercises) keys.add(normalizeExerciseKey(ex.name));
       if (keys.size)
         lines.push(`Program exercise keys (for plan adjustments, use these exactly): ${[...keys].join(", ")}.`);
-      const b = prog.benchmarks[0];
-      if (b) {
+      for (const b of prog.benchmarks) {
         const latest = b.history.at(-1)?.value;
         lines.push(
-          `Benchmark ${b.name}: baseline ${b.baseline ?? "unset"}, now ${latest ?? "—"}, target ${b.target} ${b.unit}${b.lowerIsBetter ? " (lower is better)" : ""}.`,
+          `Benchmark ${b.name} (key ${b.exerciseKey}): baseline ${b.baseline ?? "unset"}, now ${latest ?? "—"}, target ${b.target} ${b.unit}${b.lowerIsBetter ? " (lower is better)" : ""}.`,
         );
       }
     }

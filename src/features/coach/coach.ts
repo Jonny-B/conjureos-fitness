@@ -24,7 +24,7 @@ import type {
   CoachProposal,
 } from "./model";
 
-const ADJUSTMENT_SHAPE = `{ "summary": string, "deload"?: boolean, "benchmarkTargetDelta"?: number,
+const ADJUSTMENT_SHAPE = `{ "summary": string, "deload"?: boolean, "benchmarkTargetDelta"?: number, "benchmarkKey"?: string (the ONE benchmark the delta moves, in its own unit; default the first; negative = harder when lower is better),
   "changes": [ { "op": "setReps"|"setWeight"|"setRest"|"swap", "exerciseKey": string, "reps"?: number, "weightKg"?: number, "restSec"?: number, "toName"?: string } ] }`;
 
 const PLAN_CHANGE_SHAPE = `{ "summary": string, "goalWeightKg"?: number (KILOGRAMS), "dailyCalories"?: number, "endDate"?: "YYYY-MM-DD" }`;

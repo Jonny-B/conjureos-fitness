@@ -109,6 +109,7 @@ Return ONLY a JSON object describing a SMALL, safe progression:
   { "summary": string,
     "deload"?: boolean,
     "benchmarkTargetDelta"?: number,
+    "benchmarkKey"?: string,
     "changes": [ { "op": "setReps"|"setWeight"|"setRest"|"swap", "exerciseKey": string, "reps"?: number, "weightKg"?: number, "restSec"?: number, "toName"?: string } ] }
 Rules:
 - Make at most 4 changes. Progress gently: a rep or two, a small weight bump, or slightly less rest when recent sessions looked comfortable; hold steady or ease off ("deload": true) when they looked hard or sparse.

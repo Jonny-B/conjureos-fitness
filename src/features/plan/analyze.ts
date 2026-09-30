@@ -45,8 +45,10 @@ export interface PlanAdjustment {
   changes: ProgramChange[];
   /** Lighten the load this cycle (recovery). */
   deload?: boolean;
-  /** Add to (or subtract from) the benchmark target. */
+  /** Add to (or subtract from) the benchmark target, in that benchmark's own unit. */
   benchmarkTargetDelta?: number;
+  /** exerciseKey of the benchmark the delta applies to; defaults to the first. */
+  benchmarkKey?: string;
 }
 
 const SYSTEM = `You are a wellness coach adjusting an existing workout program from recent performance data. You are NOT a doctor.
@@ -54,12 +56,14 @@ Return ONLY a JSON object describing a SMALL, safe adjustment:
   { "summary": string,
     "deload"?: boolean,
     "benchmarkTargetDelta"?: number,
+    "benchmarkKey"?: string,
     "changes": [ { "op": "setReps"|"setWeight"|"setRest"|"swap", "exerciseKey": string, "reps"?: number, "weightKg"?: number, "restSec"?: number, "toName"?: string } ] }
 Rules:
 - Make at most 4 changes. Prefer the smallest nudge that helps.
 - If sets were fast/easy or RPE was low and the benchmark is progressing, add a little (a rep, a small weight bump, or a modest benchmarkTargetDelta > 0).
 - If sets were slow, RPE was high, or the benchmark has stalled/regressed, ease off (fewer reps, less weight, more rest) or set "deload": true; you may lower the benchmark target (benchmarkTargetDelta < 0).
 - "exerciseKey" MUST be one of the keys listed in the data. Never invent an exercise. A "swap" keeps the same body area and stays equipment-light.
+- benchmarkTargetDelta moves ONE benchmark's target, in that benchmark's own unit: set "benchmarkKey" to its key (default: the first listed). For a lower-is-better benchmark a NEGATIVE delta is the harder target.
 - If the user's preferences/feedback are listed, HONOR them — e.g. swap away a movement they dislike, respect a niggle/constraint, ease off what they said felt brutal.
 - weightKg is in kilograms. Keep everything beginner-safe.
 - Output ONLY the JSON. No prose, no markdown fences.`;
@@ -69,11 +73,12 @@ They completed their benchmark assessment, so you now know their real capacity; 
   { "summary": string,
     "deload"?: boolean,
     "benchmarkTargetDelta"?: number,
+    "benchmarkKey"?: string,
     "changes": [ { "op": "setReps"|"setWeight"|"setRest"|"swap", "exerciseKey": string, "reps"?: number, "weightKg"?: number, "restSec"?: number, "toName"?: string } ] }
 Rules:
 - Scale the working sets to their measured level: training reps/weights that fit the capacity the benchmark just revealed (e.g. work sets well below a max-rep effort so they can complete the prescription).
 - Up to 4 changes — spend them on the exercises that most need calibrating. Use ONLY the exerciseKeys listed in the data; never invent one.
-- Only change the benchmark target (benchmarkTargetDelta) if the measured baseline makes the current target clearly wrong.
+- Only change the benchmark target (benchmarkTargetDelta) if the measured baseline makes the current target clearly wrong. It moves ONE benchmark, in that benchmark's own unit: set "benchmarkKey" to its key (default: the first listed). For a lower-is-better benchmark a NEGATIVE delta is the harder target.
 - If the user's preferences/feedback are listed, honor them (swap disliked movements, respect constraints).
 - Keep everything safe and realistic. Output ONLY the JSON. No prose, no markdown fences.`;
 
@@ -114,11 +119,13 @@ export function parseAdjustment(raw: string): PlanAdjustment | null {
     changes.push(change);
   }
   const delta = num(o.benchmarkTargetDelta);
+  const benchmarkKey = typeof o.benchmarkKey === "string" ? o.benchmarkKey.trim() : "";
   return {
     summary: typeof o.summary === "string" ? o.summary.trim().slice(0, 200) : "Adjusted your plan",
     changes,
     ...(o.deload === true ? { deload: true } : {}),
     ...(delta != null && delta !== 0 ? { benchmarkTargetDelta: delta } : {}),
+    ...(delta != null && delta !== 0 && benchmarkKey ? { benchmarkKey } : {}),
   };
 }
 
@@ -163,14 +170,19 @@ export function applyAdjustment(program: WorkoutProgram, adj: PlanAdjustment): W
     return { ...pw, workout: { ...pw.workout, exercises } };
   });
 
-  // Benchmark target nudge — keep it positive; preserve baseline/history.
-  const benchmarks =
-    adj.benchmarkTargetDelta != null
-      ? program.benchmarks.map((b) => ({
-          ...b,
-          target: Math.max(0.1, Math.round((b.target + adj.benchmarkTargetDelta!) * 10) / 10),
-        }))
-      : program.benchmarks;
+  // Benchmark target nudge — ONE benchmark (the keyed one, else the first): a
+  // delta is in that benchmark's own unit, so it must not spread to the rest.
+  // Keep it positive; preserve baseline/history.
+  const delta = adj.benchmarkTargetDelta;
+  const targetIdx =
+    delta != null
+      ? Math.max(0, program.benchmarks.findIndex((b) => b.exerciseKey === adj.benchmarkKey))
+      : -1;
+  const benchmarks = program.benchmarks.map((b, i) =>
+    i === targetIdx
+      ? { ...b, target: Math.max(0.1, Math.round((b.target + delta!) * 10) / 10) }
+      : b,
+  );
 
   return { ...program, workouts, benchmarks };
 }
@@ -205,8 +217,7 @@ export function buildAnalysisPrompt(
   }
   lines.push(`Program exercises (use these exact keys): ${[...keys].join(", ") || "(none)"}.`);
 
-  const b = program.benchmarks[0];
-  if (b) {
+  for (const b of program.benchmarks) {
     const hist = b.history.map((h) => h.value);
     lines.push(
       `Benchmark: ${b.name} (key ${b.exerciseKey}), metric ${b.metric}, unit ${b.unit}, baseline ${b.baseline ?? "unset"}, target ${b.target}${b.lowerIsBetter ? " (lower is better)" : ""}. History: ${hist.length ? hist.join(" -> ") : "none yet"}.`,
@@ -216,14 +227,22 @@ export function buildAnalysisPrompt(
   const recent = sessions.slice(0, RECENT_WINDOW);
   lines.push(`\nRecent sessions (newest first, ${recent.length}):`);
   for (const s of recent) {
-    if (s.cardio) {
-      lines.push(`- ${s.date}: cardio ${s.cardio.distanceKm.toFixed(2)} km in ${Math.round(s.cardio.durationSec / 60)} min.`);
-      continue;
-    }
     const exLines = (s.byExercise ?? []).map(
       (e) => `  · ${e.name} (${e.exerciseKey}): ${e.sets.map(fmtSet).join(" | ")}`,
     );
+    // A manual assessment can carry strength results AND a cardio block whose
+    // unentered half is a 0 placeholder — print only what was measured.
+    const c = s.cardio;
+    const cardioParts: string[] = [];
+    if (c && c.distanceKm > 0) cardioParts.push(`${c.distanceKm.toFixed(2)} km`);
+    if (c && c.durationSec > 0) cardioParts.push(`${Math.round((c.durationSec / 60) * 10) / 10} min`);
+    const cardioText = c ? `cardio ${cardioParts.join(" in ") || "(no distance or time recorded)"}.` : "";
+    if (c && exLines.length === 0) {
+      lines.push(`- ${s.date}: ${cardioText}`);
+      continue;
+    }
     lines.push(`- ${s.date}:`);
+    if (c) lines.push(`  · ${cardioText}`);
     lines.push(...(exLines.length ? exLines : ["  · (no recorded sets)"]));
   }
 
@@ -236,7 +255,10 @@ export function buildAnalysisPrompt(
 
 /** Whether an adaptation pass is due (>= interval new sessions since last run). */
 export function shouldAnalyze(program: WorkoutProgram, sessionCount: number): boolean {
-  return sessionCount - (program.analysisCursor ?? 0) >= ANALYSIS_INTERVAL;
+  // A cursor above the count is stale (history was cleared/deleted since): restart from 0.
+  const cursor = program.analysisCursor ?? 0;
+  const base = cursor > sessionCount ? 0 : cursor;
+  return sessionCount - base >= ANALYSIS_INTERVAL;
 }
 
 /**
