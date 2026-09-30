@@ -8,6 +8,7 @@
 import type { WorkoutSession } from "../../types";
 import { complete, isAiAvailable } from "../../bridge/ai";
 import { detectPRs } from "../workoutHistory";
+import { NUTRITION_ENABLED } from "../flags";
 import type { CheckinKind, CoachQuestion } from "./model";
 
 const MAX_QUESTIONS = 4;
@@ -98,9 +99,10 @@ function workoutCandidates(s: WorkoutStats): CoachQuestion[] {
 function dayCandidates(s: DayStats): CoachQuestion[] {
   const ok = (q: CoachQuestion): boolean => {
     switch (q.id) {
-      case "d_over": return s.calories > s.goal * 1.05 && s.goal > 0;
-      case "d_under": return s.calories > 0 && s.calories < s.goal * 0.6;
-      case "d_nolog": return s.calories === 0;
+      // Food questions only make sense where food can be logged.
+      case "d_over": return NUTRITION_ENABLED && s.calories > s.goal * 1.05 && s.goal > 0;
+      case "d_under": return NUTRITION_ENABLED && s.calories > 0 && s.calories < s.goal * 0.6;
+      case "d_nolog": return NUTRITION_ENABLED && s.calories === 0;
       case "d_goals": return s.missedGoals.length > 0;
       default: return true;
     }
@@ -168,8 +170,9 @@ export async function workoutQuestions(
 
 /** Questions for the end-of-day check-in. */
 export async function dayQuestions(stats: DayStats): Promise<CoachQuestion[]> {
-  const statsLine = `End of day: ${stats.calories} kcal eaten vs a ${stats.goal} kcal goal; plan goals missed today: ${
-    stats.missedGoals.length ? stats.missedGoals.join(", ") : "none"
-  }.`;
+  const missed = `plan goals missed today: ${stats.missedGoals.length ? stats.missedGoals.join(", ") : "none"}.`;
+  const statsLine = NUTRITION_ENABLED
+    ? `End of day: ${stats.calories} kcal eaten vs a ${stats.goal} kcal goal; ${missed}`
+    : `End of day; ${missed}`;
   return pick("day", statsLine, dayCandidates(stats));
 }

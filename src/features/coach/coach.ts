@@ -14,6 +14,7 @@ import { validateProgram } from "../plan/validate";
 import { applyCoachPlanChange, saveProgram, type CoachPlanChange } from "../plan/planService";
 import { renderMemory } from "./context";
 import { remember } from "./memory";
+import { detectStopSymptom, STOP_SYMPTOM_REPLY } from "../safety/symptomKeywords";
 import type {
   CheckinKind,
   CoachAnswer,
@@ -60,12 +61,16 @@ Keep replies short (2-5 sentences) unless they ask for detail.`;
 /**
  * Apply a coach-proposed adjustment through the same rails as the adaptation
  * engine. Returns the persisted plan, or null when there's no program, the
- * adjustment is empty, or validation fails (no-op).
+ * adjustment is empty, it changes nothing (unknown exerciseKey, swap on a
+ * benchmark, setReps on timed sets), or validation fails (no-op).
  */
 async function applyToPlan(plan: Plan | null, adj: PlanAdjustment): Promise<Plan | null> {
   if (!plan?.program) return null;
   if (adj.changes.length === 0 && !adj.deload && adj.benchmarkTargetDelta == null) return null;
   const candidate = applyAdjustment(plan.program, adj);
+  // Unmatched keys and refused ops leave the program untouched — don't report
+  // (or remember) a plan change that never happened.
+  if (JSON.stringify(candidate) === JSON.stringify(plan.program)) return null;
   const reasons = validateProgram(candidate, plan.mode, plan.safety.injuries ?? []);
   if (reasons.length > 0) return null;
   return saveProgram(plan, candidate);
@@ -96,6 +101,12 @@ export async function evaluateCheckin(
   const at = new Date().toISOString();
   const eventText = answers.map((a) => `${a.question} → ${a.value}`).join(" · ");
   const metrics = metricsFrom(answers);
+
+  // Red-flag screen on the free-text answers BEFORE any model call: a hit gets
+  // the fixed stop-and-seek-help reply — no AI, no plan change, no memory.
+  if (answers.some((a) => a.scale == null && detectStopSymptom(a.value))) {
+    return { reply: STOP_SYMPTOM_REPLY };
+  }
 
   if (!isAiAvailable()) {
     await remember({ events: [{ at, kind: eventKind, text: eventText }], metrics });
@@ -254,6 +265,11 @@ export async function coachChat(
   ctx: CoachContext,
   opts?: CoachChatOptions,
 ): Promise<CoachOutcome> {
+  // Red-flag screen on the newest user message BEFORE any model call: a hit
+  // gets the fixed stop-and-seek-help reply — no AI, no change, no memory.
+  const latestUser = [...history].reverse().find((m) => m.role === "user");
+  if (latestUser && detectStopSymptom(latestUser.content)) return { reply: STOP_SYMPTOM_REPLY };
+
   if (!isAiAvailable()) {
     return {
       reply:

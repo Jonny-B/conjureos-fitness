@@ -32,6 +32,8 @@ export function CoachScreen({
   const [messages, setMessages] = useState<CoachChatItem[] | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  // Last turn's failure — shown below the thread, never stored in `messages`.
+  const [error, setError] = useState<string | null>(null);
   // Live answer state for the one active (last, unanswered) proposal card.
   const [picks, setPicks] = useState<string[]>([]);
   const [otherText, setOtherText] = useState("");
@@ -53,7 +55,7 @@ export function CoachScreen({
       const q = initialPrompt?.trim();
       if (q && !sentInitialRef.current) {
         sentInitialRef.current = true;
-        void runTurn(q, base, false);
+        void runTurn(q, base, false, () => setDraft(q));
       }
     })();
     return () => {
@@ -92,13 +94,16 @@ export function CoachScreen({
    * (which may itself be a proposal), applying a plan update if one came back.
    * `answering` = this text answers a pending proposal (only then may a change
    * apply). Shared by the input row, the proposal card, and the mount auto-send.
+   * If the coach can't be reached, the pre-turn thread is restored (a pending
+   * proposal stays answerable) and `restore` puts the user's input back.
    */
-  const runTurn = async (text: string, base: CoachChatItem[], answering: boolean) => {
+  const runTurn = async (text: string, base: CoachChatItem[], answering: boolean, restore?: () => void) => {
     const t = text.trim();
     if (!t || busyRef.current) return;
     const grounded = answering ? markAnswered(base) : base;
     const withUser: CoachChatItem[] = [...grounded, { role: "user", content: t }];
     setMessages(withUser);
+    setError(null);
     setPicks([]);
     setOtherText("");
     busyRef.current = true;
@@ -125,10 +130,9 @@ export function CoachScreen({
       setMessages(next);
       await writeJson(CHAT_PATH, next.slice(-MAX_STORED));
     } catch (err) {
-      setMessages([
-        ...withUser,
-        { role: "assistant", content: aiErrorMessage(err, "Sorry — I couldn’t reach the AI service just now. Try again in a moment.") },
-      ]);
+      setMessages(base);
+      restore?.();
+      setError(aiErrorMessage(err, "Sorry — I couldn’t reach the AI service just now. Try again in a moment."));
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -140,7 +144,7 @@ export function CoachScreen({
     const text = draft.trim();
     if (!text || busy || messages == null) return;
     setDraft("");
-    void runTurn(text, messages, lastPendingProposal(messages));
+    void runTurn(text, messages, lastPendingProposal(messages), () => setDraft(text));
   };
 
   const togglePick = (label: string, type: CoachProposal["type"]) => {
@@ -158,7 +162,12 @@ export function CoachScreen({
     const parts = [...picks];
     if (otherText.trim()) parts.push(otherText.trim());
     if (parts.length === 0) return;
-    void runTurn(parts.join("; "), messages, true);
+    const prevPicks = picks;
+    const prevOther = otherText;
+    void runTurn(parts.join("; "), messages, true, () => {
+      setPicks(prevPicks);
+      setOtherText(prevOther);
+    });
   };
 
   const declineProposal = () => {
@@ -218,6 +227,7 @@ export function CoachScreen({
           );
         })}
         {busy && <div className="coach-msg assistant typing">…</div>}
+        {error && !busy && <div className="coach-msg assistant error">{error}</div>}
         <div ref={endRef} />
       </div>
 
