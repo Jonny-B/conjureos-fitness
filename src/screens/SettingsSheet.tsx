@@ -21,6 +21,20 @@ import type { AiJournalConsent } from "../types";
 export type SettingsView = "main" | "program";
 
 /**
+ * Persist a units change onto the STORED profile. App's cached profile can be
+ * stale (AI consent is written straight to the repository and never refreshes
+ * it), so spreading the prop would reinstate a withdrawn consent or erase a new
+ * grant. Re-read first; the prop is only a fallback if nothing is stored.
+ */
+export async function saveProfileUnits(units: Profile["units"], fallback: Profile): Promise<Profile> {
+  const repo = await getRepository();
+  const base = (await repo.getProfile()) ?? fallback;
+  const next: Profile = { ...base, units };
+  await repo.saveProfile(next);
+  return next;
+}
+
+/**
  * Settings (the cog) — strictly "about your app", NOT a plan editor.
  *
  * Everything that authors a plan (goal, mode, dates, body stats, workouts) and
@@ -37,6 +51,8 @@ export function SettingsSheet({
   onSave,
   onPlanChange,
   onDataCleared,
+  pendingUnits = "metric",
+  onPendingUnits,
 }: {
   goals: Goals;
   profile: Profile | null;
@@ -47,8 +63,11 @@ export function SettingsSheet({
   onPlanChange: (plan: Plan) => void;
   /** Fired after any history clear so screens re-read their data. */
   onDataCleared?: () => void;
+  /** Units picked while there is no profile yet (held in App, seeds the wizard). */
+  pendingUnits?: Profile["units"];
+  onPendingUnits?: (units: Profile["units"]) => void;
 }) {
-  const [units, setUnitsState] = useState<Profile["units"]>(profile?.units ?? "metric");
+  const [units, setUnitsState] = useState<Profile["units"]>(profile?.units ?? pendingUnits);
   // The program sub-view (Edit workouts) is only ever entered directly via
   // initialView; the cog itself no longer links to it, so this never changes
   // after mount — closing the editor closes the whole sheet.
@@ -67,16 +86,17 @@ export function SettingsSheet({
   // Units is a display preference — apply + persist it the instant it's tapped
   // (not only on Save, which is easy to miss), so the choice can never be lost
   // by closing the sheet. NEVER fabricate a DEFAULT profile here (that once
-  // reverted real stats); with no stored profile the choice rides the next plan
-  // edit's profile write instead.
+  // reverted real stats); with no stored profile the choice is kept in App
+  // (pendingUnits), which seeds the wizard so the first plan's write carries it.
   const setUnits = async (u: Profile["units"]) => {
     if (u === units) return;
     setUnitsState(u);
-    if (!profile) return;
+    if (!profile) {
+      onPendingUnits?.(u);
+      return;
+    }
     try {
-      const repo = await getRepository();
-      const next: Profile = { ...profile, units: u };
-      await repo.saveProfile(next);
+      const next = await saveProfileUnits(u, profile);
       onSave(goals, next);
     } catch {
       /* best-effort — nothing else here persists units */

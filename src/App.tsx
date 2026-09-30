@@ -69,6 +69,8 @@ export function App() {
   const [date, setDate] = useState<string>(todayISO());
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [profile, setProfile] = useState<Profile | null>(null);
+  // Units picked in Settings before any profile exists; seeds the plan wizard.
+  const [pendingUnits, setPendingUnits] = useState<Profile["units"]>("metric");
   // v2: the active plan. null → show the "build your plan" banner (no longer a
   // full-screen gate; the app is usable for logging without a plan).
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -265,7 +267,7 @@ export function App() {
               setPlanWizardOpen(false);
               setPlanEditor(null);
             }}
-            units={profile?.units ?? "metric"}
+            units={profile?.units ?? pendingUnits}
             profile={profile}
           />
         </main>
@@ -469,6 +471,8 @@ export function App() {
           onSave={onSaveGoals}
           onPlanChange={setPlan}
           onDataCleared={onDataCleared}
+          pendingUnits={pendingUnits}
+          onPendingUnits={setPendingUnits}
         />
       )}
     </div>
