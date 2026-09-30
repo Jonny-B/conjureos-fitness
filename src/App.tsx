@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Goals, MealType, Plan, Profile } from "./types";
 import { DEFAULT_GOALS } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
 import { todayISO } from "./features/diary";
+import { rollSelectedDate } from "./features/dayRollover";
 import {
   archivePlan,
   commitNewPlan,
@@ -104,6 +105,11 @@ export function App() {
   const [checkinDone, setCheckinDone] = useState(true);
   const [checkinDismissed, setCheckinDismissed] = useState(false);
   const [checkinOpen, setCheckinOpen] = useState(false);
+  // The local day and whether it is evening, kept current while the app stays
+  // open (see the clock effect below) so nothing is keyed to the launch day.
+  const [today, setToday] = useState<string>(todayISO());
+  const [evening, setEvening] = useState<boolean>(isEvening());
+  const prevToday = useRef(today);
 
   /**
    * Re-read everything a reset can have changed. Bumping `nonce` alone only
@@ -140,18 +146,48 @@ export function App() {
     };
   }, []);
 
+  // Re-read the clock when the app returns to the foreground and once a minute,
+  // so a session left open across midnight (or into the evening) catches up.
+  useEffect(() => {
+    const sync = () => {
+      setToday(todayISO());
+      setEvening(isEvening());
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") sync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", sync);
+    const id = window.setInterval(sync, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", sync);
+      window.clearInterval(id);
+    };
+  }, []);
+
+  // New local day: a selected date that was "today" follows it (a date the user
+  // picked does not jump), and yesterday's check-in dismissal no longer applies.
+  useEffect(() => {
+    const prev = prevToday.current;
+    if (prev === today) return;
+    prevToday.current = today;
+    setDate((d) => rollSelectedDate(d, prev, today));
+    setCheckinDismissed(false);
+  }, [today]);
+
   // Whether today's coach check-in exists (drives the evening banner).
   useEffect(() => {
     let alive = true;
     (async () => {
       const repo = await getRepository();
-      const log = await repo.getDayLog(todayISO()).catch(() => null);
+      const log = await repo.getDayLog(today).catch(() => null);
       if (alive) setCheckinDone(Boolean(log?.checkin));
     })();
     return () => {
       alive = false;
     };
-  }, [nonce]);
+  }, [nonce, today]);
 
   // The diary's rings read from the plan's targets when it tracks food, falling
   // back to the separately-stored goals otherwise.
@@ -256,8 +292,13 @@ export function App() {
   // The plan wizard, opened from the banner, owns the screen while active but is
   // fully dismissible (no longer a mandatory first-run gate).
   if (ready && planWizardOpen) {
+    // The notice sits at the same child index as in the main return below (the
+    // null stands in for the header), so React keeps its state when the wizard
+    // closes; a failed plan/profile/targets save is then still shown.
     return (
       <div className="app">
+        {null}
+        <SaveFailedNotice />
         <main className="screen">
           <WizardScreen
             onComplete={onWizardComplete}
@@ -285,7 +326,7 @@ export function App() {
   // Evening-only, banner-only (no notifications by design): nudge a coach
   // check-in until today has one. Paused with the coach.
   const checkinBanner =
-    COACH_AND_WORKOUTS_ENABLED && ready && !checkinDone && !checkinDismissed && isEvening() ? (
+    COACH_AND_WORKOUTS_ENABLED && ready && !checkinDone && !checkinDismissed && evening ? (
       <DayCheckinBanner onOpen={() => setCheckinOpen(true)} onDismiss={() => setCheckinDismissed(true)} />
     ) : null;
 
@@ -451,7 +492,7 @@ export function App() {
 
       {checkinOpen && COACH_AND_WORKOUTS_ENABLED && (
         <DayCheckinSheet
-          date={todayISO()}
+          date={today}
           onClose={() => setCheckinOpen(false)}
           onComplete={() => {
             setCheckinDone(true);
