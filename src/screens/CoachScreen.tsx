@@ -1,16 +1,18 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { Plan } from "../types";
-import { aiErrorMessage, type ChatMessage } from "../bridge/ai";
-import { readJson, writeJson } from "../bridge/vfs";
+import { aiErrorMessage } from "../bridge/ai";
 import { buildCoachContext } from "../features/coach/context";
 import { coachChat } from "../features/coach/coach";
 import type { CoachChatItem, CoachContext, CoachProposal } from "../features/coach/model";
-
-const CHAT_PATH = "coach-chat.json";
-const MAX_STORED = 40;
-/** How many proposals the coach may show in one change episode (initial + one
- *  follow-up). Past this, a returned proposal is dropped and it must apply/drop. */
-const MAX_PROPOSAL_ROUNDS = 2;
+import {
+  MAX_PROPOSAL_ROUNDS,
+  hasPendingProposal,
+  loadCoachHistory,
+  markAnswered,
+  onCoachThreadChange,
+  recordCoachTurn,
+  toChatMessages,
+} from "../features/coach/thread";
 
 /**
  * Chat with your trainer — the app-wide coach surface. The coach sees the
@@ -45,7 +47,7 @@ export function CoachScreen({
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [history, ctx] = await Promise.all([readJson<CoachChatItem[]>(CHAT_PATH, []), buildCoachContext()]);
+      const [history, ctx] = await Promise.all([loadCoachHistory(), buildCoachContext()]);
       if (!alive) return;
       ctxRef.current = ctx;
       const base = Array.isArray(history) ? history : [];
@@ -62,30 +64,20 @@ export function CoachScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A message answered from ConjureChat while this screen is open.
+  useEffect(
+    () =>
+      onCoachThreadChange(({ items }) => {
+        if (busyRef.current) return;
+        roundRef.current = items[items.length - 1]?.proposal ? 1 : 0;
+        setMessages(items);
+      }),
+    [],
+  );
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages, busy]);
-
-  // The AI sees plain role/content; a proposal item carries its question +
-  // options along so the coach remembers what it asked.
-  const toChatMessages = (items: CoachChatItem[]): ChatMessage[] =>
-    items.map((m) => ({
-      role: m.role,
-      content: m.proposal
-        ? `${m.content ? `${m.content}\n\n` : ""}${m.proposal.question}\nOptions: ${m.proposal.options
-            .map((o) => o.label)
-            .join(" / ")}`
-        : m.content,
-    }));
-
-  const lastPendingProposal = (items: CoachChatItem[]): boolean => {
-    const last = items[items.length - 1];
-    return Boolean(last?.proposal && !last.answered);
-  };
-
-  // Lock the trailing proposal card once it's been answered.
-  const markAnswered = (items: CoachChatItem[]): CoachChatItem[] =>
-    items.map((m, i) => (i === items.length - 1 && m.proposal && !m.answered ? { ...m, answered: true } : m));
 
   /**
    * Run one turn: append the user's text, ask the coach, append its reply
@@ -123,7 +115,7 @@ export function CoachScreen({
       roundRef.current = outcome.proposal ? roundRef.current + 1 : 0;
       const next = [...withUser, assistant];
       setMessages(next);
-      await writeJson(CHAT_PATH, next.slice(-MAX_STORED));
+      await recordCoachTurn(next, t, assistant);
     } catch (err) {
       setMessages([
         ...withUser,
@@ -140,7 +132,7 @@ export function CoachScreen({
     const text = draft.trim();
     if (!text || busy || messages == null) return;
     setDraft("");
-    void runTurn(text, messages, lastPendingProposal(messages));
+    void runTurn(text, messages, hasPendingProposal(messages));
   };
 
   const togglePick = (label: string, type: CoachProposal["type"]) => {

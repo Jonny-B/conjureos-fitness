@@ -3,6 +3,7 @@ import type { Goals, MealType, Plan, Profile } from "./types";
 import { DEFAULT_GOALS } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
+import { onCoachThreadChange, startCoachChatHub } from "./features/coach/thread";
 import { todayISO } from "./features/diary";
 import {
   archivePlan,
@@ -133,8 +134,17 @@ export function App() {
     registerActions().catch(() => {
       /* cross-app integration is non-fatal */
     });
+    // ConjureOS chat hub (#513): the coach answers what is typed in ConjureChat.
+    // Resolves false on shells without the hub; the Coach tab is unaffected.
+    const offCoach = COACH_AND_WORKOUTS_ENABLED
+      ? onCoachThreadChange(({ plan: next }) => {
+          if (next) setPlan(next);
+        })
+      : () => {};
+    if (COACH_AND_WORKOUTS_ENABLED) void startCoachChatHub();
     return () => {
       alive = false;
+      offCoach();
     };
   }, []);
 

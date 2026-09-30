@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Conjure Fitness: guided workouts, run tracking, an adaptive training plan and an AI coach for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -18,7 +18,8 @@
       "vfs.write",
       "actions.write",
       "native.location",
-      "native.health"
+      "native.health",
+      "chat"
     ],
     "actions": {
       "listWorkouts": {
@@ -343,7 +344,12 @@
       "What's my next workout?",
       "Log a 30 minute run I did this morning",
       "How many days did I train this week?"
-    ]
+    ],
+    "chat": {
+      "threads": "single",
+      "title": "Coach",
+      "placeholder": "Message your coach"
+    }
   },
   "scripts": {
     "dev": "vite",
