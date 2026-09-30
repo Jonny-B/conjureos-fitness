@@ -28,6 +28,12 @@ import { measureSession, parseProgram, recordBenchmarkResult } from "./program";
 import { __resetRepository, getRepository } from "../../data/repository";
 import { commitNewPlan, recordManualBenchmarkEntry, recordSessionAndAdapt } from "./planService";
 import { todayISO } from "../diary";
+import { vfs } from "../../bridge/vfs";
+
+// With no `window`, vfs is an in-memory store that outlives each test's repository.
+beforeEach(async () => {
+  await vfs.rm("store.json");
+});
 
 // ── Fixtures ────────────────────────────────────────────────────────────
 
