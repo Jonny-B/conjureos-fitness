@@ -220,7 +220,7 @@ describe("createPlan calorie target by mode", () => {
     dailyCalorieTarget: 2000,
     goals: [
       { label: "Log how you feel each day", kind: "habit" },
-      { label: "Take a short walk", kind: "habit" },
+      { label: "Note your energy each evening", kind: "habit" },
       { label: "Sleep on a regular schedule", kind: "habit" },
     ],
   });

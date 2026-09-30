@@ -3,6 +3,7 @@ import type { Profile } from "../types";
 import { getRepository, __resetRepository } from "../data/repository";
 import { recordAiJournalConsent, withdrawAiJournalConsent, hasAiJournalConsent } from "../features/aiConsent";
 import { saveProfileUnits } from "./SettingsSheet";
+import { vfs } from "../bridge/vfs";
 
 const profile: Profile = {
   sex: "male",
@@ -15,7 +16,9 @@ const profile: Profile = {
 };
 
 describe("saveProfileUnits writes onto the stored profile, not App's cached copy", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // With no `window`, vfs is an in-memory store that outlives each test's repository.
+    await vfs.rm("store.json");
     __resetRepository();
   });
 
