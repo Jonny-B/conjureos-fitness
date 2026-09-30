@@ -16,6 +16,7 @@ import { BurnEstimate } from "./BurnEstimate";
 import { HoldButton } from "../components/HoldButton";
 import { ChevronLeft } from "../components/icons";
 import { fmtClock } from "../features/units";
+import { heldSeconds, liveSeconds, type StepTimer } from "./runnerTimer";
 
 // Shared workout helpers — used by both the Workouts library and the Plan tab's
 // program section, so they live with the runner that all workouts flow through.
@@ -182,7 +183,10 @@ function StrengthPlayer({
   const startedAtRef = useRef<number>(Date.now());
 
   const [index, setIndex] = useState(0);
-  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  // The countdown is tagged with its step index so the 0 left by a step that
+  // just ended is never mistaken for the next step's countdown.
+  const [timer, setTimer] = useState<StepTimer | null>(null);
+  const secondsLeft = liveSeconds(timer, index);
   const [running, setRunning] = useState(true);
   // Global pause: an overlay that stops timers and offers Resume or a
   // deliberate hold-to-finish (so a stray tap can't end the workout).
@@ -198,9 +202,14 @@ function StrengthPlayer({
   const stepStartRef = useRef<string>(new Date().toISOString());
   const indexRef = useRef(0);
   const entryRef = useRef<SetEntry>({});
+  const secondsLeftRef = useRef<number | null>(null);
   useEffect(() => {
     entryRef.current = entry;
   }, [entry]);
+  // Declared before the tick effect so it is current when that effect advances.
+  useEffect(() => {
+    secondsLeftRef.current = secondsLeft;
+  }, [secondsLeft]);
 
   // Load prior sessions once, for "last time" + overload suggestions.
   useEffect(() => {
@@ -218,22 +227,25 @@ function StrengthPlayer({
     s?.kind === "work" && s.durationSec == null;
 
   // Record the currently-active work step from the entered values (rep/weighted)
-  // or the prescribed duration (timed). Idempotent per step index.
+  // or the seconds actually held (timed; the full duration once the countdown
+  // finished, nothing if none was held). Idempotent per step index.
   const recordCurrent = useCallback(() => {
     const i = indexRef.current;
     const s = steps[i];
     if (!s || s.kind !== "work" || recordedRef.current.has(i)) return;
+    const timed = s.durationSec != null;
+    const held = timed ? heldSeconds(s.durationSec!, secondsLeftRef.current) : 0;
+    if (timed && held <= 0) return;
     recordedRef.current.add(i);
     const key = normalizeExerciseKey(s.exerciseName);
     const bucket =
       actualsRef.current.get(key) ??
       { exerciseKey: key, name: s.exerciseName, sets: [], order: s.exerciseIndex };
-    const timed = s.durationSec != null;
     const e = entryRef.current;
     bucket.sets.push({
       reps: timed ? undefined : e.reps ?? s.reps ?? undefined,
       weightKg: timed ? undefined : e.weightKg ?? s.weightKg,
-      durationSec: timed ? s.durationSec ?? undefined : undefined,
+      durationSec: timed ? held : undefined,
       rpe: e.rpe,
       startedAt: stepStartRef.current,
       completedAt: new Date().toISOString(),
@@ -254,14 +266,17 @@ function StrengthPlayer({
     });
   }, [recordCurrent, steps.length]);
 
-  const finish = useCallback(() => {
-    recordCurrent();
+  const finishWorkout = useCallback((recordInProgress: boolean) => {
+    if (recordInProgress) recordCurrent();
     const by = buildByExercise();
     const elapsedSec = Math.round((Date.now() - startedAtRef.current) / 1000);
     if (by.length === 0) onCancel();
     else onFinish(by, elapsedSec);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordCurrent, onCancel, onFinish]);
+  const finish = useCallback(() => finishWorkout(true), [finishWorkout]);
+  // Ending from the pause overlay saves only sets that were completed.
+  const finishFromPause = useCallback(() => finishWorkout(false), [finishWorkout]);
 
   // Initialize each step: countdown for timed/rest, prefill the recorder for
   // rep sets from the prescription then last time.
@@ -269,9 +284,9 @@ function StrengthPlayer({
     if (!step) return;
     indexRef.current = index;
     stepStartRef.current = new Date().toISOString();
-    if (step.kind === "rest") setSecondsLeft(step.durationSec);
-    else if (step.durationSec != null) setSecondsLeft(step.durationSec);
-    else setSecondsLeft(null);
+    if (step.kind === "rest") setTimer({ index, left: step.durationSec });
+    else if (step.durationSec != null) setTimer({ index, left: step.durationSec });
+    else setTimer(null);
     setRunning(true);
     if (isRepStep(step)) {
       const last = lastSetFor(sessions, normalizeExerciseKey(step.exerciseName));
@@ -293,9 +308,12 @@ function StrengthPlayer({
       return;
     }
     if (secondsLeft <= 3) beep("tick");
-    const t = setTimeout(() => setSecondsLeft((s) => (s == null ? s : s - 1)), 1000);
+    const t = setTimeout(
+      () => setTimer((c) => (c && c.index === index ? { index, left: c.left - 1 } : c)),
+      1000,
+    );
     return () => clearTimeout(t);
-  }, [running, secondsLeft, advance, beep, step?.kind]);
+  }, [running, secondsLeft, index, advance, beep, step?.kind]);
 
   if (!step) return null;
 
@@ -328,7 +346,7 @@ function StrengthPlayer({
             >
               Resume
             </button>
-            <HoldButton label="Hold to finish" className="btn block" onComplete={finish} />
+            <HoldButton label="Hold to finish" className="btn block" onComplete={finishFromPause} />
             <button className="link-btn danger-text" onClick={onCancel}>
               Discard workout
             </button>
@@ -358,7 +376,7 @@ function StrengthPlayer({
           )}
 
           {step.notes && <div className="player-notes">{step.notes}</div>}
-          <ExplainerDropdown name={step.exerciseName} />
+          <ExplainerDropdown key={normalizeExerciseKey(step.exerciseName)} name={step.exerciseName} />
         </div>
       ) : (
         <div className="player-body">
