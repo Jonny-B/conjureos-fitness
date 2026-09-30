@@ -6,7 +6,7 @@
  */
 
 import type { Plan } from "../../types";
-import { readJson, writeJsonOrThrow } from "../../bridge/vfs";
+import { readJsonStrict, writeJsonOrThrow } from "../../bridge/vfs";
 import { reportSaveFailure } from "../../data/saveFailure";
 import { EMPTY_MEMORY, type CoachEvent, type CoachMemory, type CoachMetric } from "./model";
 
@@ -17,15 +17,28 @@ const MAX_NOTES = 40;
 const MAX_EVENTS = 100;
 const MAX_METRICS = 200;
 
+/** Strict read: throws when coach.json exists but cannot be read, so a
+ *  read-modify-write never replaces it with a blank memory. Always returns a
+ *  fresh object, never the shared EMPTY_MEMORY (remember() mutates it). */
+async function readMemory(): Promise<CoachMemory> {
+  const m = await readJsonStrict<CoachMemory | null>(MEMORY_PATH, null);
+  if (!m || m.v !== 1 || !Array.isArray(m.notes)) return structuredClone(EMPTY_MEMORY);
+  if (!Array.isArray(m.events)) m.events = [];
+  if (!Array.isArray(m.metrics)) m.metrics = [];
+  return m;
+}
+
 /**
  * Read the coach's durable memory of the user. Returns a fresh empty memory
- * — never null and never throws — when the file is missing, corrupt, or
- * written by an older schema version.
+ * — never null and never throws — when the file is missing, unreadable,
+ * corrupt, or written by an older schema version.
  */
 export async function loadMemory(): Promise<CoachMemory> {
-  const m = await readJson<CoachMemory>(MEMORY_PATH, EMPTY_MEMORY);
-  if (!m || m.v !== 1 || !Array.isArray(m.notes)) return structuredClone(EMPTY_MEMORY);
-  return m;
+  try {
+    return await readMemory();
+  } catch {
+    return structuredClone(EMPTY_MEMORY);
+  }
 }
 
 /** An incremental update to coach memory. Every field is merge-only: nothing
@@ -40,9 +53,20 @@ export interface MemoryPatch {
   metrics?: CoachMetric[];
 }
 
-/** Load → merge the patch → save → return the merged memory. */
+/** Load → merge the patch → save → return the merged memory. When coach.json
+ *  exists but cannot be read, nothing is written (that would replace the
+ *  remembered notes with just this patch): the failure is reported and the
+ *  patch is merged into a blank memory for the caller only. */
 export async function remember(patch: MemoryPatch): Promise<CoachMemory> {
-  const m = await loadMemory();
+  let m: CoachMemory;
+  let readable = true;
+  try {
+    m = await readMemory();
+  } catch (err) {
+    readable = false;
+    reportSaveFailure("what your coach remembers", err);
+    m = structuredClone(EMPTY_MEMORY);
+  }
   const seen = new Set(m.notes.map((n) => n.toLowerCase()));
   for (const raw of patch.notes ?? []) {
     const note = raw.trim().slice(0, 160);
@@ -55,6 +79,7 @@ export async function remember(patch: MemoryPatch): Promise<CoachMemory> {
   if (patch.summary?.trim()) m.summary = patch.summary.trim().slice(0, 600);
   if (patch.events?.length) m.events = [...patch.events, ...m.events].slice(0, MAX_EVENTS);
   if (patch.metrics?.length) m.metrics = [...patch.metrics, ...m.metrics].slice(0, MAX_METRICS);
+  if (!readable) return m;
   try {
     await writeJsonOrThrow(MEMORY_PATH, m);
   } catch (err) {
