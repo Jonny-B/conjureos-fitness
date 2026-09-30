@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SleepEntry, SymptomEntry, WaterEntry, WeightEntry } from "../types";
+import { NUTRITION_ENABLED } from "../features/flags";
 
 type Handler = (params?: unknown) => Promise<unknown>;
 
@@ -68,8 +69,10 @@ beforeEach(async () => {
       },
     },
   };
+  // The food handlers are off in Conjure Fitness but still tested, so ask for
+  // them explicitly (see registerActions' includeNutrition).
   const { registerActions } = await import("./actions");
-  await registerActions();
+  await registerActions({ includeNutrition: true });
 });
 
 const call = (name: string, params?: unknown) => {
@@ -85,10 +88,20 @@ describe("what the orchestrator can reach", () => {
     // The manifest is what the host validates against, so a handler without a
     // schema is unreachable and a schema without a handler is a broken promise.
     const pkg = (await import("../../package.json")) as unknown as {
-      default: { conjureos: { actions: Record<string, unknown> } };
+      default: { conjureos: { actions?: Record<string, unknown> } };
     };
-    const declared = Object.keys(pkg.default.conjureos.actions).sort();
-    expect(Object.keys(actions).sort()).toEqual(declared);
+    const declared = Object.keys(pkg.default.conjureos.actions ?? {}).sort();
+    // What App actually registers: the default, not the test's food-inclusive set.
+    let published: Record<string, Handler> = {};
+    (globalThis as { window?: unknown }).window = {
+      __conjureos: { actions: { register: async (map: Record<string, Handler>) => void (published = map) } },
+    };
+    const { registerActions } = await import("./actions");
+    await registerActions();
+    expect(Object.keys(published).sort()).toEqual(declared);
+    // Conjure Fitness declares exactly its four fitness actions.
+    expect(NUTRITION_ENABLED).toBe(false);
+    expect(declared).toEqual(["listWorkouts", "logWorkout", "nextWorkout", "trainingSummary"]);
   });
 
   it("does not expose consent, the pattern-finder, bulk clears, or goal writes", () => {

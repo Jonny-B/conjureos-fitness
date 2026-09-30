@@ -22,23 +22,29 @@ import { AddFoodScreen, type AddMode } from "./screens/AddFoodScreen";
 import { PlanScreen } from "./screens/PlanScreen";
 import { JournalScreen } from "./screens/JournalScreen";
 import { WorkoutsScreen } from "./screens/WorkoutsScreen";
-import { COACH_AND_WORKOUTS_ENABLED } from "./features/flags";
+import { COACH_AND_WORKOUTS_ENABLED, NUTRITION_ENABLED } from "./features/flags";
+import { HomeScreen } from "./screens/HomeScreen";
 import { CoachScreen } from "./screens/CoachScreen";
 import { SettingsSheet, type SettingsView } from "./screens/SettingsSheet";
 import { AppHeader } from "./components/AppHeader";
 import { SaveFailedNotice } from "./components/SaveFailedNotice";
 import {
   AddIcon,
-  AppleIcon,
   CalendarIcon,
+  CoachIcon,
   DiaryIcon,
+  HomeIcon,
   TrendsIcon,
   WorkoutsIcon,
 } from "./components/icons";
 import { MEAL_LABELS } from "./types";
 import type { ComponentType } from "react";
 
-type Tab = "diary" | "meal" | "add" | "plan" | "journal" | "workouts" | "coach";
+type Tab = "home" | "diary" | "meal" | "add" | "plan" | "journal" | "workouts" | "coach";
+
+/** Where the app opens, and where it returns after building a plan. With food
+ *  tracking off (features/flags) the Diary is unreachable, so Home it is. */
+const START_TAB: Tab = NUTRITION_ENABLED ? "diary" : "home";
 
 /** Sensible default meal when opening Add from the tab bar (no meal context) —
  *  by time of day. The user can still switch it in the Add screen. */
@@ -59,7 +65,7 @@ function mealForNow(): MealType {
  * mounted children re-read; that's the app-wide invalidation signal.
  */
 export function App() {
-  const [tab, setTab] = useState<Tab>("diary");
+  const [tab, setTab] = useState<Tab>(START_TAB);
   const [date, setDate] = useState<string>(todayISO());
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -122,6 +128,8 @@ export function App() {
       setPlan(existingPlan);
       setReady(true);
     })();
+    // The fitness actions always; the food ones only while food tracking is on
+    // (registerActions decides, to match what package.json declares).
     registerActions().catch(() => {
       /* cross-app integration is non-fatal */
     });
@@ -202,7 +210,7 @@ export function App() {
       setPlanEditor(null);
       setPlanBannerDismissed(false);
       setNonce((n) => n + 1);
-      setTab("diary");
+      setTab(START_TAB);
     },
     [plan, profile, goals],
   );
@@ -287,6 +295,18 @@ export function App() {
       </>
     ) : null;
 
+  const homeScreen = (
+    <HomeScreen
+      plan={plan}
+      units={profile?.units ?? "metric"}
+      nonce={nonce}
+      banner={banners}
+      onOpenWorkouts={() => setTab("workouts")}
+      onOpenPlan={() => setTab("plan")}
+      onAskCoach={openCoach}
+    />
+  );
+
   const diaryScreen = (
     <DiaryScreen
       date={date}
@@ -321,8 +341,10 @@ export function App() {
               ? { title: "Workouts" }
               : { title: "Exercise", onBack: () => setTab("diary") }
             : tab === "coach"
-              ? { title: "Coach", onBack: () => setTab("plan") }
-              : { title: "Conjure Health" };
+              ? NUTRITION_ENABLED
+                ? { title: "Coach", onBack: () => setTab("plan") }
+                : { title: "Coach" }
+              : { title: "Conjure Fitness" };
 
   return (
     <div className="app">
@@ -334,7 +356,9 @@ export function App() {
           <div className="center-fill">
             <div className="spinner" />
           </div>
-        ) : tab === "diary" ? (
+        ) : tab === "home" ? (
+          homeScreen
+        ) : tab === "diary" && NUTRITION_ENABLED ? (
           diaryScreen
         ) : tab === "meal" ? (
           <MealDetailScreen
@@ -385,8 +409,10 @@ export function App() {
           />
         ) : tab === "coach" && COACH_AND_WORKOUTS_ENABLED ? (
           <CoachScreen onPlanChange={setPlan} initialPrompt={coachInitialPrompt} />
-        ) : (
+        ) : NUTRITION_ENABLED ? (
           diaryScreen
+        ) : (
+          homeScreen
         )}
       </main>
 
@@ -396,14 +422,24 @@ export function App() {
             belongs — otherwise the nav starts flush against the header. */}
         <div className="rail-brand" aria-hidden>
           <span className="brand-mark">
-            <AppleIcon />
+            <WorkoutsIcon />
           </span>
-          <span className="rail-brand-name">Conjure Health</span>
+          <span className="rail-brand-name">Conjure Fitness</span>
         </div>
-        <TabButton label="Diary" Icon={DiaryIcon} active={tab === "diary" || tab === "meal"} onClick={() => setTab("diary")} />
-        <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(mealForNow())} />
-        <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan" || tab === "coach"} onClick={() => setTab("plan")} />
-        <TabButton label="Journal" Icon={CalendarIcon} active={tab === "journal"} onClick={() => setTab("journal")} />
+        {NUTRITION_ENABLED ? (
+          <>
+            <TabButton label="Diary" Icon={DiaryIcon} active={tab === "diary" || tab === "meal"} onClick={() => setTab("diary")} />
+            <TabButton label="Add" Icon={AddIcon} active={tab === "add"} onClick={() => openAdd(mealForNow())} />
+            <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan" || tab === "coach"} onClick={() => setTab("plan")} />
+            <TabButton label="Journal" Icon={CalendarIcon} active={tab === "journal"} onClick={() => setTab("journal")} />
+          </>
+        ) : (
+          <>
+            <TabButton label="Home" Icon={HomeIcon} active={tab === "home"} onClick={() => setTab("home")} />
+            <TabButton label="Plan" Icon={TrendsIcon} active={tab === "plan"} onClick={() => setTab("plan")} />
+            <TabButton label="Coach" Icon={CoachIcon} active={tab === "coach"} onClick={() => openCoach()} />
+          </>
+        )}
         {!loggingOnly && COACH_AND_WORKOUTS_ENABLED && (
           <TabButton label="Workouts" Icon={WorkoutsIcon} active={tab === "workouts"} onClick={() => setTab("workouts")} />
         )}

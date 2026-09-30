@@ -171,7 +171,7 @@ export async function askCoach(question: string, history: CoachChatItem[] = []):
   const q = question.trim();
   if (!q) return "";
   if (!isAiAvailable()) {
-    return "I need the ConjureOS AI service to answer, and it isn't available right now. Open Conjure Health inside ConjureOS and try again.";
+    return "I need the ConjureOS AI service to answer, and it isn't available right now. Open Conjure Fitness inside ConjureOS and try again.";
   }
 
   const ctx = await askContext();

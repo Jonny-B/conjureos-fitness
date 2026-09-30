@@ -3,26 +3,24 @@ name: Publish to ConjureOS App Store
 # Builds Conjure Fitness to a single self-contained HTML file and publishes a
 # new App Store version via the shared composite action in the conjureos repo.
 #
-# Two Supabase projects (Phase 24 split), selected by trigger:
-#   - workflow_dispatch  -> DEV  project (test against dev.conjureos.pages.dev)
-#   - release published  -> PROD project (ships to real users)
+# DEV ONLY for now (owner decision, 2026-09-28): the one trigger is Run
+# workflow, and it publishes to the DEV project (dev.conjureos.pages.dev).
+# There is no release trigger and no prod option. To ship to prod later, add
+# them back the way Jonny-B/conjureos-health's workflow has them.
 #
-# Only secret you must add per repo is the bot password (dev + prod). URL is
-# derived from the existing SUPABASE_DEV/PROD_PROJECT_REF secrets; anon key + bot
-# email are public/non-secret and inlined below. See ANCHOR_APP_CI_SETUP.md in
-# the conjureos repo.
+# The store slug is `conjure-fitness`, a new listing. NEVER set it back to
+# `fitness`: that slug is Conjure Health's listing (Jonny-B/conjureos-health),
+# and publishing to it would replace Health for everyone who has it installed.
+#
+# Secrets this repo needs (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_DEV_PROJECT_REF, PUBLISH_BOT_DEV_PASSWORD
+#   CONJUREOS_REPO_TOKEN  (read-only access to Jonny-B/ConjureOS, see below)
+# The anon key + bot email are public/non-secret and inlined below. See
+# ANCHOR_APP_CI_SETUP.md in the conjureos repo.
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
-      target:
-        description: Which project to publish to
-        required: true
-        default: dev
-        type: choice
-        options: [dev, prod]
       changelog:
         description: Changelog for this version
         required: false
@@ -48,47 +46,23 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      # Two build steps, gated by trigger, so the bundle bakes the right Supabase
-      # URL + anon key for the target project. Anon keys are public by design
-      # (shipped in every browser); RLS gates everything. The client SDK needs
-      # them to call the health-foods-db Edge Function.
-      - name: Build single-file HTML (dev project)
-        if: github.event_name == 'workflow_dispatch' && inputs.target != 'prod'
-        env:
-          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_DEV_PROJECT_REF }}.supabase.co
-          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xcHZqbHN5d3JwdGVmZ3d1enRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTA3OTMsImV4cCI6MjA5NTQ4Njc5M30.ITZjX5KkMNgbJuFEHS5-IqFFJC6A39OynVgOznZeqD8
-        run: npm run build:inline
-
-      - name: Build single-file HTML (prod project)
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'prod')
-        env:
-          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
-          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50Z2VsYnRlcGVjcXNxbG94bWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTkzMzEsImV4cCI6MjA5MzY3NTMzMX0.fgRCszkeAbHANaK-JJAGmTwWHyOh-3b6-od1c3s3V0w
+      # No VITE_SUPABASE_* here: the app never uses the shared backend (its
+      # `fitness` schema is Conjure Health's; see src/data/repository.ts).
+      - name: Build single-file HTML
         run: npm run build:inline
 
       - name: Resolve changelog
         id: changelog
-        # Read release/dispatch text via env vars, NOT ${{ }} interpolation:
-        # backticks and quotes in release notes (e.g. `npm packages`) otherwise
-        # land in the shell as command substitution and crash with exit 127.
-        # Same fix conjureos-app-recipes' workflow took (DECISIONS 2026-06-21).
+        # Read the dispatch text via an env var, NOT ${{ }} interpolation:
+        # backticks and quotes otherwise land in the shell as command
+        # substitution (same fix conjureos-app-recipes took, DECISIONS
+        # 2026-06-21).
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          RELEASE_BODY: ${{ github.event.release.body }}
-          RELEASE_NAME: ${{ github.event.release.name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
           DISPATCH_INPUT: ${{ github.event.inputs.changelog }}
         run: |
-          if [ "$EVENT_NAME" = "release" ]; then
-            text="$RELEASE_BODY"
-            [ -z "$text" ] && text="$RELEASE_NAME"
-            [ -z "$text" ] && text="$RELEASE_TAG"
-          else
-            text="$DISPATCH_INPUT"
-          fi
           {
             echo "text<<__CHANGELOG__"
-            echo "$text"
+            echo "$DISPATCH_INPUT"
             echo "__CHANGELOG__"
           } >> "$GITHUB_OUTPUT"
 
@@ -104,9 +78,7 @@ jobs:
           token: ${{ secrets.CONJUREOS_REPO_TOKEN }}
           path: .conjureos
 
-      # workflow_dispatch -> DEV project. Test path; publishes to dev users.
       - name: Publish to App Store (dev)
-        if: github.event_name == 'workflow_dispatch' && inputs.target != 'prod'
         uses: ./.conjureos/.github/actions/publish-anchor-app
         with:
           supabase-url: https://${{ secrets.SUPABASE_DEV_PROJECT_REF }}.supabase.co
@@ -115,18 +87,5 @@ jobs:
           bot-email: conjureosbot@gmail.com
           bot-password: ${{ secrets.PUBLISH_BOT_DEV_PASSWORD }}
           html-path: dist/index.html
-          slug: fitness
-          changelog: ${{ steps.changelog.outputs.text }}
-
-      # release published -> PROD project. Ships to real users.
-      - name: Publish to App Store (prod)
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'prod')
-        uses: ./.conjureos/.github/actions/publish-anchor-app
-        with:
-          supabase-url: https://${{ secrets.SUPABASE_PROD_PROJECT_REF }}.supabase.co
-          supabase-anon-key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50Z2VsYnRlcGVjcXNxbG94bWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTkzMzEsImV4cCI6MjA5MzY3NTMzMX0.fgRCszkeAbHANaK-JJAGmTwWHyOh-3b6-od1c3s3V0w
-          bot-email: conjureosbot@gmail.com
-          bot-password: ${{ secrets.PUBLISH_BOT_PROD_PASSWORD }}
-          html-path: dist/index.html
-          slug: fitness
+          slug: conjure-fitness
           changelog: ${{ steps.changelog.outputs.text }}

@@ -1,10 +1,29 @@
-# Conjure Health, an app for ConjureOS
+# Conjure Fitness, an app for ConjureOS
 
-> **ACTIVE (relaunched 2026-07-11).** Back in development and returning to the
-> App Stores. See [STATUS.md](STATUS.md) for what shipped, what is in flight, and
-> the current focus.
-
-> Renamed from "Conjure Fitness" on 2026-06-24 as v2 (plan wizard + daily check-off home + AI workout coach) was scoped. Slug `fitness` + repo `conjureos-fitness` unchanged for now to avoid a disruptive App Store re-publish; revisit when v2 publishes.
+> **Split from Conjure Health on 2026-09-28. DEV ONLY for now.** This repo is
+> Conjure Fitness: guided workouts, run tracking, an adaptive training plan and
+> an AI coach. Calorie and food tracking moved to Conjure Health, which lives in
+> [conjureos-health](https://github.com/Jonny-B/conjureos-health) and keeps the
+> `fitness` store slug.
+>
+> - Store slug `conjure-fitness`, a new listing. Never publish to `fitness`:
+>   that would replace Conjure Health for everyone who has it installed.
+> - Publishes to the DEV store only (Actions → Run workflow). There is no
+>   release/prod trigger yet. The dev listing was created 2026-09-28 (store
+>   app id `57a80973-e0e2-4c75-97a2-cbe3691ee56e`, featured, v1 = `0.1.0`), so
+>   never run `--first-publish` for `conjure-fitness` on dev again. Prod has no
+>   listing yet. Bump `version` above the live one before every Run workflow.
+> - `src/features/flags.ts`: `COACH_AND_WORKOUTS_ENABLED` is on and
+>   `NUTRITION_ENABLED` is off. The food code is still here, just unreachable;
+>   the app opens on a new Home screen (`src/screens/HomeScreen.tsx`).
+> - No shared backend: the Supabase `fitness` schema is Health's, so this app
+>   keeps its data in its local store (`src/data/repository.ts`).
+> - Cross-app actions (0.2.0): `listWorkouts`, `trainingSummary`,
+>   `nextWorkout` and `logWorkout`, documented in [ACTIONS.md](ACTIONS.md).
+>   `listWorkouts` feeds Conjure Health's calorie ring through its
+>   `workoutSource` need; its `returns` schema is a contract.
+>
+> Everything below describes the app as it was before the split.
 
 Calorie, nutrition, weight, and fitness tracking. A My Net Diary-style daily
 tracker: log food by search, barcode, or plain language; see calories + macros
