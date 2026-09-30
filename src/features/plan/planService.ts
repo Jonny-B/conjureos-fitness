@@ -27,6 +27,7 @@ import { DEFAULT_PROFILE } from "../../types";
 import { getRepository } from "../../data/repository";
 import { persist } from "../../data/saveFailure";
 import { newId } from "../../data/id";
+import { todayISO } from "../diary";
 import { measureSession, recordBenchmarkResult } from "./program";
 import { calibrateToBenchmark, maybeAdapt } from "./analyze";
 import { advanceToNextGroup, setWorkoutDone } from "./groups";
@@ -134,12 +135,22 @@ export async function commitNewPlan(
   ctx: { body?: WizardBody; currentProfile: Profile | null; currentGoals: Goals },
 ): Promise<CommitResult> {
   const repo = await getRepository();
+  // Seed the adaptation cursor with the sessions already logged, so a new plan
+  // waits for its OWN first few sessions instead of adapting off old history.
+  if (plan.program) {
+    const logged = await repo.listWorkoutSessions().catch(() => [] as WorkoutSession[]);
+    plan = { ...plan, program: { ...plan.program, analysisCursor: logged.length } };
+  }
   await persist("your plan", repo.savePlan(plan));
 
-  let profile = ctx.currentProfile;
+  // The caller's profile is a cached copy: consent (and anything else written
+  // straight to the store since) may have moved on. Build on what is stored.
+  const stored = await repo.getProfile().catch(() => null);
+  const current = stored ?? ctx.currentProfile;
+  let profile = current;
   const b = ctx.body;
   if (b && (b.heightCm != null || b.weightKg != null || b.sex != null || b.age != null)) {
-    profile = mergeBodyIntoProfile(ctx.currentProfile ?? DEFAULT_PROFILE, b);
+    profile = mergeBodyIntoProfile(current ?? DEFAULT_PROFILE, b);
   }
   // ALWAYS persist a profile once a plan exists — never leave store.json.profile
   // null. A null profile makes the cog fall back to DEFAULT_PROFILE (and older
@@ -242,14 +253,14 @@ const normGoal = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
  * goal weight, activity, experience, days/week, equipment) is a tune of the
  * same plan → modify in place, keeping the plan id + program/group progress.
  *
- * Legacy plans created before `goalText` was persisted can't be diffed on text,
- * so for those only mode/start-date fork a new plan (a freshly typed goal won't
- * surprise-archive an old plan the user is just tweaking).
+ * A plan with no stored `goalText` (made with the box blank, or before it was
+ * persisted) counts as having an empty goal, so typing one later forks a new
+ * plan instead of being silently dropped by the in-place edit.
  */
 export function decidePlanEdit(plan: Plan, next: PlanEditAnswers): PlanEditDecision {
   if (next.mode !== plan.mode) return "new";
   if (next.startDate !== plan.startDate) return "new";
-  if (plan.goalText != null && normGoal(next.goalText) !== normGoal(plan.goalText)) return "new";
+  if (normGoal(next.goalText) !== normGoal(plan.goalText ?? "")) return "new";
   return "modify";
 }
 
@@ -270,8 +281,10 @@ export async function modifyPlanInPlace(
   patch: { endDate?: string; durationWeeks?: number; weeklyExerciseDays?: number },
   ctx: { currentProfile: Profile | null; currentGoals: Goals },
 ): Promise<CommitResult> {
-  const profile = mergeBodyIntoProfile(ctx.currentProfile ?? DEFAULT_PROFILE, body);
   const repo = await getRepository();
+  // Build on the stored profile, not the caller's cached copy (see commitNewPlan).
+  const stored = await repo.getProfile().catch(() => null);
+  const profile = mergeBodyIntoProfile(stored ?? ctx.currentProfile ?? DEFAULT_PROFILE, body);
   await persist("your profile", repo.saveProfile(profile));
 
   const targets: PlanTargets = modeTracksFood(plan.mode)
@@ -309,7 +322,12 @@ export async function recordSessionAndAdapt(
   },
 ): Promise<Plan | null> {
   const repo = await getRepository();
-  await persist("this workout", repo.saveWorkoutSession(session));
+  // persist already told the user; throw so the caller stops (no reflection, no
+  // check-off for a session that was never stored) and can retry. Saving is
+  // idempotent by session id.
+  if (!(await persist("this workout", repo.saveWorkoutSession(session)))) {
+    throw new Error("workout not saved");
+  }
   if (!plan?.program) return plan;
 
   const measuresBenchmark = Boolean(session.benchmarkId || session.benchmarkIds?.length);
@@ -335,7 +353,9 @@ export async function recordSessionAndAdapt(
   }
 
   try {
-    const sessions = await repo.listWorkoutSessions(200);
+    // The FULL list: its length is the lifetime count the adaptation cursor
+    // compares against (the prompt only reads the newest few).
+    const sessions = await repo.listWorkoutSessions();
     // Feed the coach's memory of the user (stated dislikes/constraints + recent
     // reflections) into the program engine so adaptation honors their feedback.
     const prefs = await coachPreferences();
@@ -421,9 +441,12 @@ export async function applyCoachPlanChange(
   let nextProfile = profile;
   const patch: PlanPatch = {};
 
-  if (change.goalWeightKg != null && Number.isFinite(change.goalWeightKg) && profile) {
-    const gw = Math.round(clamp(change.goalWeightKg, 25, 400) * 10) / 10;
-    nextProfile = { ...profile, goalWeightKg: gw, direction: deriveDirection(profile.weightKg, gw) };
+  const goalWeightChange = change.goalWeightKg != null && Number.isFinite(change.goalWeightKg);
+  // Build on the stored profile, not the caller's cached copy (see commitNewPlan).
+  const base = goalWeightChange ? ((await repo.getProfile().catch(() => null)) ?? profile) : profile;
+  if (goalWeightChange && base) {
+    const gw = Math.round(clamp(change.goalWeightKg!, 25, 400) * 10) / 10;
+    nextProfile = { ...base, goalWeightKg: gw, direction: deriveDirection(base.weightKg, gw) };
     await persist("your profile", repo.saveProfile(nextProfile));
     if (modeTracksFood(plan.mode)) patch.targets = goalsToTargets(recommendGoals(nextProfile));
   }
@@ -495,7 +518,10 @@ export async function recordManualBenchmarkEntry(
 
   const session: WorkoutSession = {
     id: newId(),
-    date: now.slice(0, 10),
+    date: todayISO(),
+    // Recalled numbers, not a workout done today: saved for the program, but
+    // kept out of the cross-app workout list and training summary.
+    source: "benchmark_entry",
     planned: [],
     actual: [],
     reprompts: [],

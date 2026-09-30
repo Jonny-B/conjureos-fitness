@@ -752,8 +752,9 @@ export interface WorkoutSession {
    *  log, or the in-app post-workout estimate. Feeds the diary's exercise-
    *  calories add-back. Additive/optional. */
   caloriesBurned?: number;
-  /** Where the session came from. Absent = in-app player (default). */
-  source?: "manual" | "healthkit" | "health_connect" | "logWorkout";
+  /** Where the session came from. Absent = in-app player (default).
+   *  "benchmark_entry" = results typed in on the Plan tab: not a performed workout. */
+  source?: "manual" | "healthkit" | "health_connect" | "logWorkout" | "benchmark_entry";
   /** Free-text activity a caller named when logging it from another app
    *  ("running", "yoga"). Additive; absent on sessions from the player. */
   activity?: string;

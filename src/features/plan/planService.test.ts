@@ -102,9 +102,13 @@ describe("decidePlanEdit", () => {
     // Goal text differing only by whitespace/case is NOT a change.
     expect(decidePlanEdit(base, { mode: base.mode, goalText: "  Lose weight and get better at the HALF Murph ", startDate: base.startDate })).toBe("modify");
   });
-  it("ignores goal text for legacy plans that never stored it", () => {
-    const legacy: Plan = { ...plan }; // no goalText
-    expect(decidePlanEdit(legacy, { mode: legacy.mode, goalText: "a freshly typed goal", startDate: legacy.startDate })).toBe("modify");
+  it("forks a new plan when a goal is typed on a plan that had none", () => {
+    const blank: Plan = { ...plan }; // created with the goal box empty (no goalText)
+    expect(decidePlanEdit(blank, { mode: blank.mode, goalText: "lose 10 lb for the wedding", startDate: blank.startDate })).toBe("new");
+  });
+  it("still modifies in place when a plan with no goal text is edited with the box blank", () => {
+    const blank: Plan = { ...plan };
+    expect(decidePlanEdit(blank, { mode: blank.mode, goalText: "  ", startDate: blank.startDate })).toBe("modify");
   });
 });
 
@@ -212,5 +216,50 @@ describe("applyCoachPlanChange", () => {
   it("returns null when nothing valid is provided", async () => {
     const res = await applyCoachPlanChange(plan, cogProfile, goals, { summary: "noop" });
     expect(res).toBeNull();
+  });
+});
+
+// ── Profile writes build on the STORED profile, not the caller's cached copy ──
+describe("profile read-modify-writes re-read the store", () => {
+  beforeEach(() => __resetRepository());
+  const goals = { calories: 2100, protein: 150, carbs: 200, fat: 70 };
+  const withConsent: Profile = { ...cogProfile, aiJournalConsent: { acceptedAt: "2026-07-01T00:00:00Z", version: 1, includeNotes: false } };
+
+  it("commitNewPlan keeps a consent withdrawn after the caller cached its profile", async () => {
+    const repo = await getRepository();
+    await repo.saveProfile(cogProfile); // stored: consent withdrawn
+    const res = await commitNewPlan(plan, { currentProfile: withConsent, currentGoals: goals });
+    expect((await repo.getProfile())?.aiJournalConsent).toBeUndefined();
+    expect(res.profile?.aiJournalConsent).toBeUndefined();
+  });
+
+  it("commitNewPlan keeps a consent granted after the caller cached its profile", async () => {
+    const repo = await getRepository();
+    await repo.saveProfile(withConsent);
+    await commitNewPlan(plan, { currentProfile: cogProfile, currentGoals: goals });
+    expect((await repo.getProfile())?.aiJournalConsent).toBeDefined();
+  });
+
+  it("commitNewPlan falls back to the passed profile when nothing is stored", async () => {
+    const res = await commitNewPlan(plan, { currentProfile: cogProfile, currentGoals: goals });
+    expect(res.profile).toMatchObject({ age: 45, heightCm: 180 });
+  });
+
+  it("modifyPlanInPlace builds on the stored profile", async () => {
+    const repo = await getRepository();
+    await repo.saveProfile(cogProfile);
+    await modifyPlanInPlace(plan, { weightKg: 84 }, {}, { currentProfile: withConsent, currentGoals: goals });
+    const stored = await repo.getProfile();
+    expect(stored?.weightKg).toBe(84);
+    expect(stored?.aiJournalConsent).toBeUndefined();
+  });
+
+  it("applyCoachPlanChange builds on the stored profile", async () => {
+    const repo = await getRepository();
+    await repo.saveProfile(cogProfile);
+    const res = await applyCoachPlanChange(plan, withConsent, goals, { summary: "x", goalWeightKg: 74 });
+    expect((await repo.getProfile())?.aiJournalConsent).toBeUndefined();
+    expect(res!.profile?.aiJournalConsent).toBeUndefined();
+    expect(res!.profile?.goalWeightKg).toBe(74);
   });
 });

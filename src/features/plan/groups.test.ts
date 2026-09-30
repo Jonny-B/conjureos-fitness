@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Benchmark, Plan, ProgramWorkout, WorkoutProgram, WorkoutSession } from "../../types";
 
 // Deterministic AI: the progression call returns a small valid adjustment.
@@ -25,8 +25,9 @@ import {
   workoutsInGroup,
 } from "./groups";
 import { measureSession, parseProgram, recordBenchmarkResult } from "./program";
-import { __resetRepository } from "../../data/repository";
-import { recordManualBenchmarkEntry } from "./planService";
+import { __resetRepository, getRepository } from "../../data/repository";
+import { commitNewPlan, recordManualBenchmarkEntry, recordSessionAndAdapt } from "./planService";
+import { todayISO } from "../diary";
 
 // ── Fixtures ────────────────────────────────────────────────────────────
 
@@ -271,5 +272,99 @@ describe("manual benchmark entry", () => {
       { benchmarkId: "nope", value: 10 },
     ]);
     expect(next).toBe(plan);
+  });
+});
+
+// ── Manual entry: dated locally, marked as not-a-workout ─────────────────
+
+describe("manual benchmark entry session", () => {
+  // No @types/node in this project: reach process through globalThis.
+  const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env;
+  const realTZ = env.TZ;
+  beforeEach(() => __resetRepository());
+  afterEach(() => {
+    vi.useRealTimers();
+    if (realTZ === undefined) delete env.TZ;
+    else env.TZ = realTZ;
+  });
+
+  it("is dated by the local day and marked source 'benchmark_entry'", async () => {
+    env.TZ = "America/Los_Angeles";
+    // 01:00Z on the 30th is 18:00 on the 29th in Los Angeles.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-30T01:00:00Z"));
+    expect(todayISO()).toBe("2026-09-29");
+    await recordManualBenchmarkEntry(makePlan(makeProgram()), "pw-eval", [{ benchmarkId: "b1", value: 12 }]);
+    const saved = await (await getRepository()).listWorkoutSessions();
+    expect(saved).toHaveLength(1);
+    expect(saved[0]!.date).toBe("2026-09-29");
+    expect(saved[0]!.source).toBe("benchmark_entry");
+    // The instants stay UTC.
+    expect(saved[0]!.completedAt).toBe("2026-09-30T01:00:00.000Z");
+  });
+});
+
+// ── recordSessionAndAdapt ────────────────────────────────────────────────
+
+describe("recordSessionAndAdapt", () => {
+  beforeEach(() => {
+    __resetRepository();
+    completeMock.mockClear();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const done = (id: string, n: number): WorkoutSession => ({
+    id,
+    date: "2026-07-02",
+    planned: [],
+    actual: [],
+    reprompts: [],
+    completedAt: `2026-07-02T10:${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}Z`,
+  });
+
+  it("throws on a failed session save, before any check-off or adaptation", async () => {
+    const repo = await getRepository();
+    vi.spyOn(repo, "saveWorkoutSession").mockRejectedValue(new Error("quota"));
+    const savePlan = vi.spyOn(repo, "savePlan");
+    const plan = makePlan(makeProgram());
+    await expect(recordSessionAndAdapt(plan, done("s-fail", 0), { programWorkoutId: "pw-eval" })).rejects.toThrow(
+      /not saved/,
+    );
+    expect(savePlan).not.toHaveBeenCalled();
+    expect(completeMock).not.toHaveBeenCalled();
+  });
+
+  it("still adapts past 200 stored sessions (cursor compares the real count)", async () => {
+    const repo = await getRepository();
+    for (let i = 0; i < 303; i++) await repo.saveWorkoutSession(done(`s${i}`, i));
+    const plan = makePlan({ ...makeProgram(), analysisCursor: 200 });
+    await recordSessionAndAdapt(plan, done("s-new", 400), {});
+    expect(completeMock).toHaveBeenCalled();
+    const stored = await repo.getPlan();
+    expect(stored?.program?.analysisCursor).toBe(304);
+  });
+});
+
+describe("commitNewPlan seeds the adaptation cursor", () => {
+  beforeEach(() => __resetRepository());
+
+  it("starts a new program at the current session count, not 0", async () => {
+    const repo = await getRepository();
+    for (let i = 0; i < 41; i++) {
+      await repo.saveWorkoutSession({
+        id: `old${i}`,
+        date: "2026-06-01",
+        planned: [],
+        actual: [],
+        reprompts: [],
+        completedAt: `2026-06-01T10:00:${String(i).padStart(2, "0")}Z`,
+      });
+    }
+    const res = await commitNewPlan(makePlan(makeProgram()), {
+      currentProfile: null,
+      currentGoals: { calories: 2000, protein: 100, carbs: 200, fat: 60 },
+    });
+    expect(res.plan.program?.analysisCursor).toBe(41);
+    expect((await repo.getPlan())?.program?.analysisCursor).toBe(41);
   });
 });

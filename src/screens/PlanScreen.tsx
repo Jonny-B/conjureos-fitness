@@ -573,6 +573,8 @@ function EvalEntrySheet({
     try {
       const next = await recordManualBenchmarkEntry(plan, programWorkout.id, entries());
       onSaved(next);
+    } catch {
+      /* the save failed and the user was told; keep the sheet open to retry */
     } finally {
       setBusy(false);
     }

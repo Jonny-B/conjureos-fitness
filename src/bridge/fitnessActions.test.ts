@@ -118,6 +118,15 @@ describe("listWorkouts", () => {
     expect(r.workouts.map((w) => w.name)).toEqual(["Mine"]);
   });
 
+  it("leaves out benchmark entries: typed-in results are not a workout done", async () => {
+    db.sessions = [
+      session(today, { workoutName: "Mine", caloriesBurned: 100 }),
+      session(today, { source: "benchmark_entry", cardio: { distanceKm: 0, durationSec: 1500, source: "manual" } }),
+    ];
+    const r = (await call("listWorkouts")) as { workouts: { name: string }[] };
+    expect(r.workouts.map((w) => w.name)).toEqual(["Mine"]);
+  });
+
   it("reports stored calories as supplied, and estimates missing ones from bodyweight", async () => {
     db.profile = profile(80);
     db.sessions = [
@@ -194,6 +203,13 @@ describe("trainingSummary", () => {
       caloriesBurned: 150,
       hasPlan: true,
     });
+  });
+
+  it("does not count a benchmark entry as a workout or an active day", async () => {
+    db.sessions = [
+      session(today, { source: "benchmark_entry", cardio: { distanceKm: 0, durationSec: 1500, source: "manual" } }),
+    ];
+    expect(await call("trainingSummary")).toMatchObject({ workouts: 0, activeDays: 0, minutes: 0, caloriesBurned: 0 });
   });
 
   it("reports no goal and no plan honestly", async () => {

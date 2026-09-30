@@ -52,9 +52,11 @@ type Handler = (params?: unknown) => Promise<unknown>;
 // ── Shared ───────────────────────────────────────────────────────────
 
 /** Sessions this app recorded: the player, hand entries, and other apps'
- *  logWorkout calls. Wearable syncs are left out (see the header). */
+ *  logWorkout calls. Wearable syncs are left out (see the header), and so are
+ *  benchmark entries: results typed on the Plan tab are recalled numbers, not a
+ *  workout done, and would otherwise count as one with an estimated burn. */
 function isOwnSession(s: WorkoutSession): boolean {
-  return s.source !== "healthkit" && s.source !== "health_connect";
+  return s.source !== "healthkit" && s.source !== "health_connect" && s.source !== "benchmark_entry";
 }
 
 /** Rough MET by activity, for a burn estimate when nobody supplied one. */
