@@ -10,7 +10,8 @@
  * Matching is deliberately name-substring based (case-insensitive): the workout
  * library is name-keyed and has no movement taxonomy, so patterns are the
  * pragmatic mechanism. Patterns are lowercase; keep them broad enough to catch
- * naming variants ("squat" catches "Goblet Squat", "Split Squat").
+ * naming variants ("squat" catches "Goblet Squat", "Split Squat"). Multi-word
+ * patterns also ignore spacing and punctuation ("push-up" catches "Pushups").
  *
  * This ships in the bundle as a typed module (not JSON) so the values are
  * type-checked and there's no loader dependency.
@@ -40,12 +41,12 @@ export const INJURY_REGIONS: readonly InjuryRegion[] = [
  * exercise when it appears anywhere in the (lowercased) exercise name.
  */
 export const EXCLUDED_MOVEMENTS: Record<string, readonly string[]> = {
-  knee: ["squat", "lunge", "jump", "plyo", "step-up", "step up", "wall sit", "pistol", "burpee", "sprint"],
+  knee: ["squat", "lunge", "jump", "plyo", "step-up", "step up", "wall sit", "pistol", "burpee", "sprint", "jog", "running"],
   lower_back: ["deadlift", "good morning", "row", "sit-up", "sit up", "crunch", "toe touch", "superman", "hyperextension", "clean", "snatch"],
   shoulder: ["overhead press", "shoulder press", "military press", "push-up", "push up", "pull-up", "pull up", "dip", "handstand", "lateral raise", "upright row", "snatch", "clean"],
   neck: ["overhead press", "shoulder press", "bridge", "neck", "headstand", "handstand", "shrug"],
   wrist: ["push-up", "push up", "plank", "handstand", "burpee", "front rack", "curl", "wrist"],
-  elbow: ["curl", "dip", "push-up", "push up", "pull-up", "pull up", "chin-up", "chin up", "skullcrusher", "tricep extension", "close-grip"],
+  elbow: ["curl", "dip", "push-up", "push up", "pull-up", "pull up", "chin-up", "chin up", "skull crusher", "tricep", "close-grip"],
   hip: ["lunge", "deadlift", "squat", "hip thrust", "step-up", "step up", "leg raise", "sprint", "jump"],
   ankle: ["jump", "plyo", "calf raise", "sprint", "lunge", "box jump", "burpee", "run", "hop", "skip"],
 };
@@ -65,6 +66,24 @@ export function movementsExcludedFor(injuries: readonly string[]): string[] {
  */
 export function isExerciseExcluded(exerciseName: string, injuries: readonly string[]): boolean {
   if (injuries.length === 0) return false;
-  const name = exerciseName.toLowerCase();
-  return movementsExcludedFor(injuries).some((pattern) => name.includes(pattern));
+  const spaced = spacedForm(exerciseName);
+  const compact = spaced.replace(/ /g, "");
+  return movementsExcludedFor(injuries).some((pattern) => {
+    const p = spacedForm(pattern);
+    // Multi-word patterns match with spacing and punctuation ignored, so
+    // "push-up" also catches "Pushups" and "Push‑Ups". Single-word patterns
+    // stay within words so they can't match across a word boundary.
+    return p.includes(" ") ? compact.includes(p.replace(/ /g, "")) : spaced.includes(p);
+  });
+}
+
+/** Lowercase, fold compatibility characters (non-breaking hyphen, full-width
+ *  letters), drop accents, and collapse every non-alphanumeric run to one space. */
+function spacedForm(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
