@@ -66,7 +66,26 @@ export function validateProgram(
     }
   }
   for (const pw of program.workouts) {
-    for (const e of pw.workout.exercises) {
+    const w = pw.workout;
+    const isCardio = w.kind === "run" || w.kind === "bike";
+    // Cardio workouts carry no exercises, so the name (and a run's kind) is all
+    // there is to check. The description is free text and the patterns are bare
+    // substrings ("row" in "grow"), so it is deliberately left out.
+    if (isExerciseExcluded(`${w.name} ${w.kind === "run" ? "run" : ""}`, injuries)) {
+      reasons.push(`program workout "${w.name}" conflicts with a declared injury`);
+    }
+    // A strength workout with no sets builds zero player steps (a blank screen).
+    if (!isCardio) {
+      if (w.exercises.length === 0) {
+        reasons.push(`workout "${w.name}" has no exercises`);
+      }
+      for (const e of w.exercises) {
+        if (e.sets.length === 0) {
+          reasons.push(`workout "${w.name}" exercise "${e.name}" has no sets`);
+        }
+      }
+    }
+    for (const e of w.exercises) {
       if (isExerciseExcluded(`${e.name} ${e.notes ?? ""}`, injuries)) {
         reasons.push(`program exercise "${e.name}" conflicts with a declared injury`);
       }

@@ -1,8 +1,7 @@
 import { useState } from "react";
 import type { Exercise, ExerciseSet, PlanMode, Profile, ProgramWorkout, WorkoutKind, WorkoutProgram } from "../types";
 import { newId } from "../data/id";
-import { normalizeExerciseKey } from "../features/explainers/normalizeKey";
-import { validateProgram } from "../features/plan/validate";
+import { editorSaveReasons, renameBenchmark, renameExercise } from "./programEditorOps";
 import { weightToDisplay, weightToKg, weightUnit } from "../features/units";
 import { NumberField } from "./NumberField";
 import { CloseIcon } from "./icons";
@@ -62,7 +61,7 @@ export function ProgramEditor({ program, mode, injuries, units, onSave, onCancel
     setDraft((d) => ({ ...d, workouts: d.workouts.filter((_, i) => i !== wi) }));
 
   const save = () => {
-    const reasons = validateProgram(draft, mode, injuries);
+    const reasons = editorSaveReasons(draft, mode, injuries);
     if (reasons.length) {
       setErrors(reasons);
       return;
@@ -105,12 +104,8 @@ export function ProgramEditor({ program, mode, injuries, units, onSave, onCancel
                   aria-label="Benchmark name"
                   onChange={(e) => {
                     const name = e.target.value;
-                    setDraft((d) => ({
-                      ...d,
-                      benchmarks: d.benchmarks.map((b, i) =>
-                        i === 0 ? { ...b, name, exerciseKey: normalizeExerciseKey(name) } : b,
-                      ),
-                    }));
+                    // Also renames the exercise that measures it (same key).
+                    setDraft((d) => renameBenchmark(d, 0, name));
                   }}
                 />
               </label>
@@ -120,6 +115,7 @@ export function ProgramEditor({ program, mode, injuries, units, onSave, onCancel
                   value={bench.target}
                   min={0}
                   max={100000}
+                  decimals={2}
                   aria-label="Benchmark target"
                   onChange={(n) =>
                     setDraft((d) => ({
@@ -143,9 +139,12 @@ export function ProgramEditor({ program, mode, injuries, units, onSave, onCancel
                     updateWorkout(wi, (p) => ({ ...p, workout: { ...p.workout, name: e.target.value } }))
                   }
                 />
-                <button className="link-btn danger" onClick={() => removeWorkout(wi)} aria-label="Remove workout">
-                  Remove
-                </button>
+                {/* The benchmark workout can't go: the Plan tab's evaluation gate needs it. */}
+                {!pw.isBenchmark && (
+                  <button className="link-btn danger" onClick={() => removeWorkout(wi)} aria-label="Remove workout">
+                    Remove
+                  </button>
+                )}
               </div>
 
               <label className="field inline">
@@ -176,7 +175,11 @@ export function ProgramEditor({ program, mode, injuries, units, onSave, onCancel
                       className="text-input"
                       value={ex.name}
                       aria-label={`Exercise ${ei + 1} name`}
-                      onChange={(e) => updateExercise(wi, ei, (x) => ({ ...x, name: e.target.value }))}
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        // Keeps a benchmark's exercise key in step with its exercise.
+                        setDraft((d) => renameExercise(d, wi, ei, name));
+                      }}
                     />
                     <button
                       className="link-btn danger"
@@ -210,6 +213,7 @@ export function ProgramEditor({ program, mode, injuries, units, onSave, onCancel
                           value={s.weightKg == null ? undefined : weightToDisplay(s.weightKg, units)}
                           min={0}
                           max={weightToDisplay(500, units)}
+                          decimals={1}
                           aria-label="Weight"
                           onChange={(n) =>
                             updateSet(wi, ei, si, (x) => ({
