@@ -22,7 +22,7 @@ import type {
 } from "../../types";
 import { newId } from "../../data/id";
 import { normalizeExerciseKey } from "../explainers/normalizeKey";
-import { toIntInRange, toNumInRange } from "../num";
+import { coerceFinite, toIntInRange, toNumInRange } from "../num";
 
 const MAX_WORKOUTS = 6;
 const MAX_EXERCISES = 10;
@@ -31,11 +31,37 @@ const MAX_SETS = 8;
 const KINDS = new Set<WorkoutKind>(["strength", "run", "bike"]);
 const METRICS = new Set<BenchmarkMetric>(["reps", "weightKg", "durationSec", "distanceKm"]);
 
+/** Stand-in rep count for an "as many as possible" set the model wrote as text. */
+const MAX_EFFORT_REPS = 20;
+
+/**
+ * A set's rep count from an untrusted field, or null when it has none. A count
+ * below 1 is "no reps" (a timed set may carry `reps: 0`), not one rep. Text is
+ * read leniently: "8-12" -> 8, "10 each" -> 10, and "max" / "AMRAP" / "failure"
+ * -> a default max-effort count (only for a rep-based set: a timed set stays
+ * timed) so the benchmark movement isn't dropped from the evaluation.
+ */
+function parseReps(v: unknown, timed: boolean): number | null {
+  const n = coerceFinite(v);
+  if (n != null) {
+    const r = Math.round(n);
+    return r >= 1 ? Math.min(r, 100) : null;
+  }
+  if (typeof v !== "string") return null;
+  const lead = /^\s*(\d+)/.exec(v);
+  if (lead) {
+    const r = parseInt(lead[1]!, 10);
+    return r >= 1 ? Math.min(r, 100) : null;
+  }
+  if (!timed && /max|amrap|failure/i.test(v)) return MAX_EFFORT_REPS;
+  return null;
+}
+
 function parseSet(raw: unknown): ExerciseSet | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  const reps = toIntInRange(o.reps, 1, 100);
   const durationSec = toIntInRange(o.durationSec, 1, 3600);
+  const reps = parseReps(o.reps, durationSec != null);
   // A set is either rep-based or timed; require at least one.
   if (reps == null && durationSec == null) return null;
   const restSec = toIntInRange(o.restSec, 0, 600) ?? 45;
@@ -125,8 +151,12 @@ function parseBenchmark(raw: unknown): Benchmark | null {
     typeof o.unit === "string" && o.unit.trim()
       ? o.unit.trim().slice(0, 12)
       : defaultUnit(metric);
-  // Higher-is-better for everything except a timed effort (duration): faster wins.
-  const lowerIsBetter = o.lowerIsBetter === true || metric === "durationSec";
+  // The model's explicit call wins. Unset, higher-is-better for everything except
+  // a timed effort (duration): faster wins — but a max-duration hold (plank,
+  // hang, wall-sit) is also a duration where longer wins.
+  const isHold = /\b(plank|hold|hang|wall[ -]?sit|l-?sit|carry)\b/i.test(name);
+  const lowerIsBetter =
+    typeof o.lowerIsBetter === "boolean" ? o.lowerIsBetter : metric === "durationSec" && !isHold;
   return {
     id: newId(),
     exerciseKey: normalizeExerciseKey(name),
@@ -232,8 +262,11 @@ export function measureSession(benchmark: Benchmark, session: WorkoutSession): n
   // Cardio benchmark: read straight off the tracked result (cardio carries no
   // exercise key, so distance/duration metrics claim it).
   if (session.cardio) {
-    if (benchmark.metric === "distanceKm") return session.cardio.distanceKm ?? null;
-    if (benchmark.metric === "durationSec") return session.cardio.durationSec ?? null;
+    // A zero distance/time (a GPS run with no fix) measures nothing: it must
+    // never become a baseline.
+    const positive = (n: number | undefined) => (typeof n === "number" && n > 0 ? n : null);
+    if (benchmark.metric === "distanceKm") return positive(session.cardio.distanceKm);
+    if (benchmark.metric === "durationSec") return positive(session.cardio.durationSec);
   }
   return null;
 }

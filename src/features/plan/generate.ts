@@ -61,7 +61,7 @@ Rules:
 - Then give the training workouts — one per training day (match "days per week"), up to 5 more, each a distinct session (push / pull / legs / conditioning), 3-8 exercises, built to move those benchmarks. 1-2 sentence "description" each.
 - Scale HARD to experience: beginner = form + lighter volume; intermediate/advanced = real named lifts, higher volume, progression, weighted movements. An advanced person must never get a beginner bodyweight routine.
 - Sets have reps OR durationSec, plus restSec (metric units: kg, km, seconds). Include a warmup note in the evaluation's first exercise "notes".
-- set lowerIsBetter=true for a timed effort (faster wins).
+- set lowerIsBetter=true for a timed effort (faster wins) and lowerIsBetter=false for a max-duration hold (plank, hang, wall-sit: longer wins).
 - Respect the user's equipment and any HARD SAFETY avoid-list exactly.
 - Output ONLY the JSON. No prose, no markdown fences.`;
 
