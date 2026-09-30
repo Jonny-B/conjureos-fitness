@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { SetActual } from "../types";
 import { formatSet, overloadSuggestion } from "../features/workoutHistory";
+import { NumberField } from "./NumberField";
 
 /** What the user actually did on a set, as typed into the recorder — all
  *  fields optional because a set can be logged before every box is filled. */
@@ -53,11 +54,13 @@ export function SetRecorder({ prescribed, last, value, onChange }: Props) {
         {weighted && (
           <label className="set-field">
             <span>Weight (kg)</span>
-            <input
+            <NumberField
               className="text-input"
-              inputMode="decimal"
-              value={value.weightKg ?? ""}
-              onChange={(e) => onChange({ ...value, weightKg: num(e.target.value) })}
+              decimals={2}
+              min={0}
+              aria-label="Weight (kg)"
+              value={value.weightKg}
+              onChange={(n) => onChange({ ...value, weightKg: n })}
             />
           </label>
         )}
