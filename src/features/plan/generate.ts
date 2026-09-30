@@ -23,6 +23,7 @@ import { parseProgram } from "./program";
 import { validatePlan, validateProgram } from "./validate";
 import { fallbackPlan, fallbackProgram } from "./fallbackTemplates";
 import { toIntInRange } from "../num";
+import { NUTRITION_ENABLED } from "../flags";
 
 /**
  * Generation is split into TWO calls, not one, on purpose. A single call for
@@ -33,15 +34,13 @@ import { toIntInRange } from "../num";
  * truncation-proof core first, then the bulky program as a separate best-effort
  * step whose failure can't sink the plan.
  */
-const SYSTEM_CORE = `You are a wellness coach, not a doctor. You give friendly suggestions, not medical prescriptions.
+const systemCore = (tracksFood: boolean): string => `You are a wellness coach, not a doctor. You give friendly suggestions, not medical prescriptions.
 Design a specific, personalized wellness plan from the user's inputs — tailored to THEIR stated goal, experience level, and schedule. Avoid generic filler. Return ONLY a small JSON object:
   { "summary": string,
-    "dailyCalorieTarget": number | null,
-    "goals": [ { "label": string, "kind": "nutrition" | "workout" | "habit", "detail"?: string } ] }
+${tracksFood ? `    "dailyCalorieTarget": number | null,\n` : ""}    "goals": [ { "label": string, "kind": ${NUTRITION_ENABLED ? '"nutrition" | "workout" | "habit"' : '"workout" | "habit"'}, "detail"?: string } ] }
 Rules:
 - "summary" is one encouraging sentence naming what THIS plan will do for their specific goal.
-- "dailyCalorieTarget" is optional — if unsure, use null; the app supplies its own number.
-- 3 to 6 goals, each a short daily/weekly action tied to their goal. Use "nutrition" for food, "workout" for exercise, "habit" for everything else. For a "workout" goal, put the specific movements in "detail".
+${tracksFood ? `- "dailyCalorieTarget" is optional — if unsure, use null; the app supplies its own number.\n` : ""}- 3 to 6 goals, each a short daily/weekly action tied to their goal. ${NUTRITION_ENABLED ? 'Use "nutrition" for food, "workout" for exercise, "habit" for everything else.' : 'Use "workout" for exercise, "habit" for everything else. No food or calorie goals.'} For a "workout" goal, put the specific movements in "detail".
 - Do NOT include a workout program here — only the fields above. Keep it short.
 - Respect any HARD SAFETY avoid-list exactly.
 - Output ONLY the JSON. No prose, no markdown fences.`;
@@ -111,6 +110,11 @@ function buildUserPrompt(input: PlanInput, priorReasons?: string[]): string {
       `HARD SAFETY RULE — the user has injuries, so NEVER include any movement matching these terms: ${avoid.join(", ")}.`,
     );
   }
+  if (!modeHasWorkouts(input.mode)) {
+    lines.push(
+      `This plan must contain NO exercise, movement or workout goals of any kind (no running, walking, sessions, reps); use only ${NUTRITION_ENABLED ? "nutrition or habit" : "habit"} goals.`,
+    );
+  }
   if (input.safety.ageBand === "60_plus") lines.push("Keep intensity gentle (older adult).");
   if (priorReasons?.length) {
     lines.push(
@@ -173,6 +177,31 @@ function coerceGoal(g: unknown): GeneratedGoal | null {
   return detail ? { label, kind, detail } : { label, kind };
 }
 
+/**
+ * True when the reply looks cut off mid-JSON: it opened an object/array that
+ * never closed, or stopped inside a string. Decided from the RAW text — the
+ * extractJson fallback slices to the last "}", so the extracted text ends in "}"
+ * even when the reply was truncated after some complete inner objects.
+ */
+function looksTruncated(raw: string): boolean {
+  const start = raw.indexOf("{");
+  if (start === -1) return false;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < raw.length; i++) {
+    const c = raw[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") depth--;
+  }
+  return depth > 0 || inString;
+}
+
 /** Why a core parse failed — drives a specific, non-generic failure reason. */
 type CoreFail = "truncated" | "invalid_json" | "no_goals";
 
@@ -190,9 +219,8 @@ function parseCore(raw: string): CoreParse {
   try {
     json = JSON.parse(extracted);
   } catch {
-    // A response cut off mid-object won't end in a closing brace — distinguish
-    // "too long / truncated" from genuinely malformed JSON.
-    const truncated = extracted.trim().length > 0 && !extracted.trimEnd().endsWith("}");
+    // Distinguish "too long / truncated" from genuinely malformed JSON.
+    const truncated = extracted.trim().length > 0 && looksTruncated(raw);
     return { plan: null, kind: truncated ? "truncated" : "invalid_json" };
   }
   if (!json || typeof json !== "object") return { plan: null, kind: "invalid_json" };
@@ -209,7 +237,8 @@ function parseCore(raw: string): CoreParse {
   const goals: GeneratedGoal[] = [];
   for (const g of rawGoals.slice(0, MAX_GOALS)) {
     const goal = coerceGoal(g);
-    if (goal) goals.push(goal);
+    // Food goals can't be fulfilled in a build without food tracking.
+    if (goal && (NUTRITION_ENABLED || goal.kind !== "nutrition")) goals.push(goal);
   }
   if (goals.length === 0) return { plan: null, kind: "no_goals" };
   const summary =
@@ -235,7 +264,7 @@ function buildProgramPrompt(input: PlanInput, goals: GeneratedGoal[]): string {
 /** Generate the core plan (goals). Throws on transport error; typed failure otherwise. */
 async function generateCore(input: PlanInput, priorReasons?: string[]): Promise<CoreParse> {
   const raw = await complete({
-    system: SYSTEM_CORE,
+    system: systemCore(modeTracksFood(input.mode)),
     messages: [{ role: "user", content: buildUserPrompt(input, priorReasons) }],
     maxTokens: 900,
     tier: "capable",
@@ -288,7 +317,7 @@ async function generateProgramOnce(
       // eslint-disable-next-line no-console
       console.warn(`[plan-gen] program parse failed:\n${raw}`);
     }
-    const truncated = !extractJson(raw ?? "").trim().endsWith("}");
+    const truncated = looksTruncated(raw ?? "");
     return {
       program: null,
       reason: truncated
@@ -353,7 +382,7 @@ export function buildPlan(gen: GeneratedPlan, input: PlanInput, liability: Liabi
   // Structured targets: the calorie target plus a macro split, so the plan — not
   // a free-text goal string — is the source of truth the diary rings read from.
   // Prefer the locally-computed target (Mifflin) over the AI's number.
-  const kcal = input.calorieTarget ?? gen.dailyCalorieTarget;
+  const kcal = modeTracksFood(input.mode) ? (input.calorieTarget ?? gen.dailyCalorieTarget) : null;
   const targets: PlanTargets =
     kcal != null ? { dailyCalories: kcal, ...macrosForCalories(kcal, input.weightKg ?? 70) } : { dailyCalories: null };
   return {
@@ -419,7 +448,9 @@ export async function createPlan(
 
   // The app owns the calorie target; the AI never needs to supply it.
   const withTarget = (g: GeneratedPlan): GeneratedPlan =>
-    input.calorieTarget != null ? { ...g, dailyCalorieTarget: input.calorieTarget } : g;
+    !modeTracksFood(input.mode) ? { ...g, dailyCalorieTarget: null }
+    : input.calorieTarget != null ? { ...g, dailyCalorieTarget: input.calorieTarget }
+    : g;
 
   let lastReasons: string[] = [];
   let lastError: string | undefined;

@@ -127,6 +127,87 @@ describe("createPlan (two-phase generation)", () => {
     expect(msg).not.toContain("UNITS:");
   });
 
+  it("detects truncation from the raw reply even when complete inner objects precede the cut", async () => {
+    // extractJson falls back to slicing at the last "}", so the EXTRACTED text ends
+    // in "}" here — truncation has to be judged on the raw text.
+    const CUT_PROGRAM =
+      '{"workouts":[{"name":"Evaluation","exercises":[{"name":"Pull-ups","sets":[{"reps":10,"restSec":60}]},{"name":"Push-ups","sets":[{"reps":20,"rest';
+    complete
+      .mockResolvedValueOnce(GOOD_CORE)
+      .mockResolvedValueOnce(CUT_PROGRAM)
+      .mockResolvedValueOnce(GOOD_PROGRAM);
+    await createPlan(input, liability);
+    const retryMsg = (complete.mock.calls[2]![0] as unknown as { messages: { content: string }[] })
+      .messages[0]!.content;
+    expect(retryMsg).toMatch(/REJECTED for: .*cut off/i);
+  });
+
+  it("reports a core reply cut off after complete goals as 'too long', not invalid JSON", async () => {
+    const CUT_CORE =
+      '{"summary":"A plan","goals":[{"label":"Stay around 1800 kcal","kind":"nutrition"},{"label":"Protein at every me';
+    complete.mockResolvedValue(CUT_CORE);
+    const res = await createPlan(input, liability);
+    expect(res.usedFallback).toBe(true);
+    expect(res.failureReason).toMatch(/too long/i);
+  });
+
+  it("still reports balanced-but-malformed JSON as invalid JSON, not truncated", async () => {
+    complete.mockResolvedValue('{"summary":"A plan","goals":[{"label":"Walk","kind":"habit"},]}');
+    const res = await createPlan(input, liability);
+    expect(res.usedFallback).toBe(true);
+    expect(res.failureReason).toMatch(/valid JSON/i);
+  });
+
+  describe("Fitness: no calorie target or nutrition goals", () => {
+    const fitInput: PlanInput = { ...input, mode: "get_fit", calorieTarget: null };
+
+    it("ignores the AI's calorie target and drops nutrition goals for get_fit", async () => {
+      const core = JSON.stringify({
+        summary: "Get moving.",
+        dailyCalorieTarget: 2100,
+        goals: [
+          { label: "Three short strength sessions", kind: "workout" },
+          { label: "Eat protein at every meal", kind: "nutrition" },
+          { label: "Stand and stretch every hour", kind: "habit" },
+        ],
+      });
+      complete.mockResolvedValueOnce(core).mockResolvedValueOnce(GOOD_PROGRAM);
+      const res = await createPlan(fitInput, liability);
+      expect(res.usedFallback).toBe(false);
+      expect(res.plan.targets?.dailyCalories).toBeNull();
+      expect(res.plan.targets?.protein).toBeUndefined();
+      expect(res.gen.dailyCalorieTarget).toBeNull();
+      expect(res.plan.goals.map((g) => g.kind)).not.toContain("nutrition");
+      expect(res.plan.goals).toHaveLength(2);
+      // The core prompt doesn't ask for calories or food goals either.
+      const sys = (complete.mock.calls[0]![0] as { system: string }).system;
+      expect(sys).not.toMatch(/dailyCalorieTarget|nutrition/);
+    });
+  });
+
+  describe("gated logging_only plans", () => {
+    const gated: PlanInput = { ...input, mode: "logging_only", calorieTarget: null };
+
+    it("tells the model no exercise goals are allowed", async () => {
+      complete.mockResolvedValueOnce(JSON.stringify({ summary: "s", goals: [{ label: "Weekly check-in", kind: "habit" }] }));
+      await createPlan(gated, liability);
+      const msg = (complete.mock.calls[0]![0] as unknown as { messages: { content: string }[] }).messages[0]!.content;
+      expect(msg).toMatch(/NO exercise, movement or workout goals/);
+    });
+
+    it("rejects an exercise goal the model labelled 'habit' and falls back to non-food, non-exercise goals", async () => {
+      complete.mockResolvedValue(
+        JSON.stringify({ summary: "s", goals: [{ label: "Go for a 30-minute run every day", kind: "habit" }] }),
+      );
+      const res = await createPlan(gated, liability);
+      expect(res.usedFallback).toBe(true);
+      expect(res.failureReason).toMatch(/must not prescribe workouts/);
+      expect(res.plan.goals.map((g) => g.kind)).not.toContain("nutrition");
+      expect(res.plan.goals.map((g) => g.label).join(" ")).not.toMatch(/\beat\b|food/i);
+      expect(res.plan.targets?.dailyCalories).toBeNull();
+    });
+  });
+
   // (Transport-error → fallback with the thrown message is the pre-existing
   // try/catch path in createPlan, unchanged by the split; a mock that throws
   // trips vitest's uncaught-error guard, so it isn't re-asserted here.)

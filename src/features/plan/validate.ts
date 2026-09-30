@@ -10,13 +10,28 @@
  */
 
 import type { PlanMode, SafetyIntake, Sex, WorkoutProgram } from "../../types";
-import type { GeneratedPlan } from "./model";
+import type { GeneratedGoal, GeneratedPlan } from "./model";
 import { kcalFloor, modeHasWorkouts, modeTracksFood } from "./model";
 import { isExerciseExcluded } from "../safety/injuryExclusions";
 
 const MAX_WORKOUT_GOALS = 6;
 const MAX_PROGRAM_WORKOUTS = 6;
 const MAX_BENCHMARKS = 4;
+
+/**
+ * Exercise wording, matched on word boundaries (so "brunch" and "brown rice"
+ * don't hit the way a raw substring match would). The model's `kind` label is
+ * not trusted for the safety gates: a "go for a run" goal labelled "habit" is
+ * still exercise. Deliberately not `inferKind`, which tests nutrition words
+ * first and so calls "burn fat with sprints" a nutrition goal.
+ */
+const WORKOUT_WORDS =
+  /\b(workouts?|exercis(?:e|es|ing)|runs?|running|jog(?:s|ging)?|walk(?:s|ing)?|bik(?:e|es|ing)|cycling|lift(?:s|ing)?|deadlifts?|squats?|lunges?|burpees?|sprint(?:s|ing)?|hiit|cardio|strength|train(?:s|ing)?|planks?|push-?ups?|pull-?ups?|sit-?ups?|swim(?:s|ming)?|yoga|pilates|gym|\d+k|miles?)\b/i;
+
+/** A goal counts as exercise by its model label OR by what its text says. */
+function isWorkoutGoal(g: GeneratedGoal): boolean {
+  return g.kind === "workout" || WORKOUT_WORDS.test(`${g.label} ${g.detail ?? ""}`);
+}
 
 /**
  * Program-only safety rails (W4/W5). Returns a list of reasons the program is
@@ -109,10 +124,11 @@ export function validatePlan(gen: GeneratedPlan, ctx: ValidationContext): Valida
     }
   }
 
-  // 2. Injury-region exclusion on every workout goal.
+  // 2. Injury-region exclusion on every workout goal (by its text, not just its
+  // model-supplied kind).
   const injuries = ctx.safety.injuries ?? [];
   for (const g of gen.goals) {
-    if (g.kind !== "workout") continue;
+    if (!isWorkoutGoal(g)) continue;
     const text = `${g.label} ${g.detail ?? ""}`;
     if (isExerciseExcluded(text, injuries)) {
       reasons.push(`workout "${g.label}" conflicts with a declared injury`);
@@ -120,7 +136,7 @@ export function validatePlan(gen: GeneratedPlan, ctx: ValidationContext): Valida
   }
 
   // 3. Intensity cap.
-  const workoutGoals = gen.goals.filter((g) => g.kind === "workout").length;
+  const workoutGoals = gen.goals.filter(isWorkoutGoal).length;
   if (workoutGoals > MAX_WORKOUT_GOALS) {
     reasons.push(`too many workout goals (${workoutGoals} > ${MAX_WORKOUT_GOALS})`);
   }

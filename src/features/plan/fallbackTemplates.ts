@@ -11,11 +11,33 @@ import type { Exercise, ExerciseSet, ExperienceLevel, PlanMode, WorkoutProgram }
 import type { GeneratedPlan, PlanInput } from "./model";
 import { modeHasWorkouts, modeTracksFood } from "./model";
 import { isExerciseExcluded } from "../safety/injuryExclusions";
+import { NUTRITION_ENABLED } from "../flags";
 import { newId } from "../../data/id";
 import { normalizeExerciseKey } from "../explainers/normalizeKey";
 
 /** A generous, always-safe daily calorie target (well above every floor). */
 const SAFE_KCAL = 1800;
+
+/** The logging-only plan. Without food tracking (Fitness) there is no diary to
+ *  log to, so its goals are ones the app can actually support. */
+const LOGGING_ONLY_TEMPLATE: GeneratedPlan = NUTRITION_ENABLED
+  ? {
+      summary: "Just tracking for now: log your food and weight, no plan pressure.",
+      dailyCalorieTarget: SAFE_KCAL,
+      goals: [
+        { label: "Log everything you eat", kind: "nutrition" },
+        { label: "A weekly weigh-in", kind: "habit" },
+      ],
+    }
+  : {
+      summary: "A gentle start: no workouts for now. Talk to your doctor before adding exercise.",
+      dailyCalorieTarget: null,
+      goals: [
+        { label: "Talk to your doctor before adding exercise", kind: "habit" },
+        { label: "A weekly weigh-in", kind: "habit" },
+        { label: "A weekly check-in on how you feel", kind: "habit" },
+      ],
+    };
 
 const TEMPLATES: Record<PlanMode, GeneratedPlan> = {
   eat_better: {
@@ -47,14 +69,7 @@ const TEMPLATES: Record<PlanMode, GeneratedPlan> = {
       { label: "A brisk 20-minute walk", kind: "workout", detail: "walking" },
     ],
   },
-  logging_only: {
-    summary: "Just tracking for now: log your food and weight, no plan pressure.",
-    dailyCalorieTarget: SAFE_KCAL,
-    goals: [
-      { label: "Log everything you eat", kind: "nutrition" },
-      { label: "A weekly weigh-in", kind: "habit" },
-    ],
-  },
+  logging_only: LOGGING_ONLY_TEMPLATE,
 };
 
 type FallbackSeed = { name: string; sets: ExerciseSet[]; notes?: string };
@@ -188,7 +203,7 @@ export function fallbackPlan(mode: PlanMode, input?: PlanInput): GeneratedPlan {
     (g) => g.kind !== "workout" || !isExerciseExcluded(`${g.label} ${g.detail ?? ""}`, injuries),
   );
   if (goals.length === 0) {
-    goals = [{ label: "Log everything you eat", kind: "nutrition" }];
+    goals = [LOGGING_ONLY_TEMPLATE.goals[0]!];
   }
   const program = fallbackProgram(mode, injuries, input?.experienceLevel);
   return {
