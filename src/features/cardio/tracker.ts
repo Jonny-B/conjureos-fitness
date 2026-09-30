@@ -149,6 +149,19 @@ export function useGpsTracker() {
   };
 
   const start = useCallback(() => {
+    if (!unsubRef.current) {
+      // A fresh session (the first Start, or Start again after a Finish that
+      // saved nothing): don't carry the last attempt's time, distance, splits,
+      // track or anchor into this one.
+      distMRef.current = 0;
+      elapsedMsRef.current = 0;
+      lastSampleRef.current = null;
+      nextSplitKmRef.current = 1;
+      lastSplitElapsedRef.current = 0;
+      splitsRef.current = [];
+      trackRef.current = [];
+      autoPausedRef.current = false;
+    }
     runningRef.current = true;
     lastTickRef.current = Date.now();
     lastMoveRef.current = Date.now();

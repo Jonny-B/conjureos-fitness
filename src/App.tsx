@@ -344,7 +344,7 @@ export function App() {
   const homeScreen = (
     <HomeScreen
       plan={plan}
-      units={profile?.units ?? "metric"}
+      units={profile?.units ?? pendingUnits}
       nonce={nonce}
       banner={banners}
       onOpenWorkouts={() => setTab("workouts")}
@@ -416,7 +416,7 @@ export function App() {
             onSearch={() => openAdd(activeMeal, "search", "meal")}
             onAi={() => openAdd(activeMeal, "ai", "meal")}
             onMutated={() => setNonce((n) => n + 1)}
-            units={profile?.units ?? "metric"}
+            units={profile?.units ?? pendingUnits}
           />
         ) : tab === "add" ? (
           <AddFoodScreen
@@ -426,17 +426,17 @@ export function App() {
             onLogged={onLogged}
             onCancel={() => setTab(addReturn)}
             onModeChange={setAddMode}
-            units={profile?.units ?? "metric"}
+            units={profile?.units ?? pendingUnits}
           />
         ) : tab === "journal" ? (
-          <JournalScreen units={profile?.units ?? "metric"} nonce={nonce} />
+          <JournalScreen units={profile?.units ?? pendingUnits} nonce={nonce} />
         ) : tab === "plan" ? (
           <PlanScreen
             nonce={nonce}
             profile={profile}
             plan={plan}
             goals={effectiveGoals}
-            units={profile?.units ?? "metric"}
+            units={profile?.units ?? pendingUnits}
             onPlanChange={setPlan}
             onAskCoach={openCoach}
             onEditPlan={editPlan}
@@ -446,7 +446,7 @@ export function App() {
         ) : tab === "workouts" && !loggingOnly ? (
           <WorkoutsScreen
             exerciseOnly={!COACH_AND_WORKOUTS_ENABLED}
-            units={profile?.units ?? "metric"}
+            units={profile?.units ?? pendingUnits}
             plan={plan}
             onPlanChange={setPlan}
             date={date}

@@ -68,9 +68,9 @@ function metForActivity(activity: string | undefined, cardio: boolean): number {
   // Anchored to word starts (and spin/row to word ends): "crunches" is not a
   // run, "arrow" is not a row, "spinal" is not a spin class.
   if (/\brun|\bjog/.test(a)) return 9.8;
-  if (/\bcycl|\bbik(e|ing)|\bride|\briding|\bspin(ning)?\b/.test(a)) return 8;
+  if (/\b(bi)?cycl|\bbik(e|ing)|\bride|\briding|\bspin(ning)?\b/.test(a)) return 8;
   if (/\bswim/.test(a)) return 7;
-  if (/\browing?\b|\brows?\b/.test(a)) return 7;
+  if (/\brow(ing|ers?|s)?\b/.test(a)) return 7;
   if (/hiit|interval|circuit|crossfit/.test(a)) return 8;
   if (/hike/.test(a)) return 6;
   if (/walk/.test(a)) return 3.5;

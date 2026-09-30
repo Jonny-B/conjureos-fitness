@@ -329,6 +329,9 @@ describe("logWorkout", () => {
     expect(await kcal("Running")).toBe(343);
     expect(await kcal("spin class")).toBe(280); // MET 8
     expect(await kcal("rowing")).toBe(245); // MET 7
+    expect(await kcal("Bicycling")).toBe(280); // MET 8, "cycl" after "bi"
+    expect(await kcal("bicycle commute")).toBe(280);
+    expect(await kcal("rower intervals")).toBe(245); // MET 7
   });
 
   it("tells the open app the data changed after a write, and not when validation fails", async () => {

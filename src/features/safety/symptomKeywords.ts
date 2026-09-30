@@ -8,10 +8,11 @@
  * mishandled the input, and it must be auditable.
  *
  * The list errs toward caution — false positives (ending a session early) are
- * acceptable; false negatives are not. Phrases are lowercase; matching is on
- * whole words (plus common endings like -s, -ing, -ness) in the lowercased
- * input, so "I'm getting chest pain" trips "chest pain" but "number of reps"
- * does not trip "numb".
+ * acceptable; false negatives are not. Phrases are lowercase and match as plain
+ * substrings of the lowercased input, so inflections still trip them ("I feel
+ * nauseated" trips "nausea", "felt a popping" trips "felt a pop"). The only
+ * exceptions are the few short stems that sit inside everyday words (see
+ * WHOLE_WORD): "number of reps" must not trip "numb".
  */
 
 /** Red-flag phrases that end a coach session before any model call. */
@@ -53,6 +54,7 @@ export const STOP_SYMPTOMS: readonly string[] = [
   "throwing up",
   "vomit",
   "nausea",
+  "nauseous",
   "cold sweat",
   "clammy",
 ];
@@ -65,14 +67,14 @@ export const STOP_SYMPTOM_REPLY =
 
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** One whole-word regex per phrase: a leading word boundary, then the phrase,
- *  then an optional common ending, then a trailing boundary. So "numb" matches
- *  "numb" / "numbness" but not "number", and "faint" matches "fainting" but
- *  not "faintly". */
-const STOP_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = STOP_SYMPTOMS.map((phrase) => [
-  phrase,
-  new RegExp(`\\b${escapeRe(phrase).replace(/ /g, "\\s+")}(?:s|es|ed|ing|ness)?\\b`),
-]);
+/** Stems that would fire on everyday words as substrings ("numb" in "number",
+ *  "faint" in "faintly"). These match as whole words plus a common ending
+ *  (-s, -ed, -ing, -ness); every other phrase is a plain substring. */
+const WHOLE_WORD: ReadonlySet<string> = new Set(["numb", "faint"]);
+
+const WHOLE_WORD_PATTERNS: ReadonlyMap<string, RegExp> = new Map(
+  [...WHOLE_WORD].map((stem): [string, RegExp] => [stem, new RegExp(`\\b${escapeRe(stem)}(?:s|es|ed|ing|ness)?\\b`)]),
+);
 
 /**
  * Returns the first matched red-flag phrase in `text`, or null if none. The
@@ -80,10 +82,12 @@ const STOP_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = STOP_SYMPTOMS.ma
  * trigger fired without re-scanning.
  */
 export function detectStopSymptom(text: string): string | null {
-  // Curly apostrophes (phone keyboards) must still match "can't breathe".
-  const t = text.toLowerCase().replace(/[\u2018\u2019]/g, "'");
-  for (const [phrase, re] of STOP_PATTERNS) {
-    if (re.test(t)) return phrase;
+  // Curly apostrophes (phone keyboards) must still match "can't breathe", and a
+  // line break or double space between words must not hide "chest pain".
+  const t = text.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, " ");
+  for (const phrase of STOP_SYMPTOMS) {
+    const re = WHOLE_WORD_PATTERNS.get(phrase);
+    if (re ? re.test(t) : t.includes(phrase)) return phrase;
   }
   return null;
 }
