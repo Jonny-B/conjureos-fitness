@@ -17,12 +17,12 @@
  * plan/groups, calories, explainers) is listed under "When it leaves"; add one
  * here when you add one there.
  *
- * Plain-language policy written against how the app behaves. Not legal advice
- * and not yet reviewed by counsel.
+ * Plain-language policy written against how the app behaves. Final copy as of
+ * 2026-10-01 (POLICY_UPDATED); keep it true when a data flow changes.
  */
 
 /** Last material revision. Shown so a reader can tell what they agreed to. */
-export const POLICY_UPDATED = "2026-09-30";
+export const POLICY_UPDATED = "2026-10-01";
 
 export function HealthDataPolicy({ onClose }: { onClose: () => void }) {
   return (
