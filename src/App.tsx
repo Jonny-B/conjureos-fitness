@@ -3,6 +3,8 @@ import type { Goals, MealType, Plan, Profile } from "./types";
 import { DEFAULT_GOALS } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
+import { HealthConsentGate } from "./components/HealthConsentGate";
+import { loadHealthConsent, recordHealthConsent, withdrawHealthConsent } from "./features/healthConsent";
 import { onCoachThreadChange, startCoachChatHub } from "./features/coach/thread";
 import { todayISO } from "./features/diary";
 import {
@@ -74,6 +76,10 @@ export function App() {
   // full-screen gate; the app is usable for logging without a plan).
   const [plan, setPlan] = useState<Plan | null>(null);
   const [ready, setReady] = useState(false);
+  // Consent to collect health data (features/healthConsent.ts). Until it is
+  // "yes", only the consent screen renders, no action is registered and the
+  // coach does not join the ConjureOS chat hub.
+  const [consent, setConsent] = useState<"unknown" | "yes" | "no">("unknown");
   // Settings sheet: closed, or open on a specific sub-view (main / program editor).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsView, setSettingsView] = useState<SettingsView>("main");
@@ -120,6 +126,28 @@ export function App() {
 
   useEffect(() => {
     let alive = true;
+    void loadHealthConsent().then((ok) => {
+      if (alive) setConsent(ok ? "yes" : "no");
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (consent !== "yes") return;
+    // The fitness actions always; the food ones only while food tracking is on
+    // (registerActions decides, to match what package.json declares).
+    registerActions().catch(() => {
+      /* cross-app integration is non-fatal */
+    });
+    // ConjureOS chat hub (#513): the coach answers what is typed in ConjureChat.
+    // Resolves false on shells without the hub; the Coach tab is unaffected.
+    if (COACH_AND_WORKOUTS_ENABLED) void startCoachChatHub();
+  }, [consent]);
+
+  useEffect(() => {
+    let alive = true;
     (async () => {
       const repo = await getRepository();
       const [g, p, existingPlan] = await Promise.all([repo.getGoals(), repo.getProfile(), loadPlan()]);
@@ -129,19 +157,11 @@ export function App() {
       setPlan(existingPlan);
       setReady(true);
     })();
-    // The fitness actions always; the food ones only while food tracking is on
-    // (registerActions decides, to match what package.json declares).
-    registerActions().catch(() => {
-      /* cross-app integration is non-fatal */
-    });
-    // ConjureOS chat hub (#513): the coach answers what is typed in ConjureChat.
-    // Resolves false on shells without the hub; the Coach tab is unaffected.
     const offCoach = COACH_AND_WORKOUTS_ENABLED
       ? onCoachThreadChange(({ plan: next }) => {
           if (next) setPlan(next);
         })
       : () => {};
-    if (COACH_AND_WORKOUTS_ENABLED) void startCoachChatHub();
     return () => {
       alive = false;
       offCoach();
@@ -263,6 +283,18 @@ export function App() {
 
   // The plan wizard, opened from the banner, owns the screen while active but is
   // fully dismissible (no longer a mandatory first-run gate).
+  if (consent === "unknown") return null;
+  if (consent === "no") {
+    return (
+      <HealthConsentGate
+        onAgree={() => {
+          void recordHealthConsent();
+          setConsent("yes");
+        }}
+      />
+    );
+  }
+
   if (ready && planWizardOpen) {
     return (
       <div className="app">
@@ -479,6 +511,11 @@ export function App() {
           onSave={onSaveGoals}
           onPlanChange={setPlan}
           onDataCleared={onDataCleared}
+          onWithdrawHealthConsent={() => {
+            void withdrawHealthConsent();
+            setSettingsOpen(false);
+            setConsent("no");
+          }}
         />
       )}
     </div>

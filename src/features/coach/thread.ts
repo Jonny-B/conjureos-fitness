@@ -9,6 +9,7 @@
  * chat permission refused) the Coach tab works from its own file alone.
  */
 
+import { healthConsentGranted } from "../healthConsent";
 import type { ChatMessage } from "../../bridge/ai";
 import { readJson, writeJson } from "../../bridge/vfs";
 import { hubHistory, isChatHubAvailable, listenToHub, postToHub, type HubInbound } from "../../bridge/chatHub";
@@ -127,6 +128,10 @@ export function onCoachThreadChange(fn: Listener): () => void {
  * posted again; the file gets both.
  */
 export async function answerHubMessage(m: HubInbound): Promise<string> {
+  // No consent to collect health data: nothing goes to the AI, nothing is kept.
+  if (!healthConsentGranted()) {
+    return "Conjure Fitness needs your permission to keep health data before the coach can answer. Open Conjure Fitness to agree.";
+  }
   const local = await loadLocal();
   const base = local.length ? local : ((await hubHistory(m.messageId)) ?? []);
   const answering = hasPendingProposal(base);

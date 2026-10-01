@@ -1,3 +1,4 @@
+import { NUTRITION_ENABLED } from "../features/flags";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Goals, Plan, Profile } from "../types";
 import { getRepository } from "../data/repository";
@@ -37,6 +38,7 @@ export function SettingsSheet({
   onSave,
   onPlanChange,
   onDataCleared,
+  onWithdrawHealthConsent,
 }: {
   goals: Goals;
   profile: Profile | null;
@@ -47,6 +49,8 @@ export function SettingsSheet({
   onPlanChange: (plan: Plan) => void;
   /** Fired after any history clear so screens re-read their data. */
   onDataCleared?: () => void;
+  /** Withdraw consent to collect health data: App returns to the consent screen. */
+  onWithdrawHealthConsent?: () => void;
 }) {
   const [units, setUnitsState] = useState<Profile["units"]>(profile?.units ?? "metric");
   // The program sub-view (Edit workouts) is only ever entered directly via
@@ -129,10 +133,14 @@ export function SettingsSheet({
           <div className="section-label">Privacy</div>
           <div className="privacy-block">
             <p className="muted small">
-              Your journal stays on your device and in your ConjureOS account. One feature
-              sends part of it out: <strong>Find patterns</strong> on the Journal tab.
+              Your data stays on your device and in your ConjureOS account. Building a plan,
+              talking to the coach and moving to your next group of workouts send what they need
+              to an AI, as the policy below describes.
             </p>
-            {consentIsCurrent(consent) ? (
+            {/* The journal's AI agreement (Find patterns, the food coach) only
+                exists while nutrition is on; with it off this block would
+                claim "nothing is sent", which is false for Fitness. */}
+            {!NUTRITION_ENABLED ? null : consentIsCurrent(consent) ? (
               <>
                 <p className="muted small">
                   You agreed on {new Date(consent!.acceptedAt).toLocaleDateString()}. Symptom
@@ -169,6 +177,25 @@ export function SettingsSheet({
             <button className="btn small ghost" onClick={() => setPolicyOpen(true)}>
               Consumer Health Data Privacy
             </button>
+            {onWithdrawHealthConsent && (
+              <>
+                <p className="muted small">
+                  You agreed to let this app collect and store your health data. Withdrawing stops
+                  all collection at once and takes you back to the agreement screen. To delete
+                  what is already stored, use Reset health data below first.
+                </p>
+                <button
+                  className="btn small ghost"
+                  onClick={() => {
+                    if (window.confirm("Stop this app collecting your health data? You can agree again later.")) {
+                      onWithdrawHealthConsent();
+                    }
+                  }}
+                >
+                  Withdraw consent to collect health data
+                </button>
+              </>
+            )}
           </div>
 
           {/* Reset shown inline (no expand-in-place): the sheet is bottom-anchored,

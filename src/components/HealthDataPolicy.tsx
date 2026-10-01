@@ -115,8 +115,9 @@ export function HealthDataPolicy({ onClose }: { onClose: () => void }) {
           <h3>Your choices and rights</h3>
           <ul className="consent-list">
             <li>
-              Nothing is sent unless you use a feature that needs it. If you would rather keep
-              something away from the AI, don't tell the coach.
+              Conjure Fitness collects nothing until you agree on its first screen, which also
+              tells you what the coach and plan builder send to the AI. You can withdraw that
+              agreement at any time in Settings, under Privacy, and collection stops at once.
             </li>
             <li>
               You can delete your data, all of it or one kind at a time, in Settings, under Reset

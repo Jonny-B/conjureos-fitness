@@ -29,10 +29,15 @@ const repo = {
 };
 
 vi.mock("../data/repository", () => ({ getRepository: async () => repo }));
+// Consent to collect health data (features/healthConsent.ts). Granted for
+// every test except the one that checks the refusal.
+let consentGranted = true;
+vi.mock("../features/healthConsent", () => ({ healthConsentGranted: () => consentGranted }));
 
 let actions: Record<string, Handler> = {};
 
 beforeEach(async () => {
+  consentGranted = true;
   db.sessions = [];
   db.profile = null;
   db.plan = null;

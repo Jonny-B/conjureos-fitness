@@ -52,10 +52,15 @@ const repo = {
 
 vi.mock("../data/repository", () => ({ getRepository: async () => repo }));
 vi.mock("../features/exercise", () => ({ exerciseCaloriesForDate: async () => 0 }));
+// Consent to collect health data (features/healthConsent.ts). Granted for
+// every test except the one that checks the refusal.
+let consentGranted = true;
+vi.mock("../features/healthConsent", () => ({ healthConsentGranted: () => consentGranted }));
 
 let actions: Record<string, Handler> = {};
 
 beforeEach(async () => {
+  consentGranted = true;
   db.water = [];
   db.sleep = [];
   db.symptoms = [];
@@ -396,5 +401,13 @@ describe("wellbeing reads never carry the symptom note", () => {
 describe("recentNutrition", () => {
   it("refuses an explicit days: 0 rather than defaulting to 7", async () => {
     await expect(call("recentNutrition", { days: 0 })).rejects.toThrow(/positive/);
+  });
+});
+
+describe("without consent to collect health data", () => {
+  it("refuses fitness actions", async () => {
+    consentGranted = false;
+    await expect(async () => call("listWorkouts")).rejects.toThrow(/permission to keep health data/);
+    await expect(async () => call("logWorkout", { name: "Run", minutes: 30 })).rejects.toThrow(/permission to keep health data/);
   });
 });

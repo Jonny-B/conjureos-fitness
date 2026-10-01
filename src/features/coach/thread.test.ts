@@ -15,6 +15,8 @@ vi.mock("../../bridge/vfs", () => ({
 }));
 vi.mock("./context", () => ({ buildCoachContext: async () => ({ plan: null, profile: null, goals: {}, memory: {}, rendered: "" }) }));
 vi.mock("./coach", () => ({ coachChat: (...a: unknown[]) => coachChat(...a) }));
+let consentGranted = true;
+vi.mock("../healthConsent", () => ({ healthConsentGranted: () => consentGranted }));
 
 import {
   answerHubMessage,
@@ -46,6 +48,7 @@ function installHub(opts: { listenOk?: boolean; messages?: Msg[] } = {}) {
 }
 
 beforeEach(() => {
+  consentGranted = true;
   for (const k of Object.keys(files)) delete files[k];
   coachChat.mockReset();
   resetCoachThread();
@@ -171,5 +174,14 @@ describe("coach thread on the ConjureOS chat hub", () => {
     coachChat.mockResolvedValue({ reply: "r" });
     await answerHubMessage({ threadId: "main", messageId: "3", content: "q" });
     expect(coachChat.mock.calls[0]![0][0].content).toBe("shared");
+  });
+});
+
+describe("without consent to collect health data", () => {
+  it("answers a ConjureChat message without calling the AI or keeping anything", async () => {
+    consentGranted = false;
+    const reply = await answerHubMessage({ threadId: "main", messageId: "nc", content: "plan my week" });
+    expect(reply).toMatch(/permission to keep health data/);
+    expect(coachChat).not.toHaveBeenCalled();
   });
 });
