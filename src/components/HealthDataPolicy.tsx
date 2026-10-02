@@ -102,6 +102,29 @@ export function HealthDataPolicy({ onClose }: { onClose: () => void }) {
             connections off in ConjureOS Settings.
           </p>
 
+          <h3>Location</h3>
+          <p>
+            When you record a run or another outdoor workout on the ConjureOS phone app, Conjure
+            Fitness uses your precise location, with your permission, to measure distance and
+            pace. The route is saved with that workout in your ConjureOS account so you can see
+            it later; clearing your workout history in Settings, under Reset health data,
+            deletes it. The route is never sent to the AI
+            coach, and other apps that read your workouts get the distance, never the route.
+            Location is used only while you are recording, and only while the app is on screen.
+          </p>
+
+          <h3>Apple Health and Health Connect</h3>
+          <p>
+            On the ConjureOS phone app, Conjure Fitness can read from Apple Health (iPhone) or Health
+            Connect (Android) if you allow it. ConjureOS asks you first, then your phone shows
+            its own Health screen where you choose what to share. Conjure Fitness reads one kind of
+            data: your workouts and the energy they burned, to show the workouts you recorded elsewhere, such as on a watch, alongside the ones you do here. It never writes anything to
+            Apple Health or Health Connect, never puts what it reads in iCloud Drive or
+            CloudKit, and never uses it for advertising, marketing or anything other than your
+            own health and fitness tracking. You can stop it at any time in your phone's Health
+            settings, or in ConjureOS under Settings, Manage apps.
+          </p>
+
           <h3>Who processes it</h3>
           <p>
             AI requests go through ConjureOS. By default they are sent to{" "}
