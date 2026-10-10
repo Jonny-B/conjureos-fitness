@@ -112,7 +112,6 @@ groupSize?, evaluation? }`.
 From the 2026-09-28 review, in rough order of value: `getWorkout` (one session
 in full, with sets and PRs), `personalRecords` (best per exercise, plan
 benchmarks), `listWorkoutLibrary`, `importWorkoutFromImage` (a whiteboard WOD
-or program screenshot), the coach as a `chat` surface in ConjureChat, a
-`startWorkout` deep-link intent, and reading food, weight and sleep from
+or program screenshot), a `startWorkout` deep-link intent, and reading food, weight and sleep from
 Conjure Health's `dayNutrition` / `recentWellbeing` so the coach and the burn
 estimate have them.

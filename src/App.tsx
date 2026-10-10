@@ -5,7 +5,6 @@ import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
 import { HealthConsentGate } from "./components/HealthConsentGate";
 import { loadHealthConsent, recordHealthConsent, withdrawHealthConsent } from "./features/healthConsent";
-import { onCoachThreadChange, startCoachChatHub } from "./features/coach/thread";
 import { todayISO } from "./features/diary";
 import {
   archivePlan,
@@ -77,8 +76,7 @@ export function App() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [ready, setReady] = useState(false);
   // Consent to collect health data (features/healthConsent.ts). Until it is
-  // "yes", only the consent screen renders, no action is registered and the
-  // coach does not join the ConjureOS chat hub.
+  // "yes", only the consent screen renders and no action is registered.
   const [consent, setConsent] = useState<"unknown" | "yes" | "no">("unknown");
   // Settings sheet: closed, or open on a specific sub-view (main / program editor).
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -141,9 +139,6 @@ export function App() {
     registerActions().catch(() => {
       /* cross-app integration is non-fatal */
     });
-    // ConjureOS chat hub (#513): the coach answers what is typed in ConjureChat.
-    // Resolves false on shells without the hub; the Coach tab is unaffected.
-    if (COACH_AND_WORKOUTS_ENABLED) void startCoachChatHub();
   }, [consent]);
 
   useEffect(() => {
@@ -157,14 +152,8 @@ export function App() {
       setPlan(existingPlan);
       setReady(true);
     })();
-    const offCoach = COACH_AND_WORKOUTS_ENABLED
-      ? onCoachThreadChange(({ plan: next }) => {
-          if (next) setPlan(next);
-        })
-      : () => {};
     return () => {
       alive = false;
-      offCoach();
     };
   }, []);
 

@@ -1,21 +1,12 @@
 /**
- * The coach conversation, shared between the Coach tab and the ConjureOS app
- * chat hub (ConjureChat's panel, ConjureOS #513).
- *
- * `coach-chat.json` stays the app's full record (it keeps proposal cards, which
- * the hub cannot carry). With the hub, every in-app turn is also posted to the
- * single `main` thread, and a message typed in ConjureChat is answered here by
- * the same `coachChat` the Coach tab uses. Without the hub (older shells, the
- * chat permission refused) the Coach tab works from its own file alone.
+ * The coach conversation. It lives in the Coach tab and nowhere else:
+ * `coach-chat.json` is its whole record, proposal cards included. Conjure
+ * Fitness takes no place in the ConjureOS Chat panel (ConjureOS removed the
+ * app chat hub, #513; an anchor app works as any outside app would).
  */
 
-import { healthConsentGranted } from "../healthConsent";
 import type { ChatMessage } from "../../bridge/ai";
 import { readJson, writeJson } from "../../bridge/vfs";
-import { hubHistory, isChatHubAvailable, listenToHub, postToHub, type HubInbound } from "../../bridge/chatHub";
-import type { Plan } from "../../types";
-import { coachChat } from "./coach";
-import { buildCoachContext } from "./context";
 import type { CoachChatItem, CoachProposal } from "./model";
 
 export const CHAT_PATH = "coach-chat.json";
@@ -43,18 +34,6 @@ export function markAnswered(items: CoachChatItem[]): CoachChatItem[] {
   return items.map((m, i) => (i === items.length - 1 && m.proposal && !m.answered ? { ...m, answered: true } : m));
 }
 
-/** Consecutive trailing proposals, which caps the coach's follow-ups. */
-function proposalRounds(items: CoachChatItem[]): number {
-  let n = 0;
-  for (let i = items.length - 1; i >= 0; i--) {
-    const m = items[i]!;
-    if (m.role === "user") continue;
-    if (!m.proposal) break;
-    n++;
-  }
-  return n;
-}
-
 async function loadLocal(): Promise<CoachChatItem[]> {
   const raw = await readJson<CoachChatItem[]>(CHAT_PATH, []).catch(() => []);
   return Array.isArray(raw) ? raw : [];
@@ -65,106 +44,12 @@ export async function saveCoachHistory(items: CoachChatItem[]): Promise<void> {
   await writeJson(CHAT_PATH, items.slice(-MAX_STORED)).catch(() => {});
 }
 
-let seeding: Promise<void> | null = null;
-
-/**
- * The conversation, oldest first. Never throws.
- *
- * The app's file is the history. When the hub thread is empty and the file is
- * not, the file is copied into the hub once. When the hub holds more than the
- * file (the conversation carried on elsewhere), the hub's thread is used.
- */
+/** The conversation, oldest first. Never throws. */
 export async function loadCoachHistory(): Promise<CoachChatItem[]> {
-  const local = await loadLocal();
-  if (!isChatHubAvailable()) return local;
-  const shared = await hubHistory();
-  if (shared === null) return local;
-  if (shared.length === 0 && local.length > 0) {
-    if (!seeding) {
-      seeding = (async () => {
-        for (const m of local) {
-          await postToHub(m.role, m.proposal ? withProposal(m.content, m.proposal) : m.content);
-        }
-      })();
-    }
-    await seeding;
-    return local;
-  }
-  return shared.length > local.length ? shared : local;
+  return loadLocal();
 }
 
-/**
- * Record one in-app turn: the whole conversation to the file, and the new
- * question and reply to the hub when there is one.
- */
-export async function recordCoachTurn(items: CoachChatItem[], question: string, reply: CoachChatItem): Promise<void> {
+/** Record one turn: the whole conversation, to the file. */
+export async function recordCoachTurn(items: CoachChatItem[]): Promise<void> {
   await saveCoachHistory(items);
-  if (isChatHubAvailable()) {
-    await postToHub("user", question);
-    await postToHub("assistant", reply.proposal ? withProposal(reply.content, reply.proposal) : reply.content);
-  }
-}
-
-export interface ThreadChange {
-  items: CoachChatItem[];
-  /** Set when the coach applied a plan change from a ConjureChat message. */
-  plan?: Plan;
-}
-type Listener = (change: ThreadChange) => void;
-const listeners = new Set<Listener>();
-
-/** Hear about turns answered from ConjureChat. Returns an unsubscribe. */
-export function onCoachThreadChange(fn: Listener): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-
-/**
- * Answer a message typed in ConjureChat with the coach's own logic. A pending
- * proposal makes the message its answer, exactly as typing it in the Coach tab
- * would. The hub records the message and this reply itself, so neither is
- * posted again; the file gets both.
- */
-export async function answerHubMessage(m: HubInbound): Promise<string> {
-  // No consent to collect health data: nothing goes to the AI, nothing is kept.
-  if (!healthConsentGranted()) {
-    return "Conjure Fitness needs your permission to keep health data before the coach can answer. Open Conjure Fitness to agree.";
-  }
-  const local = await loadLocal();
-  const base = local.length ? local : ((await hubHistory(m.messageId)) ?? []);
-  const answering = hasPendingProposal(base);
-  const grounded = answering ? markAnswered(base) : base;
-  const withUser: CoachChatItem[] = [...grounded, { role: "user", content: m.content }];
-  const ctx = await buildCoachContext();
-  const outcome = await coachChat(toChatMessages(withUser), ctx, {
-    answering,
-    canPropose: (answering ? proposalRounds(base) : 0) < MAX_PROPOSAL_ROUNDS,
-  });
-  const assistant: CoachChatItem = {
-    role: "assistant",
-    content: outcome.reply,
-    ...(outcome.proposal ? { proposal: outcome.proposal } : {}),
-  };
-  const items = [...withUser, assistant];
-  await saveCoachHistory(items);
-  const change: ThreadChange = outcome.planUpdate ? { items, plan: outcome.planUpdate.plan } : { items };
-  for (const fn of listeners) fn(change);
-  return outcome.proposal ? withProposal(outcome.reply, outcome.proposal) : outcome.reply;
-}
-
-let listening: Promise<boolean> | null = null;
-
-/** Register with the chat hub at startup. Resolves false where there is no hub. */
-export function startCoachChatHub(): Promise<boolean> {
-  if (!listening) listening = listenToHub(answerHubMessage);
-  return listening;
-}
-
-/** Test seam. */
-export function resetCoachThread(): void {
-  listening = null;
-  seeding = null;
-  listeners.clear();
 }

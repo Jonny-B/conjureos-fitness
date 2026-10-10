@@ -9,7 +9,6 @@ import {
   hasPendingProposal,
   loadCoachHistory,
   markAnswered,
-  onCoachThreadChange,
   recordCoachTurn,
   toChatMessages,
 } from "../features/coach/thread";
@@ -64,17 +63,6 @@ export function CoachScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // A message answered from ConjureChat while this screen is open.
-  useEffect(
-    () =>
-      onCoachThreadChange(({ items }) => {
-        if (busyRef.current) return;
-        roundRef.current = items[items.length - 1]?.proposal ? 1 : 0;
-        setMessages(items);
-      }),
-    [],
-  );
-
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages, busy]);
@@ -115,7 +103,7 @@ export function CoachScreen({
       roundRef.current = outcome.proposal ? roundRef.current + 1 : 0;
       const next = [...withUser, assistant];
       setMessages(next);
-      await recordCoachTurn(next, t, assistant);
+      await recordCoachTurn(next);
     } catch (err) {
       setMessages([
         ...withUser,

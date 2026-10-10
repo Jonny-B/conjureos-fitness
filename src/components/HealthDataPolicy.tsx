@@ -54,9 +54,7 @@ export function HealthDataPolicy({ onClose }: { onClose: () => void }) {
           <h3>Where it lives</h3>
           <p>
             Your entries are stored on your device and in your own ConjureOS account, so they can
-            follow you between devices you sign in on. Your conversation with the coach also
-            appears in the ConjureOS Chat panel, in the same account. Other people cannot see
-            any of it. ConjureOS LLC can access stored data only to run and secure the service,
+            follow you between devices you sign in on. Other people cannot see any of it. ConjureOS LLC can access stored data only to run and secure the service,
             or when the law requires it. It is never sold, and it is never used for advertising
             or marketing, by us or by anyone we send it to.
           </p>
