@@ -23,6 +23,11 @@
 >   `listWorkouts` feeds Conjure Health's calorie ring through its
 >   `workoutSource` need; its `returns` schema is a contract.
 >
+> - App type (0.5.1): **sealed** (ConjureOS Phase 62). `conjureos.appType` is
+>   `sealed` and `editable` is `false`, so the AI changes nothing in the app.
+>   It is still connected: it can be used with ConjureOS AI and share its
+>   actions with Chat and other apps. `editStyle` is not written.
+>
 > Everything below describes the app as it was before the split.
 
 Calorie, nutrition, weight, and fitness tracking. A My Net Diary-style daily
