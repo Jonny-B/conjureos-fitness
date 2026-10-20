@@ -22,7 +22,8 @@ vi.mock("./bridge/actions", () => ({ registerActions: () => registerActions() })
 vi.mock("./features/healthConsent", () => ({
   loadHealthConsent: async () => false,
   recordHealthConsent: async () => true,
-  withdrawHealthConsent: async () => {},
+  healthConsentGranted: () => false,
+  withdrawHealthConsent: async () => true,
 }));
 vi.mock("./features/plan/planService", async (orig) => ({
   ...(await orig<typeof import("./features/plan/planService")>()),

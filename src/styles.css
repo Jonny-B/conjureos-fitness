@@ -4389,6 +4389,12 @@ input[type="date"].text-input {
 .privacy-block p {
   margin: 0;
 }
+/* Withdraw, the policy, withdraw-collection and its Try again are `btn small`
+   (about 40px on padding and font alone); they get a 44px target, as in
+   Conjure Health. */
+.privacy-block .btn {
+  min-height: 44px;
+}
 .policy-body h3 {
   font-size: 14px;
   font-weight: 700;

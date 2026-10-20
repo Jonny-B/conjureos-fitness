@@ -17,6 +17,16 @@ import {
 } from "../features/aiConsent";
 import type { AiJournalConsent } from "../types";
 
+/**
+ * Said when a withdrawal of consent to collect health data could not be
+ * saved. Collection stops for the session either way, but the next session
+ * reads the stored agreement, so without this the person would find the app
+ * collecting again after a reload (ConjureOS #1156 review). Draft copy,
+ * pending the owner's approval.
+ */
+export const WITHDRAW_NOT_SAVED =
+  "Your withdrawal was not saved. Collection stays stopped until you close the app, and starts again when you reopen it.";
+
 /** Which surface the settings sheet opens on. "program" deep-links straight to
  *  the workout-program editor (e.g. from the Plan tab's "Edit workouts"). */
 export type SettingsView = "main" | "program";
@@ -49,10 +59,15 @@ export function SettingsSheet({
   onPlanChange: (plan: Plan) => void;
   /** Fired after any history clear so screens re-read their data. */
   onDataCleared?: () => void;
-  /** Withdraw consent to collect health data: App returns to the consent screen. */
-  onWithdrawHealthConsent?: () => void;
+  /**
+   * Withdraw consent to collect health data. Resolves whether it was saved:
+   * App returns to the consent screen when it was, and this sheet says it
+   * was not and offers a retry when it was not.
+   */
+  onWithdrawHealthConsent?: () => Promise<boolean>;
 }) {
   const [units, setUnitsState] = useState<Profile["units"]>(profile?.units ?? "metric");
+  const [withdrawal, setWithdrawal] = useState<"idle" | "saving" | "not-saved">("idle");
   // The program sub-view (Edit workouts) is only ever entered directly via
   // initialView; the cog itself no longer links to it, so this never changes
   // after mount — closing the editor closes the whole sheet.
@@ -85,6 +100,15 @@ export function SettingsSheet({
     } catch {
       /* best-effort — nothing else here persists units */
     }
+  };
+
+  // Asked once; a retry after a failed save does not ask again.
+  const withdraw = async () => {
+    if (!onWithdrawHealthConsent || withdrawal === "saving") return;
+    setWithdrawal("saving");
+    const saved = await onWithdrawHealthConsent().catch(() => false);
+    // A saved withdrawal closes this sheet (App), so only a failure is shown.
+    if (!saved) setWithdrawal("not-saved");
   };
 
   // Sub-view: the workout-program editor ("Edit workouts") is its own overlay.
@@ -184,16 +208,28 @@ export function SettingsSheet({
                   all collection at once and takes you back to the agreement screen. To delete
                   what is already stored, use Reset health data below first.
                 </p>
-                <button
-                  className="btn small ghost"
-                  onClick={() => {
-                    if (window.confirm("Stop this app collecting your health data? You can agree again later.")) {
-                      onWithdrawHealthConsent();
-                    }
-                  }}
-                >
-                  Withdraw consent to collect health data
-                </button>
+                {withdrawal === "not-saved" ? (
+                  <>
+                    <div className="notice notice-error" role="alert">
+                      {WITHDRAW_NOT_SAVED}
+                    </div>
+                    <button className="btn small" onClick={() => void withdraw()}>
+                      Try again
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="btn small ghost"
+                    disabled={withdrawal === "saving"}
+                    onClick={() => {
+                      if (window.confirm("Stop this app collecting your health data? You can agree again later.")) {
+                        void withdraw();
+                      }
+                    }}
+                  >
+                    {withdrawal === "saving" ? "Withdrawing…" : "Withdraw consent to collect health data"}
+                  </button>
+                )}
               </>
             )}
           </div>

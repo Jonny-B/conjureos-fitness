@@ -4,7 +4,12 @@ import { DEFAULT_GOALS } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
 import { HealthConsentGate } from "./components/HealthConsentGate";
-import { loadHealthConsent, recordHealthConsent, withdrawHealthConsent } from "./features/healthConsent";
+import {
+  healthConsentGranted,
+  loadHealthConsent,
+  recordHealthConsent,
+  withdrawHealthConsent,
+} from "./features/healthConsent";
 import { todayISO } from "./features/diary";
 import {
   archivePlan,
@@ -275,6 +280,30 @@ export function App() {
     setPlanWizardOpen(true);
   }, [plan]);
 
+  /**
+   * Close Settings. A withdrawal stands for the session even when it was not
+   * saved (features/healthConsent.ts), so closing Settings after one, saved
+   * or not, lands on the agreement screen rather than the app.
+   */
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    if (!healthConsentGranted()) setConsent("no");
+  }, []);
+
+  /**
+   * Withdraw consent to collect health data. A saved withdrawal goes straight
+   * to the agreement screen; one that was not saved keeps Settings open, which
+   * says so and offers a retry (ConjureOS #1156 review).
+   */
+  const withdrawCollection = useCallback(async () => {
+    const saved = await withdrawHealthConsent();
+    if (saved) {
+      setSettingsOpen(false);
+      setConsent("no");
+    }
+    return saved;
+  }, []);
+
   // The plan wizard, opened from the banner, owns the screen while active but is
   // fully dismissible (no longer a mandatory first-run gate).
   if (consent === "unknown") return null;
@@ -501,15 +530,11 @@ export function App() {
           profile={profile}
           plan={plan}
           initialView={settingsView}
-          onClose={() => setSettingsOpen(false)}
+          onClose={closeSettings}
           onSave={onSaveGoals}
           onPlanChange={setPlan}
           onDataCleared={onDataCleared}
-          onWithdrawHealthConsent={() => {
-            void withdrawHealthConsent();
-            setSettingsOpen(false);
-            setConsent("no");
-          }}
+          onWithdrawHealthConsent={withdrawCollection}
         />
       )}
     </div>
