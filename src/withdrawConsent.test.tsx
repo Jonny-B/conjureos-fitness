@@ -1,13 +1,17 @@
 // @vitest-environment jsdom
 /**
- * Withdrawing consent to collect health data, from Settings, when clearing
- * the stored agreement fails (found in the ConjureOS #1156 review).
+ * Withdrawing consent to collect health data, from Settings, including when
+ * clearing the stored agreement fails (found in the ConjureOS #1156 review).
  *
  * Collection stops for the session either way, but the next session reads
  * the file: a withdrawal that was not saved leaves the old agreement in force
- * after a reload. It used to pass in silence, Settings closing onto the
- * agreement screen as if it had worked. Settings says it was not saved and
- * offers a retry.
+ * after a reload. It used to pass in silence. The agreement screen says so
+ * and offers a retry.
+ *
+ * The app goes to that screen at once, whatever the save does. Holding it
+ * open behind Settings while the notice showed left every screen mounted, so
+ * whatever they run (a GPS cardio session sampling location under a wake
+ * lock) carried on after the person had withdrawn.
  */
 
 import { act } from "react";
@@ -18,16 +22,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /** What each withdrawal's write does, in order; the last one repeats. */
 let saves: boolean[] = [];
+/** When set, the next withdrawal's write waits for this to be called. */
+let holdNext: ((finish: (saved: boolean) => void) => void) | null = null;
 let withdrawn = false;
 const withdrawHealthConsent = vi.fn(async () => {
   withdrawn = true;
+  if (holdNext) {
+    const hold = holdNext;
+    holdNext = null;
+    return new Promise<boolean>((resolve) => hold(resolve));
+  }
   return saves.length > 1 ? saves.shift()! : (saves[0] ?? true);
 });
+/** The location watch and wake lock a GPS cardio session holds. */
+const stopWatching = vi.fn();
+const releaseWakeLock = vi.fn();
 
 vi.mock("./bridge/actions", () => ({ registerActions: async () => {} }));
 vi.mock("./features/healthConsent", () => ({
   loadHealthConsent: async () => true,
-  recordHealthConsent: async () => true,
+  recordHealthConsent: async () => {
+    withdrawn = false;
+    return true;
+  },
   healthConsentGranted: () => !withdrawn,
   withdrawHealthConsent: () => withdrawHealthConsent(),
 }));
@@ -35,6 +52,24 @@ vi.mock("./features/aiConsent", async (orig) => ({
   ...(await orig<typeof import("./features/aiConsent")>()),
   readAiJournalConsent: async () => undefined,
 }));
+vi.mock("./bridge/location", async (orig) => ({
+  ...(await orig<typeof import("./bridge/location")>()),
+  isLocationAvailable: () => true,
+  watchLocation: () => stopWatching,
+}));
+// The opening screen stands in for a GPS cardio session in progress: the
+// real tracker, started, the way CardioPlayer runs it under the header.
+vi.mock("./screens/HomeScreen", async () => {
+  const { useEffect } = await import("react");
+  const { useGpsTracker } = await import("./features/cardio/tracker");
+  return {
+    HomeScreen: () => {
+      const { start } = useGpsTracker();
+      useEffect(() => start(), [start]);
+      return <div className="gps-session" />;
+    },
+  };
+});
 vi.mock("./features/plan/planService", async (orig) => ({
   ...(await orig<typeof import("./features/plan/planService")>()),
   loadPlan: async () => null,
@@ -58,15 +93,22 @@ vi.mock("./data/repository", () => {
 });
 
 import { App } from "./App";
-import { WITHDRAW_NOT_SAVED } from "./screens/SettingsSheet";
+import { WITHDRAW_NOT_SAVED } from "./features/healthConsentCopy";
 
 let host: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
   saves = [];
+  holdNext = null;
   withdrawn = false;
   withdrawHealthConsent.mockClear();
+  stopWatching.mockClear();
+  releaseWakeLock.mockClear();
+  Object.defineProperty(navigator, "wakeLock", {
+    configurable: true,
+    value: { request: async () => ({ release: releaseWakeLock }) },
+  });
   vi.spyOn(window, "confirm").mockReturnValue(true);
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -106,56 +148,108 @@ async function click(label: string) {
   await settle();
 }
 
-const settingsOpen = () => !!host.querySelector(".sheet h2") && host.querySelector(".sheet h2")!.textContent === "Settings";
+const withdraw = () => click("Withdraw consent to collect health data");
 const onAgreementScreen = () => !!button("Agree and continue");
+/** Anything of the app itself still mounted: its header carries the cog. */
+const appMounted = () => !!host.querySelector('button[aria-label="Settings"]');
+const notice = () => host.querySelector('[role="alert"]')?.textContent ?? "";
 
 describe("withdrawing consent from Settings", () => {
   it("goes to the agreement screen when the withdrawal is saved", async () => {
     saves = [true];
     await openSettings();
-    await click("Withdraw consent to collect health data");
+    await withdraw();
     expect(withdrawHealthConsent).toHaveBeenCalledTimes(1);
     expect(onAgreementScreen()).toBe(true);
-    expect(host.textContent).not.toContain(WITHDRAW_NOT_SAVED);
+    expect(appMounted()).toBe(false);
+    expect(notice()).not.toContain(WITHDRAW_NOT_SAVED);
   });
 
-  it("says it was not saved, stays in Settings, and offers a retry", async () => {
+  it("leaves the app at once, before the save has finished", async () => {
+    let finish: (saved: boolean) => void = () => {};
+    holdNext = (f) => (finish = f);
+    await openSettings();
+    await withdraw();
+    // The write is still in progress: the app is gone all the same.
+    expect(onAgreementScreen()).toBe(true);
+    expect(appMounted()).toBe(false);
+    expect(notice()).toBe("");
+    // It fails: the agreement screen says so.
+    await act(async () => finish(false));
+    await settle();
+    expect(notice()).toContain(WITHDRAW_NOT_SAVED);
+  });
+
+  it("says on the agreement screen that it was not saved, and offers a retry", async () => {
     saves = [false];
     await openSettings();
-    await click("Withdraw consent to collect health data");
-    expect(settingsOpen()).toBe(true);
-    const alert = host.querySelector('[role="alert"]');
-    expect(alert?.textContent).toContain(WITHDRAW_NOT_SAVED);
+    await withdraw();
+    expect(onAgreementScreen()).toBe(true);
+    expect(appMounted()).toBe(false);
+    expect(notice()).toContain(WITHDRAW_NOT_SAVED);
     expect(button("Try again")).toBeDefined();
-    expect(onAgreementScreen()).toBe(false);
   });
 
-  it("goes to the agreement screen once a retry saves it", async () => {
+  it("leaves nothing running behind it: a GPS session stops sampling and lets the screen sleep", async () => {
+    saves = [false];
+    await openSettings();
+    // The session is running behind Settings.
+    expect(host.querySelector(".gps-session")).not.toBeNull();
+    expect(stopWatching).not.toHaveBeenCalled();
+    await withdraw();
+    expect(host.querySelector(".gps-session")).toBeNull();
+    expect(stopWatching).toHaveBeenCalledTimes(1);
+    expect(releaseWakeLock).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the notice once a retry saves it, without asking again", async () => {
     saves = [false, true];
     await openSettings();
-    await click("Withdraw consent to collect health data");
+    await withdraw();
     await click("Try again");
     expect(withdrawHealthConsent).toHaveBeenCalledTimes(2);
-    // The person confirmed once; a retry does not ask again.
     expect(window.confirm).toHaveBeenCalledTimes(1);
     expect(onAgreementScreen()).toBe(true);
+    expect(notice()).not.toContain(WITHDRAW_NOT_SAVED);
   });
 
   it("keeps saying so while a retry fails too", async () => {
     saves = [false, false];
     await openSettings();
-    await click("Withdraw consent to collect health data");
+    await withdraw();
     await click("Try again");
     expect(withdrawHealthConsent).toHaveBeenCalledTimes(2);
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain(WITHDRAW_NOT_SAVED);
+    expect(notice()).toContain(WITHDRAW_NOT_SAVED);
   });
 
-  it("still stops collection: closing Settings after a failed save shows the agreement screen", async () => {
+  it("does not let the person agree while a retry is clearing the file", async () => {
     saves = [false];
     await openSettings();
-    await click("Withdraw consent to collect health data");
-    await click("Done");
-    expect(onAgreementScreen()).toBe(true);
+    await withdraw();
+    const box = host.querySelector<HTMLInputElement>('.consent-toggle input[type="checkbox"]');
+    await act(async () => box!.click());
+    expect(button("Agree and continue")!.disabled).toBe(false);
+    let finish: (saved: boolean) => void = () => {};
+    holdNext = (f) => (finish = f);
+    await click("Try again");
+    expect(button("Withdrawing…")?.disabled).toBe(true);
+    expect(button("Agree and continue")!.disabled).toBe(true);
+    await act(async () => finish(true));
+    await settle();
+    expect(button("Agree and continue")!.disabled).toBe(false);
+    expect(notice()).toBe("");
+  });
+
+  it("drops the notice when the person agrees again", async () => {
+    saves = [false];
+    await openSettings();
+    await withdraw();
+    const box = host.querySelector<HTMLInputElement>('.consent-toggle input[type="checkbox"]');
+    await act(async () => box!.click());
+    await click("Agree and continue");
+    await settle();
+    expect(appMounted()).toBe(true);
+    expect(notice()).not.toContain(WITHDRAW_NOT_SAVED);
   });
 
   it("keeps the not-saved copy to the copy rules", () => {
