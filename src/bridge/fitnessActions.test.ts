@@ -32,7 +32,7 @@ vi.mock("../data/repository", () => ({ getRepository: async () => repo }));
 // Consent to collect health data (features/healthConsent.ts). Granted for
 // every test except the one that checks the refusal.
 let consentGranted = true;
-vi.mock("../features/healthConsent", () => ({ healthConsentGranted: () => consentGranted }));
+vi.mock("../features/healthConsent", () => ({ healthConsentOnFile: async () => consentGranted }));
 
 let actions: Record<string, Handler> = {};
 
@@ -294,6 +294,80 @@ describe("logWorkout", () => {
     await expect(call("logWorkout", { durationMin: 30, type: "x".repeat(41) })).rejects.toThrow(/40/);
     await expect(call("logWorkout", { durationMin: 30, calories: -5 })).rejects.toThrow(/non-negative/);
     expect(db.sessions).toHaveLength(0);
+  });
+});
+
+// ── What a person reads (ConjureOS #1156) ──────────────────────────────
+
+describe("every action answers in one line a person reads", () => {
+  it("listWorkouts names what it found, or says there was nothing", async () => {
+    expect(((await call("listWorkouts")) as { value: string }).value).toBe(
+      `No workouts recorded from ${shiftDate(today, -6)} to ${today}`,
+    );
+    db.sessions = ["Lift", "Run", "Swim", "Row"].map((name) => session(today, { workoutName: name, durationSec: 600 }));
+    const v = ((await call("listWorkouts", { from: today, to: today })) as { value: string }).value;
+    expect(v).toMatch(/^4 workouts today: /);
+    expect(v).toMatch(/ and 1 more$/);
+  });
+
+  it("trainingSummary says the week against the plan's goal, in the person's units", async () => {
+    const week = weekToDate(today);
+    db.plan = planWith([], { weeklyExerciseDays: 3 });
+    db.profile = { ...profile(70), units: "imperial" } as Profile;
+    db.sessions = [
+      session(week[0]!, { durationSec: 1200, caloriesBurned: 100 }),
+      session(week[0]!, { durationSec: 600, caloriesBurned: 50, cardio: { distanceKm: 1.609344, durationSec: 600, source: "gps" } }),
+    ];
+    expect(((await call("trainingSummary")) as { value: string }).value).toBe(
+      "This week: 2 workouts, 1 of 3 active days, 30 min, 150 kcal, 1.00 mi",
+    );
+    db.sessions = [];
+    expect(((await call("trainingSummary")) as { value: string }).value).toBe(
+      "This week: no workouts, with a goal of 3 active days",
+    );
+  });
+
+  it("nextWorkout's line is its message", async () => {
+    const r = (await call("nextWorkout")) as { value: string; message: string };
+    expect(r.value).toBe(r.message);
+  });
+
+  it("logWorkout says what it recorded, and shows it on a card", async () => {
+    db.profile = profile(70);
+    const r = (await call("logWorkout", { durationMin: 30, type: "running", distanceKm: 5 })) as {
+      value: string;
+      display: { title: string; text: string };
+    };
+    expect(r.value).toBe("Running, 30 min, 5.00 km, 343 kcal (estimated), today");
+    expect(r.display).toEqual({ title: "Running", text: "30 min, 5.00 km, 343 kcal (estimated). In your training history today." });
+    const y = (await call("logWorkout", { durationMin: 45, name: "Spin class", calories: 410, date: shiftDate(today, -1) })) as {
+      value: string;
+    };
+    expect(y.value).toBe("Spin class, 45 min, 410 kcal, yesterday");
+  });
+
+  it("keeps to the house style: no em-dash, and no now, yet or no longer", async () => {
+    db.plan = planWith([{ id: "pw1", workout: workout("Next"), group: 2 }], { weeklyExerciseDays: 2 });
+    db.sessions = [session(today, { workoutName: "Lift", durationSec: 600 })];
+    const lines = [
+      ((await call("listWorkouts")) as { value: string }).value,
+      ((await call("trainingSummary")) as { value: string }).value,
+      ((await call("nextWorkout")) as { value: string }).value,
+      ...Object.values(((await call("logWorkout", { durationMin: 10 })) as { display: Record<string, string> }).display),
+    ];
+    for (const line of lines) expect(line).not.toMatch(/\u2014|\b(now|yet|no longer)\b/i);
+  });
+});
+
+describe("the two logWorkouts point at each other, so the router picks the right one", () => {
+  it("this one names Conjure Health's, and says which is for what", async () => {
+    const pkg = (await import("../../package.json")) as unknown as {
+      default: { conjureos: { actions: Record<string, { description: string }> } };
+    };
+    const d = pkg.default.conjureos.actions.logWorkout!.description;
+    expect(d).toContain("Conjure Health has its own logWorkout");
+    expect(d).toMatch(/For a workout the person did, use this one/);
+    expect(d).toMatch(/log a workout in one app, not both/);
   });
 });
 

@@ -55,7 +55,7 @@ vi.mock("../features/exercise", () => ({ exerciseCaloriesForDate: async () => 0 
 // Consent to collect health data (features/healthConsent.ts). Granted for
 // every test except the one that checks the refusal.
 let consentGranted = true;
-vi.mock("../features/healthConsent", () => ({ healthConsentGranted: () => consentGranted }));
+vi.mock("../features/healthConsent", () => ({ healthConsentOnFile: async () => consentGranted }));
 
 let actions: Record<string, Handler> = {};
 
@@ -407,7 +407,26 @@ describe("recentNutrition", () => {
 describe("without consent to collect health data", () => {
   it("refuses fitness actions", async () => {
     consentGranted = false;
-    await expect(async () => call("listWorkouts")).rejects.toThrow(/permission to keep health data/);
-    await expect(async () => call("logWorkout", { name: "Run", minutes: 30 })).rejects.toThrow(/permission to keep health data/);
+    await expect(async () => call("listWorkouts")).rejects.toThrow(/keep your health data/);
+    await expect(async () => call("logWorkout", { name: "Run", minutes: 30 })).rejects.toThrow(/keep your health data/);
+  });
+
+  it("answers every declared action with ConjureOS's needs-consent marker, so Chat can offer to open the app (ConjureOS #1156)", async () => {
+    consentGranted = false;
+    const pkg = (await import("../../package.json")) as unknown as {
+      default: { conjureos: { actions: Record<string, unknown> } };
+    };
+    for (const name of Object.keys(pkg.default.conjureos.actions)) {
+      const err = await Promise.resolve()
+        .then(() => call(name, { durationMin: 30 }))
+        .then(
+          () => null,
+          (e: unknown) => e,
+        );
+      expect(err, name).toBeInstanceOf(Error);
+      expect((err as Error).message, name).toBe(
+        "NEEDS_CONSENT:Open Conjure Fitness and agree to let it keep your health data.",
+      );
+    }
   });
 });

@@ -26,9 +26,15 @@
  *   - Wearable-synced sessions in the read actions. Conjure Health reads Apple
  *     Health itself, so listing them here would count those workouts twice.
  *
+ * Every action returns `value`, one line a person reads (ConjureOS Chat shows
+ * an action's answer only through it), and `logWorkout` also returns
+ * `display`, the card Chat shows under that line (ConjureOS #1036, #1156).
+ *
  * Reads are side-effect-free and never call AI (a background read must not
- * spend the user's credits); `logWorkout` triggers ConjureOS's one-time
- * per-caller grant.
+ * spend the user's credits). ConjureOS asks the person before another app's
+ * call runs, reads included, unless they chose "Always allow" for that app.
+ * ConjureOS runs one without that question only when the person asked for it
+ * in their own words, and Chat asks before it first reads this app.
  */
 
 import type { ExerciseSet, Plan, WorkoutSession } from "../types";
@@ -39,7 +45,7 @@ import { weekToDate } from "../features/exercise";
 import { sessionMinutes } from "../features/calories";
 import { loadPlan } from "../features/plan/planService";
 import { currentGroup, isEvaluationGroup, workoutsInGroup } from "../features/plan/groups";
-import { fmtSeconds } from "../features/units";
+import { fmtDistance, fmtSeconds } from "../features/units";
 import { asDate, asNonNegInt, asObject, asPositiveAmount, asString } from "./params";
 
 /** Widest date range listWorkouts serves in one call. */
@@ -127,6 +133,41 @@ async function bodyweightKg(): Promise<number | undefined> {
   return profile?.weightKg && profile.weightKg > 0 ? profile.weightKg : undefined;
 }
 
+/** The person's distance units; metric when unknown. */
+async function unitsPref(): Promise<"metric" | "imperial"> {
+  const repo = await getRepository();
+  const profile = await repo.getProfile().catch(() => null);
+  return profile?.units === "imperial" ? "imperial" : "metric";
+}
+
+// ── Answer lines ─────────────────────────────────────────────────────
+// `value` is read by a person, so it is words, rounded the way the app
+// shows them, in the person's units.
+
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** "today", "yesterday", or "on" the date. */
+function dayWord(date: string): string {
+  const today = todayISO();
+  if (date === today) return "today";
+  if (date === shiftDate(today, -1)) return "yesterday";
+  return `on ${date}`;
+}
+
+/** The first three names, then how many more. */
+function someNames(names: string[]): string {
+  const shown = names.slice(0, 3).join(", ");
+  return names.length > 3 ? `${shown} and ${names.length - 3} more` : shown;
+}
+
+/** A card ConjureOS Chat shows under its line: plain words, the app's own. */
+interface Card {
+  title: string;
+  text: string;
+}
+
 // ── listWorkouts ─────────────────────────────────────────────────────
 
 export interface ListedWorkout {
@@ -146,7 +187,9 @@ export interface ListedWorkout {
   distanceKm?: number;
 }
 
-async function listWorkouts(raw?: unknown): Promise<{ from: string; to: string; workouts: ListedWorkout[] }> {
+async function listWorkouts(
+  raw?: unknown,
+): Promise<{ from: string; to: string; workouts: ListedWorkout[]; value: string }> {
   const p = raw === undefined ? {} : asObject(raw);
   const to = p.to === undefined || p.to === null ? todayISO() : asDate(p.to, "to");
   let from = p.from === undefined || p.from === null ? shiftDate(to, -6) : asDate(p.from, "from");
@@ -181,7 +224,11 @@ async function listWorkouts(raw?: unknown): Promise<{ from: string; to: string; 
         ...(s.cardio && s.cardio.distanceKm > 0 ? { distanceKm: round2(s.cardio.distanceKm) } : {}),
       };
     });
-  return { from, to, workouts };
+  const span = from === to ? dayWord(to) : `from ${from} to ${to}`;
+  const value = workouts.length
+    ? `${plural(workouts.length, "workout")} ${span}: ${someNames(workouts.map((w) => w.name))}`
+    : `No workouts recorded ${span}`;
+  return { from, to, workouts, value };
 }
 
 // ── trainingSummary ──────────────────────────────────────────────────
@@ -200,6 +247,8 @@ export interface TrainingSummary {
   caloriesBurned: number;
   distanceKm: number;
   hasPlan: boolean;
+  /** One line a person reads. */
+  value: string;
 }
 
 async function trainingSummary(raw?: unknown): Promise<TrainingSummary> {
@@ -210,10 +259,11 @@ async function trainingSummary(raw?: unknown): Promise<TrainingSummary> {
   const inWeek = new Set(days);
 
   const repo = await getRepository();
-  const [sessions, weightKg, plan] = await Promise.all([
+  const [sessions, weightKg, plan, units] = await Promise.all([
     repo.listWorkoutSessions().catch(() => [] as WorkoutSession[]),
     bodyweightKg(),
     loadPlan(),
+    unitsPref(),
   ]);
   const week = sessions.filter((s) => isOwnSession(s) && inWeek.has(s.date));
   const activeDates = days.filter((d) => week.some((s) => s.date === d));
@@ -225,17 +275,26 @@ async function trainingSummary(raw?: unknown): Promise<TrainingSummary> {
     kcal += burnFor(s, weightKg).kcal;
     km += s.cardio?.distanceKm ?? 0;
   }
+  const weekStart = days[0]!;
+  const goal = plan?.weeklyExerciseDays ?? 0;
+  const when = weekStart === weekToDate(todayISO())[0] ? "This week" : `The week of ${weekStart}`;
+  const active = goal > 0 ? `${activeDates.length} of ${goal} active days` : plural(activeDates.length, "active day");
+  const value = week.length
+    ? `${when}: ${plural(week.length, "workout")}, ${active}, ${Math.round(minutes)} min, ${Math.round(kcal)} kcal` +
+      (km > 0 ? `, ${fmtDistance(round2(km), units)}` : "")
+    : `${when}: no workouts${goal > 0 ? `, with a goal of ${plural(goal, "active day")}` : ""}`;
   return {
-    weekStart: days[0]!,
+    weekStart,
     through: date,
     workouts: week.length,
     activeDays: activeDates.length,
     activeDates,
-    weeklyGoalDays: plan?.weeklyExerciseDays ?? 0,
+    weeklyGoalDays: goal,
     minutes: Math.round(minutes),
     caloriesBurned: Math.round(kcal),
     distanceKm: round2(km),
     hasPlan: plan !== null,
+    value,
   };
 }
 
@@ -247,6 +306,8 @@ export interface NextWorkoutResult {
   hasProgram: boolean;
   /** One line a caller can show or say as-is. */
   message: string;
+  /** The same line, under the name every action answers in. */
+  value: string;
   /** Absent when there is no program, or the current group is finished. */
   workout?: {
     id: string;
@@ -286,6 +347,11 @@ function cardioTarget(t: { distanceKm?: number; durationSec?: number } | undefin
 }
 
 async function nextWorkout(raw?: unknown): Promise<NextWorkoutResult> {
+  const answer = await nextWorkoutAnswer(raw);
+  return { ...answer, value: answer.message };
+}
+
+async function nextWorkoutAnswer(raw?: unknown): Promise<Omit<NextWorkoutResult, "value">> {
   if (raw !== undefined) asObject(raw); // takes no params, but refuses junk
   const plan: Plan | null = await loadPlan();
   if (!plan) {
@@ -345,6 +411,8 @@ async function logWorkout(raw?: unknown): Promise<{
   durationMin: number;
   caloriesBurned: number;
   caloriesEstimated: boolean;
+  value: string;
+  display: Card;
 }> {
   const p = asObject(raw);
   const durationMin = asPositiveAmount(p.durationMin, "durationMin", 1, 600, true);
@@ -390,13 +458,21 @@ async function logWorkout(raw?: unknown): Promise<{
   };
   const repo = await getRepository();
   await repo.saveWorkoutSession(session);
+  const shown = session.workoutName!;
+  const distance = distanceKm !== undefined ? `, ${fmtDistance(distanceKm, await unitsPref())}` : "";
+  const burn = `${kcal} kcal${estimated ? " (estimated)" : ""}`;
   return {
     id: session.id,
     date,
-    name: session.workoutName!,
+    name: shown,
     durationMin,
     caloriesBurned: kcal,
     caloriesEstimated: estimated,
+    value: `${shown}, ${durationMin} min${distance}, ${burn}, ${dayWord(date)}`,
+    display: {
+      title: shown,
+      text: `${durationMin} min${distance}, ${burn}. In your training history ${dayWord(date)}.`,
+    },
   };
 }
 
