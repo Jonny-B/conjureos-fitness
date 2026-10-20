@@ -186,7 +186,9 @@ export async function askCoach(question: string, history: CoachChatItem[] = []):
     const reply = await complete({
       system: ctx ? `${SYSTEM}\n\nABOUT THIS USER\n${ctx}` : SYSTEM,
       messages,
-      maxTokens: 400,
+      // Room to think plus the answer, whose length the prompt bounds (four
+      // sentences at most). conjureos-fitness#89.
+      maxTokens: 3000,
       tier: "capable",
     });
     const text = reply.trim();
