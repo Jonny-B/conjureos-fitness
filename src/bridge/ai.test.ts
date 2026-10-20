@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiErrorMessage, extractJson } from "./ai";
+import { aiErrorMessage, DECLINED_MESSAGE, extractJson, RAN_OUT_MESSAGE } from "./ai";
 
 describe("aiErrorMessage", () => {
   it("names the real problem when the host says the user is out of credits", () => {
@@ -35,6 +35,31 @@ describe("aiErrorMessage", () => {
     expect(aiErrorMessage(new Error("app does not have ai.complete permission"))).toMatch(/AI permission/i);
     expect(aiErrorMessage(new Error("ai.complete blocked: ConjureOS is in the background"))).toMatch(/on screen/i);
     expect(aiErrorMessage(new Error('AI proxy request failed (402): {"error":"out_of_credits","tier":"free"}'))).toMatch(/out of AI credits/i);
+  });
+
+  // conjureos-fitness#89: ConjureOS's two typed rejections, word for word.
+  it("says a thinking model ran out of room, not that the connection failed", () => {
+    const ranOut = Object.assign(
+      new Error("The model ran out of room before answering. Try again, or ask for something shorter."),
+      { name: "AIRanOutOfRoomError" },
+    );
+    const msg = aiErrorMessage(ranOut, "Something went wrong reaching the AI service. Try again in a moment.");
+    expect(msg).toBe(RAN_OUT_MESSAGE);
+    expect(msg).not.toMatch(/went wrong reaching|connection/i);
+  });
+
+  it("says the AI declined, not that it failed", () => {
+    for (const reason of ["Claude declined this request.", "Claude declined this request (cyber)."]) {
+      const msg = aiErrorMessage(new Error(reason), "Something went wrong reaching the AI service. Try again in a moment.");
+      expect(msg).toBe(DECLINED_MESSAGE);
+    }
+    expect(aiErrorMessage(Object.assign(new Error("x"), { name: "AIRefusalError" }))).toBe(DECLINED_MESSAGE);
+  });
+
+  it("words both by the copy rules", () => {
+    for (const msg of [RAN_OUT_MESSAGE, DECLINED_MESSAGE]) {
+      expect(msg).not.toMatch(/—|\bnow\b|no longer|\byet\b/i);
+    }
   });
 
   it("reads Anthropic's own exhausted-account 400", () => {

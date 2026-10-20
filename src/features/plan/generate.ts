@@ -11,7 +11,7 @@
  */
 
 import type { LiabilityAck, Plan, PlanGoal, PlanTargets, WorkoutProgram } from "../../types";
-import { complete, extractJson, isAiAvailable } from "../../bridge/ai";
+import { complete, extractJson, isAiAvailable, isRanOutOfRoom, isRefusal } from "../../bridge/ai";
 import { newId } from "../../data/id";
 import { shiftDate, todayISO } from "../diary";
 import { macrosForCalories } from "../goals";
@@ -237,7 +237,8 @@ async function generateCore(input: PlanInput, priorReasons?: string[]): Promise<
   const raw = await complete({
     system: SYSTEM_CORE,
     messages: [{ role: "user", content: buildUserPrompt(input, priorReasons) }],
-    maxTokens: 900,
+    // The goals JSON (about 900 tokens) plus room to think. conjureos-fitness#89.
+    maxTokens: 4000,
     tier: "capable",
   });
   const res = parseCore(raw);
@@ -257,7 +258,7 @@ async function generateProgramOnce(
   input: PlanInput,
   goals: GeneratedGoal[],
   priorReason?: string,
-): Promise<{ program: WorkoutProgram | null; reason?: string }> {
+): Promise<{ program: WorkoutProgram | null; reason?: string; declined?: boolean }> {
   let raw: string;
   try {
     raw = await complete({
@@ -273,12 +274,17 @@ async function generateProgramOnce(
         },
       ],
       // A full multi-day advanced program with an assessment overflows a smaller
-      // budget and truncates → parse fail → the beginner fallback. Give it room.
-      maxTokens: 4096,
+      // budget and truncates → parse fail → the beginner fallback. Give it room:
+      // about 4,000 tokens of JSON plus room to think (conjureos-fitness#89).
+      maxTokens: 8000,
       tier: "capable",
     });
   } catch (err) {
-    return { program: null, reason: err instanceof Error ? err.message : "the AI was unreachable" };
+    return {
+      program: null,
+      reason: aiFailureReason(err, "the AI was unreachable"),
+      declined: isRefusal(err),
+    };
   }
   let json: unknown;
   try {
@@ -325,9 +331,23 @@ export async function regenerateProgram(
       reason = rs.join("; ");
     } else {
       reason = res.reason;
+      // A refusal answers the same way every time; asking again only waits.
+      if (res.declined) break;
     }
   }
   return { program: null, reason };
+}
+
+/**
+ * Why an AI call failed, as the review's "Why" line reads it. ConjureOS's two
+ * typed rejections (ConjureOS #1159) get a reason of their own, so a refusal
+ * or a spent cap never reads as the AI being unreachable.
+ */
+function aiFailureReason(err: unknown, fallback?: string): string {
+  if (isRefusal(err)) return "the AI declined this request";
+  if (isRanOutOfRoom(err)) return "the AI ran out of room before it answered";
+  if (err instanceof Error) return err.message;
+  return fallback ?? String(err);
 }
 
 const CORE_FAIL_MESSAGE: Record<CoreFail, string> = {
@@ -486,7 +506,9 @@ export async function createPlan(
           ...(programFallback ? { programFallback, programFallbackReason } : {}),
         };
       } catch (err) {
-        lastError = err instanceof Error ? err.message : String(err);
+        lastError = aiFailureReason(err);
+        // A refusal answers the same way every time; asking again only waits.
+        if (isRefusal(err)) break;
       }
     }
   }

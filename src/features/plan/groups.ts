@@ -151,7 +151,8 @@ async function buildGroup(
           content: `${buildAnalysisPrompt(temp, sessions, preferences)}\n\nWrite the progression for the user's next group of these workouts.`,
         },
       ],
-      maxTokens: 1024,
+      // The adjustment JSON plus room to think. conjureos-fitness#89.
+      maxTokens: 4000,
       tier: "capable",
     });
     const adj = parseAdjustment(raw);

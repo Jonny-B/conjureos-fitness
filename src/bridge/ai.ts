@@ -13,6 +13,26 @@
  */
 export type ModelTier = "cheap" | "capable" | "epic";
 
+/**
+ * The smallest `maxTokens` a `capable` or `epic` call asks for
+ * (conjureos-fitness#89, ConjureOS #1159). `src/bridge/capableCaps.test.ts`
+ * holds every such call to it.
+ *
+ * Those tiers run models that think before they answer (Sonnet 5.5 and Opus
+ * 5.5, at the effort ConjureOS picks for the model), and thinking counts
+ * toward `maxTokens`. A cap sized for the answer alone can be spent before
+ * the answer starts: ConjureOS then rejects the call as "ran out of room",
+ * and the tokens it thought are still charged. So a call's cap is its answer
+ * plus room to think, and the answer's length is bounded by its prompt, never
+ * by the cap. (`cheap` calls from an app run without thinking, so a short cap
+ * there goes on the answer.)
+ *
+ * What a bigger cap costs: the charge is for the tokens used, so the same
+ * answer costs the same at any cap. The cap only sets the hold ConjureOS takes
+ * before the call and settles after it.
+ */
+export const CAPABLE_MIN_MAX_TOKENS = 3000;
+
 /** An image attached to a chat message, for the vision-backed capture flows. */
 export interface ChatImage {
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
@@ -80,6 +100,34 @@ export async function complete(req: CompleteRequest): Promise<string> {
 }
 
 /**
+ * What the person reads when a thinking model spent its whole `maxTokens`
+ * before it wrote an answer (ConjureOS's `AIRanOutOfRoomError`, which is
+ * charged). Retrying can work, since how long a model thinks varies; a
+ * shorter question gives it less to think about. Not a connection problem,
+ * so it never says so.
+ */
+export const RAN_OUT_MESSAGE = "The AI ran out of room before it could answer. Try again, or ask something shorter.";
+
+/**
+ * What the person reads when the model declined the request (ConjureOS's
+ * `AIRefusalError`, which costs nothing). Asking the same thing again gets
+ * the same answer, so it suggests rewording rather than retrying.
+ */
+export const DECLINED_MESSAGE = "The AI declined to answer that. Try asking it a different way.";
+
+/** `err` is ConjureOS's "ran out of room" rejection (ConjureOS #1159). */
+export function isRanOutOfRoom(err: unknown): boolean {
+  if (err instanceof Error && err.name === "AIRanOutOfRoomError") return true;
+  return /ran out of room/i.test(err instanceof Error ? err.message : String(err ?? ""));
+}
+
+/** `err` is ConjureOS's refusal rejection: the model declined (ConjureOS #1159). */
+export function isRefusal(err: unknown): boolean {
+  if (err instanceof Error && err.name === "AIRefusalError") return true;
+  return /claude declined this request/i.test(err instanceof Error ? err.message : String(err ?? ""));
+}
+
+/**
  * Turn a rejected `complete()` into something worth reading.
  *
  * The host rejects with its own reason — "out_of_credits", "rate limit",
@@ -96,6 +144,11 @@ export async function complete(req: CompleteRequest): Promise<string> {
 export function aiErrorMessage(err: unknown, fallback = "The AI didn't answer. Try again."): string {
   const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
   const m = raw.toLowerCase();
+  // The two outcomes of a model that answered with no answer (ConjureOS
+  // #1159). Matched first: the host's "ran out of room" sentence says "Try
+  // again", which nothing below should read as anything else.
+  if (isRanOutOfRoom(err)) return RAN_OUT_MESSAGE;
+  if (isRefusal(err)) return DECLINED_MESSAGE;
   // Ordered most-specific first: the proxy's 402/429 bodies mention credits
   // AND limits, so "out of credits" must be decided before the daily cap.
   // Anthropic answers an exhausted account with a 400, not a 402, and the

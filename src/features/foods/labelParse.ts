@@ -79,7 +79,8 @@ export async function parseNutritionLabel(
   const raw = await complete({
     system: SYSTEM,
     messages: [{ role: "user", content: userText, images: front ? [image, front] : [image] }],
-    maxTokens: 1024,
+    // The label JSON plus room to think. conjureos-fitness#89.
+    maxTokens: 4000,
     tier: "capable",
   });
 

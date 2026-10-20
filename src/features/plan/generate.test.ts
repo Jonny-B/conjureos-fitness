@@ -53,7 +53,12 @@ const GOOD_PROGRAM = JSON.stringify({
 });
 // createPlan calls the core prompt first, then the program prompt — so
 // mockResolvedValueOnce in that order routes cleanly without inspecting args.
-beforeEach(() => complete.mockReset());
+// Braces matter: vitest runs a function returned from beforeEach as the
+// test's cleanup, and mockReset() returns the mock, so an arrow without them
+// called `complete` once more after every test.
+beforeEach(() => {
+  complete.mockReset();
+});
 
 describe("createPlan (two-phase generation)", () => {
   it("uses AI goals + AI program when both calls succeed", async () => {
@@ -91,6 +96,36 @@ describe("createPlan (two-phase generation)", () => {
     expect(res.plan.program?.workouts[0]?.workout.name).toBe("Bodyweight Starter"); // template program
     expect(res.programFallback).toBe(true);
     expect(res.programFallbackReason).toMatch(/cut off/i);
+  });
+
+  // conjureos-fitness#89: a refusal answers the same way every time, so it is
+  // not asked again, and the review says the AI declined rather than failed.
+  it("does not ask again after the AI declines the goals", async () => {
+    complete.mockRejectedValue(new Error("Claude declined this request."));
+    const res = await createPlan(input, liability);
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(res.usedFallback).toBe(true);
+    expect(res.failureReason).toBe("the AI declined this request");
+  });
+
+  it("does not ask again after the AI declines the program", async () => {
+    complete
+      .mockResolvedValueOnce(GOOD_CORE)
+      .mockRejectedValueOnce(new Error("Claude declined this request."));
+    const res = await createPlan(input, liability);
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(res.usedFallback).toBe(false);
+    expect(res.programFallback).toBe(true);
+    expect(res.programFallbackReason).toBe("the AI declined this request");
+  });
+
+  it("names a cap the AI ran out of, and asks once more (thinking length varies)", async () => {
+    complete.mockRejectedValue(
+      new Error("The model ran out of room before answering. Try again, or ask for something shorter."),
+    );
+    const res = await createPlan(input, liability);
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(res.failureReason).toBe("the AI ran out of room before it answered");
   });
 
   it("falls back with a 'too long' reason when the core JSON is truncated on both attempts", async () => {

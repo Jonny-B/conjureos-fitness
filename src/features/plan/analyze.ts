@@ -49,6 +49,13 @@ export interface PlanAdjustment {
   benchmarkTargetDelta?: number;
 }
 
+/**
+ * The adjustment JSON (about 1,000 tokens) plus room to think: the capable
+ * tier thinks before it answers, and thinking counts toward the cap
+ * (conjureos-fitness#89, `CAPABLE_MIN_MAX_TOKENS` in bridge/ai.ts).
+ */
+const ADJUST_MAX_TOKENS = 4000;
+
 const SYSTEM = `You are a wellness coach adjusting an existing workout program from recent performance data. You are NOT a doctor.
 Return ONLY a JSON object describing a SMALL, safe adjustment:
   { "summary": string,
@@ -260,7 +267,7 @@ export async function analyzeAndAdapt(plan: Plan, sessions: WorkoutSession[], pr
     const raw = await complete({
       system: SYSTEM,
       messages: [{ role: "user", content: buildAnalysisPrompt(program, sessions, preferences) }],
-      maxTokens: 1024,
+      maxTokens: ADJUST_MAX_TOKENS,
       tier: "capable",
     });
     const adj = parseAdjustment(raw);
@@ -298,7 +305,7 @@ export async function calibrateToBenchmark(plan: Plan, sessions: WorkoutSession[
           content: `${buildAnalysisPrompt(program, sessions, preferences)}\n\nThe newest session above is the benchmark assessment they just completed. Calibrate the prescribed working sets to these measured numbers.`,
         },
       ],
-      maxTokens: 1024,
+      maxTokens: ADJUST_MAX_TOKENS,
       tier: "capable",
     });
     const adj = parseAdjustment(raw);
