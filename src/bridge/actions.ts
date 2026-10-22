@@ -37,10 +37,13 @@
  *
  * Params come from other (untrusted) apps, so every field is type-checked,
  * length-capped, and range-clamped before it reaches the repository. Reads are
- * side-effect-free; writes trigger ConjureOS's one-time per-caller grant.
+ * side-effect-free. ConjureOS asks the person before another app's call runs,
+ * reads included, unless they chose "Always allow" for that app. ConjureOS
+ * runs one without that question only when the person asked for it in their
+ * own words, and Chat asks before it first reads this app.
  */
 
-import { healthConsentGranted } from "../features/healthConsent";
+import { healthConsentOnFile } from "../features/healthConsent";
 import type { Macros, MealType } from "../types";
 import { MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
@@ -549,17 +552,28 @@ async function recentWellbeing(raw?: unknown): Promise<{ days: WellbeingDay[] }>
  * `includeNutrition` exists for tests, which still exercise the food handlers.
  */
 /**
+ * What every action throws while there is no consent to collect health data
+ * on file. The `NEEDS_CONSENT:` marker is ConjureOS's (#1156): Chat reads it
+ * and says the app needs the person's agreement, with this line on a card and
+ * an Open button, instead of showing an error. The rest is plain words, which
+ * is all an app that calls this one sees beside the marker.
+ */
+export const NEEDS_HEALTH_CONSENT =
+  "NEEDS_CONSENT:Open Conjure Fitness and agree to let it keep your health data.";
+
+/**
  * Every action refuses while there is no consent to collect health data on
- * file (features/healthConsent.ts). App registers actions only after consent,
- * but registration outlives a withdrawal mid-session, so each call checks too.
+ * file (features/healthConsent.ts), and checks on every call: the actions are
+ * registered at startup, before the person has agreed, so that a call then
+ * gets this answer instead of the silence of an app that registered nothing
+ * (ConjureOS #1156), and a withdrawal mid-session stops them at once. Nothing
+ * is read or written before the check passes.
  */
 function requireHealthConsent<H extends Record<string, (...args: never[]) => unknown>>(handlers: H): H {
   const out: Record<string, (...args: never[]) => unknown> = {};
   for (const [name, fn] of Object.entries(handlers)) {
-    out[name] = (...args: never[]) => {
-      if (!healthConsentGranted()) {
-        throw new Error("Conjure Fitness does not have permission to keep health data yet. Open Conjure Fitness to agree.");
-      }
+    out[name] = async (...args: never[]) => {
+      if (!(await healthConsentOnFile())) throw new Error(NEEDS_HEALTH_CONSENT);
       return fn(...args);
     };
   }

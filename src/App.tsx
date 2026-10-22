@@ -4,7 +4,12 @@ import { DEFAULT_GOALS } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
 import { HealthConsentGate } from "./components/HealthConsentGate";
-import { loadHealthConsent, recordHealthConsent, withdrawHealthConsent } from "./features/healthConsent";
+import {
+  healthConsentGranted,
+  loadHealthConsent,
+  recordHealthConsent,
+  withdrawHealthConsent,
+} from "./features/healthConsent";
 import { todayISO } from "./features/diary";
 import {
   archivePlan,
@@ -76,8 +81,12 @@ export function App() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [ready, setReady] = useState(false);
   // Consent to collect health data (features/healthConsent.ts). Until it is
-  // "yes", only the consent screen renders and no action is registered.
+  // "yes", only the consent screen renders, and every cross-app action
+  // refuses with ConjureOS's needs-consent answer (bridge/actions.ts).
   const [consent, setConsent] = useState<"unknown" | "yes" | "no">("unknown");
+  // A withdrawal in this session could not clear the stored agreement: the
+  // consent screen says so and offers a retry.
+  const [withdrawalNotSaved, setWithdrawalNotSaved] = useState(false);
   // Settings sheet: closed, or open on a specific sub-view (main / program editor).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsView, setSettingsView] = useState<SettingsView>("main");
@@ -132,14 +141,18 @@ export function App() {
     };
   }, []);
 
+  // Registered at startup, consent or not (ConjureOS #1156). Each action checks
+  // the agreement itself and refuses without one, so nothing is read or kept
+  // before the person agrees. An app that registered nothing until then left
+  // ConjureOS waiting out its timeout and saying the app "did not register the
+  // action", where the refusal lets Chat say what is needed and offer to open
+  // the app. The fitness actions always; the food ones only while food
+  // tracking is on (registerActions decides, to match package.json).
   useEffect(() => {
-    if (consent !== "yes") return;
-    // The fitness actions always; the food ones only while food tracking is on
-    // (registerActions decides, to match what package.json declares).
     registerActions().catch(() => {
       /* cross-app integration is non-fatal */
     });
-  }, [consent]);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -270,13 +283,42 @@ export function App() {
     setPlanWizardOpen(true);
   }, [plan]);
 
+  /**
+   * Save a withdrawal: clear the stored agreement, and say on the agreement
+   * screen when that failed. Collection stops for the session either way, but
+   * the next session reads the file, so a failure kept quiet would let a
+   * reload switch collection back on (ConjureOS #1156 review). Calling it
+   * again is the retry.
+   */
+  const saveWithdrawal = useCallback(async () => {
+    const saved = await withdrawHealthConsent();
+    // Agreeing again meanwhile overrules the withdrawal: nothing left to say.
+    if (!healthConsentGranted()) setWithdrawalNotSaved(!saved);
+  }, []);
+
+  /**
+   * Withdraw consent to collect health data. The app goes to the agreement
+   * screen at once, before and whatever the save does, so nothing that
+   * collects (a GPS cardio session, its wake lock) stays mounted behind
+   * Settings.
+   */
+  const withdrawCollection = useCallback(() => {
+    setSettingsOpen(false);
+    setConsent("no");
+    setWithdrawalNotSaved(false);
+    void saveWithdrawal();
+  }, [saveWithdrawal]);
+
   // The plan wizard, opened from the banner, owns the screen while active but is
   // fully dismissible (no longer a mandatory first-run gate).
   if (consent === "unknown") return null;
   if (consent === "no") {
     return (
       <HealthConsentGate
+        withdrawalNotSaved={withdrawalNotSaved}
+        onRetryWithdrawal={saveWithdrawal}
         onAgree={() => {
+          setWithdrawalNotSaved(false);
           void recordHealthConsent();
           setConsent("yes");
         }}
@@ -500,11 +542,7 @@ export function App() {
           onSave={onSaveGoals}
           onPlanChange={setPlan}
           onDataCleared={onDataCleared}
-          onWithdrawHealthConsent={() => {
-            void withdrawHealthConsent();
-            setSettingsOpen(false);
-            setConsent("no");
-          }}
+          onWithdrawHealthConsent={withdrawCollection}
         />
       )}
     </div>

@@ -11,8 +11,12 @@ the `conjureos.actions` block in `package.json`. This page explains them.
 | [`nextWorkout`](#nextworkout) | read | The next workout in the training plan, with its sets |
 | [`logWorkout`](#logworkout) | write | Record a workout done outside the app |
 
-Reads never prompt the user. `logWorkout` asks once per calling app (Allow once
-/ Always / Block). A closed Conjure Fitness is started off-screen to answer.
+ConjureOS asks the person before another app's call runs, reads and
+`logWorkout` alike (Allow once / Always allow / Block), unless they chose Always
+allow for that app. ConjureOS runs one without that question only when the
+person asked for it in their own words, and Chat asks before it first reads this
+app to answer a question. A closed Conjure Fitness is started off-screen to
+answer.
 
 ## Rules that hold for every action
 
@@ -27,10 +31,20 @@ Reads never prompt the user. `logWorkout` asks once per calling app (Allow once
   when that happened.
 - **Dates are `YYYY-MM-DD`** in the user's local calendar and must be real
   dates (`2026-02-30` is refused). Bad params reject with a plain message.
+- **Every answer carries `value`**, one line a person reads, in their units
+  ("This week: 3 workouts, 2 of 4 active days, 95 min, 640 kcal"). ConjureOS
+  Chat shows an action's answer through it. `logWorkout` also returns
+  `display: { title, text }`, the card Chat shows under that line.
+- **Nothing answers without consent to keep health data.** Every action then
+  rejects with `NEEDS_CONSENT:Open Conjure Fitness and agree to let it keep
+  your health data.` ConjureOS Chat turns that into "Conjure Fitness needs your
+  agreement first", with an Open button; another app sees `HANDLER_THREW` with
+  that message. The actions are registered at startup, agreement or not, so a
+  call before it gets this answer rather than none.
 
 ## listWorkouts
 
-`{ from?, to?, limit? }` → `{ from, to, workouts: Workout[] }`, newest first.
+`{ from?, to?, limit? }` → `{ from, to, workouts: Workout[], value }`, newest first.
 
 - `to` defaults to today, `from` to 6 days before `to`. A range wider than 92
   days is cut to the most recent 92 (the answer's `from` says where it
@@ -65,15 +79,15 @@ console.log(schemaSatisfies(fit.actions.listWorkouts.returns, need.shape)); // {
 `{ date? }` → the Monday-to-`date` week containing `date` (default today;
 future dates are refused): `weekStart`, `through`, `workouts`, `activeDays`,
 `activeDates`, `weeklyGoalDays` (the plan's days-per-week target, 0 when there
-is none), `minutes`, `caloriesBurned`, `distanceKm`, `hasPlan`.
+is none), `minutes`, `caloriesBurned`, `distanceKm`, `hasPlan`, and `value`.
 
 ## nextWorkout
 
-No params → `{ hasPlan, hasProgram, message, workout?, group?, groupDone?,
-groupSize?, evaluation? }`.
+No params → `{ hasPlan, hasProgram, message, value, workout?, group?,
+groupDone?, groupSize?, evaluation? }`.
 
 - `message` is one line a caller can show or say as-is ("Next up: Full-Body
-  Express (1 of 3 done in group 2).").
+  Express (1 of 3 done in group 2)."). `value` is the same line.
 - `workout` is the first unfinished workout in the current group: `id`, `name`,
   `type` (`strength`, `run` or `bike`), `summary?`, `target?` (a run or ride's
   goal, e.g. `"5 km"`), and `exercises: { name, prescription }[]` where
@@ -85,7 +99,7 @@ groupSize?, evaluation? }`.
 ## logWorkout
 
 `{ durationMin, name?, type?, distanceKm?, calories?, date? }` →
-`{ id, date, name, durationMin, caloriesBurned, caloriesEstimated }`.
+`{ id, date, name, durationMin, caloriesBurned, caloriesEstimated, value, display }`.
 
 - Only `durationMin` (1–600) is required. `type` is the activity (`running`,
   `cycling`, `yoga`, …, up to 40 characters) and names the workout when `name`
@@ -96,6 +110,10 @@ groupSize?, evaluation? }`.
 - The workout appears in Conjure Fitness's history and the read actions above,
   and so reaches Conjure Health's calorie ring through `listWorkouts`. Log it
   in one app, not both.
+- **Conjure Health has a `logWorkout` too**, which only adds a burn to its
+  calorie budget. The two descriptions name each other, so ConjureOS's router
+  sends a workout the person did here and keeps Health's for a burn that should
+  only change the calorie budget.
 
 ## Deliberately not exposed
 

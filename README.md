@@ -1,18 +1,25 @@
 # Conjure Fitness, an app for ConjureOS
 
-> **Split from Conjure Health on 2026-09-28. DEV ONLY for now.** This repo is
-> Conjure Fitness: guided workouts, run tracking, an adaptive training plan and
-> an AI coach. Calorie and food tracking moved to Conjure Health, which lives in
-> [conjureos-health](https://github.com/Jonny-B/conjureos-health) and keeps the
-> `fitness` store slug.
+> **Split from Conjure Health on 2026-09-28.** This repo is Conjure Fitness:
+> guided workouts, run tracking, an adaptive training plan and an AI coach.
+> Calorie and food tracking moved to Conjure Health, which lives in
+> [conjureos-health](https://github.com/Jonny-B/conjureos-health) and publishes
+> as its own listing, slug `health`.
 >
-> - Store slug `conjure-fitness`, a new listing. Never publish to `fitness`:
->   that would replace Conjure Health for everyone who has it installed.
-> - Publishes to the DEV store only (Actions → Run workflow). There is no
->   release/prod trigger yet. The dev listing was created 2026-09-28 (store
->   app id `57a80973-e0e2-4c75-97a2-cbe3691ee56e`, featured, v1 = `0.1.0`), so
->   never run `--first-publish` for `conjure-fitness` on dev again. Prod has no
->   listing yet. Bump `version` above the live one before every Run workflow.
+> - Store slug `conjure-fitness`, this app's own listing. Never publish to
+>   `fitness`: that is the old Conjure Health listing, withdrawn on 2026-10-22
+>   when Health moved to `health`, and nothing may publish to it again.
+> - Publishing (`.github/workflows/publish-store.yml`, shaped like Health's;
+>   `src/publishWorkflow.test.ts` holds it): Actions → Run workflow publishes
+>   to the DEV store by default, or to PROD with target `prod`; publishing a
+>   GitHub release publishes to PROD. Bump `version` above the live one first.
+> - The workflow ships a new version of an existing listing and cannot create
+>   one. The dev listing was created 2026-09-28 (store app id
+>   `57a80973-e0e2-4c75-97a2-cbe3691ee56e`, featured, v1 = `0.1.0`), so never
+>   run `--first-publish` for `conjure-fitness` on dev again. The prod listing
+>   is created once, by hand, with `--first-publish` of ConjureOS's
+>   `scripts/publish-app.mjs` (ANCHOR_APP_CI_SETUP.md there); until it exists
+>   a prod run stops at "No existing store app found".
 > - `src/features/flags.ts`: `COACH_AND_WORKOUTS_ENABLED` is on and
 >   `NUTRITION_ENABLED` is off. The food code is still here, just unreachable;
 >   the app opens on a new Home screen (`src/screens/HomeScreen.tsx`).

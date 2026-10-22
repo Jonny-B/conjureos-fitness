@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Conjure Fitness: guided workouts, run tracking, an adaptive training plan and an AI coach for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -107,12 +107,17 @@
                   "completedAt"
                 ]
               }
+            },
+            "value": {
+              "type": "string",
+              "description": "One line a person reads, in their units, for ConjureOS to show."
             }
           },
           "required": [
             "from",
             "to",
-            "workouts"
+            "workouts",
+            "value"
           ]
         }
       },
@@ -163,6 +168,10 @@
             },
             "hasPlan": {
               "type": "boolean"
+            },
+            "value": {
+              "type": "string",
+              "description": "One line a person reads, in their units, for ConjureOS to show."
             }
           },
           "required": [
@@ -175,7 +184,8 @@
             "minutes",
             "caloriesBurned",
             "distanceKm",
-            "hasPlan"
+            "hasPlan",
+            "value"
           ]
         }
       },
@@ -256,18 +266,23 @@
             "evaluation": {
               "type": "boolean",
               "description": "This group re-tests the plan's benchmarks."
+            },
+            "value": {
+              "type": "string",
+              "description": "The same line as message, under the name every action answers in."
             }
           },
           "required": [
             "hasPlan",
             "hasProgram",
-            "message"
+            "message",
+            "value"
           ]
         }
       },
       "logWorkout": {
         "permission": "actions.write",
-        "description": "Record a workout the user did outside the app (a run, a class, \"30 minutes of yoga\") in their Conjure Fitness training history. Only durationMin is required. Pass calories only when the user or a device states the number; otherwise the app estimates them. type is the activity (e.g. running, cycling, yoga, strength); distanceKm is for runs, rides and swims. date is YYYY-MM-DD, defaults to today, and cannot be in the future.",
+        "description": "Record a workout the user did outside the app (a run, a class, \"30 minutes of yoga\") in their Conjure Fitness training history. Only durationMin is required. Pass calories only when the user or a device states the number; otherwise the app estimates them. type is the activity (e.g. running, cycling, yoga, strength); distanceKm is for runs, rides and swims. date is YYYY-MM-DD, defaults to today, and cannot be in the future. Conjure Health has its own logWorkout, which only adds calories burned to its calorie budget. For a workout the person did, use this one: Conjure Health counts workouts recorded here on its calorie budget once the two apps are connected. Use Conjure Health's only for a burn the person wants on their calorie budget alone, and log a workout in one app, not both.",
         "params": {
           "type": "object",
           "properties": {
@@ -328,6 +343,26 @@
             },
             "caloriesEstimated": {
               "type": "boolean"
+            },
+            "value": {
+              "type": "string",
+              "description": "One line a person reads, in their units, for ConjureOS to show."
+            },
+            "display": {
+              "type": "object",
+              "description": "A card for ConjureOS to show under its line about the step: the workout, and what was recorded. Plain text.",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "text"
+              ]
             }
           },
           "required": [
@@ -336,7 +371,9 @@
             "name",
             "durationMin",
             "caloriesBurned",
-            "caloriesEstimated"
+            "caloriesEstimated",
+            "value",
+            "display"
           ]
         }
       }
@@ -365,6 +402,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^25.0.1",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "vite-plugin-singlefile": "^2.3.3",

@@ -29,6 +29,14 @@ const ADJUSTMENT_SHAPE = `{ "summary": string, "deload"?: boolean, "benchmarkTar
 
 const PLAN_CHANGE_SHAPE = `{ "summary": string, "goalWeightKg"?: number (KILOGRAMS), "dailyCalories"?: number, "endDate"?: "YYYY-MM-DD" }`;
 
+/**
+ * A check-in's JSON or a chat reply with its tags (about 1,000 tokens at
+ * most) plus room to think: the capable tier thinks before it answers, and
+ * thinking counts toward the cap (conjureos-fitness#89,
+ * `CAPABLE_MIN_MAX_TOKENS` in bridge/ai.ts).
+ */
+const COACH_MAX_TOKENS = 4000;
+
 const EVAL_SYSTEM = `You are the user's wellness coach inside their fitness app. Friendly, brief, specific — never a doctor.
 They just answered a short check-in. Reply with ONLY a JSON object:
   { "reply": string,
@@ -111,7 +119,7 @@ export async function evaluateCheckin(
           content: `CONTEXT\n${ctx.rendered}\n\nCOACH MEMORY\n${renderMemory(ctx)}\n\nCHECK-IN (${kind})\n${answersBlock(answers)}`,
         },
       ],
-      maxTokens: 1024,
+      maxTokens: COACH_MAX_TOKENS,
       tier: "capable",
     });
     const o = JSON.parse(extractJson(raw)) as Record<string, unknown>;
@@ -261,7 +269,7 @@ export async function coachChat(
     };
   }
   const system = `${CHAT_SYSTEM_BASE}\n\nCONTEXT\n${ctx.rendered}\n\nCOACH MEMORY\n${renderMemory(ctx)}`;
-  const raw = await complete({ system, messages: history.slice(-16), maxTokens: 1024, tier: "capable" });
+  const raw = await complete({ system, messages: history.slice(-16), maxTokens: COACH_MAX_TOKENS, tier: "capable" });
   const reply = stripTags(raw);
 
   // 0. Learn from the conversation: persist any durable notes/summary the coach
