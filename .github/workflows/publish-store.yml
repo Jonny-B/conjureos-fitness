@@ -40,6 +40,11 @@ on:
         description: Changelog for this version
         required: false
         default: ""
+      first_publish:
+        description: Create the conjure-fitness listing on the target project (once per project; refused if it exists)
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: publish-store-${{ github.ref_name }}
@@ -132,3 +137,6 @@ jobs:
           html-path: dist/index.html
           slug: conjure-fitness
           changelog: ${{ steps.changelog.outputs.text }}
+          first-publish: ${{ github.event_name == 'workflow_dispatch' && inputs.first_publish && 'true' || 'false' }}
+          display-name: Conjure Fitness
+          featured: "true"
