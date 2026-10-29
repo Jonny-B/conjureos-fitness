@@ -30,7 +30,10 @@ answer.
   the profile has one, about 6 kcal a minute otherwise. `caloriesEstimated` says
   when that happened.
 - **Dates are `YYYY-MM-DD`** in the user's local calendar and must be real
-  dates (`2026-02-30` is refused). Bad params reject with a plain message.
+  dates (`2026-02-30` is refused). Bad params reject with a plain message. A
+  positive number outside a field's range is clamped to its nearest edge
+  (`durationMin: 900` records 600); a non-number, or a zero or negative where
+  the field must be positive, is refused.
 - **Every answer carries `value`**, one line a person reads, in their units
   ("This week: 3 workouts, 2 of 4 active days, 95 min, 640 kcal"). ConjureOS
   Chat shows an action's answer through it. `logWorkout` also returns
@@ -49,10 +52,12 @@ answer.
 - `to` defaults to today, `from` to 6 days before `to`. A range wider than 92
   days is cut to the most recent 92 (the answer's `from` says where it
   started). `limit` is 1–100, default 50.
-- Each workout: `id`, `date`, `name`, `type` (`"strength"`, `"cardio"`, or the
-  activity a caller logged, lowercase), `durationMin`, `caloriesBurned`,
-  `caloriesEstimated`, `completedAt` (ISO), and `distanceKm` for runs and rides.
-  A run's route is never included.
+- Each workout: `id`, `date`, `name`, `type` (`"strength"`, `"cardio"`,
+  `"workout"` when nothing says more, or the activity a caller logged,
+  lowercase), `durationMin`, `caloriesBurned`,
+  `caloriesEstimated`, `completedAt` (ISO), and `distanceKm` when the workout has
+  a distance (runs, rides, and anything logged with one). A run's route is never
+  included.
 
 **This is a published contract.** ConjureOS matches other apps' `needs` against
 this `returns` schema structurally, and the match fails closed: drop a field
@@ -90,8 +95,9 @@ groupDone?, groupSize?, evaluation? }`.
   Express (1 of 3 done in group 2)."). `value` is the same line.
 - `workout` is the first unfinished workout in the current group: `id`, `name`,
   `type` (`strength`, `run` or `bike`), `summary?`, `target?` (a run or ride's
-  goal, e.g. `"5 km"`), and `exercises: { name, prescription }[]` where
-  `prescription` reads like `"3 × 10 reps"` or `"4 × 45s"`.
+  goal, e.g. `"5 km"` or `"30 min"`), and `exercises: { name, prescription }[]`
+  where `prescription` reads like `"3 × 10 reps"`, `"3 × 10 reps @ 12 kg"` or
+  `"4 × 45s"`.
 - `workout` is absent when there is no plan, the plan has no program, or the
   current group is finished; `message` says which. `evaluation` is true when
   the group re-tests the plan's benchmarks.
