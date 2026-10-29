@@ -10,7 +10,8 @@
  * decisions 2026-10-22 and 2026-10-29, ConjureOS #1163):
  *
  *   - No agreement in force, or a withdrawal since the work started: nothing
- *     is sent.
+ *     is sent. The agreement file is read around every request, so this holds
+ *     for a withdrawal on another device too.
  *   - An answer, or a failure, that lands after a withdrawal, or after a
  *     withdrawal and a new agreement: the caller gets `AiNotAgreedError`
  *     instead, and keeps nothing.
@@ -22,7 +23,7 @@
  */
 
 import { complete, type CompleteRequest } from "../bridge/ai";
-import { healthConsentGeneration, healthConsentOnFile } from "./healthConsent";
+import { healthAgreementOnFile, healthConsentGeneration } from "./healthConsent";
 
 /**
  * Why nothing was sent, or nothing kept: no agreement in force (`none`), or
@@ -42,17 +43,27 @@ export function isAiNotAgreed(err: unknown): err is AiNotAgreedError {
   return err instanceof AiNotAgreedError || (err instanceof Error && err.name === "AiNotAgreedError");
 }
 
-/** Whether the agreement holds, and nothing was decided since `collecting`. */
-async function agreedSince(collecting: number): Promise<boolean> {
-  if (collecting !== healthConsentGeneration()) return false;
-  const onFile = await healthConsentOnFile();
-  return onFile && collecting === healthConsentGeneration();
+/**
+ * The agreement in force, as its date on file, when nothing was decided in
+ * this session since `collecting`; undefined otherwise. Read from the file
+ * each time, since another device can withdraw, or withdraw and agree again,
+ * and this session only sees the file change (Health's gate does the same).
+ */
+async function agreedSince(collecting: number): Promise<string | undefined> {
+  if (collecting !== healthConsentGeneration()) return undefined;
+  const acceptedAt = await healthAgreementOnFile();
+  return collecting === healthConsentGeneration() ? acceptedAt : undefined;
 }
 
 /**
  * Send one request under the agreement to keep health data and return the
  * model's text. `collecting` is `healthConsentGeneration()` read when the
  * work started, before anything was read for it; it defaults to now.
+ *
+ * The agreement on file right before the request is the one it is sent
+ * under: an answer, or a failure, that lands when the file no longer holds
+ * that same agreement (withdrawn, or withdrawn and given again, on any
+ * device) is thrown away.
  *
  * Throws `AiNotAgreedError` when nothing was sent or the answer was thrown
  * away. Any other failure rejects as `complete()` does.
@@ -61,7 +72,8 @@ export async function completeUnderAgreement(
   req: CompleteRequest,
   collecting: number = healthConsentGeneration(),
 ): Promise<string> {
-  if (!(await agreedSince(collecting))) {
+  const under = await agreedSince(collecting);
+  if (under === undefined) {
     throw new AiNotAgreedError(collecting === healthConsentGeneration() ? "none" : "withdrawn");
   }
   // Nothing is awaited between the check above and the request.
@@ -69,9 +81,9 @@ export async function completeUnderAgreement(
   try {
     raw = await complete(req);
   } catch (err) {
-    if (!(await agreedSince(collecting))) throw new AiNotAgreedError("withdrawn");
+    if ((await agreedSince(collecting)) !== under) throw new AiNotAgreedError("withdrawn");
     throw err;
   }
-  if (!(await agreedSince(collecting))) throw new AiNotAgreedError("withdrawn");
+  if ((await agreedSince(collecting)) !== under) throw new AiNotAgreedError("withdrawn");
   return raw;
 }

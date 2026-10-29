@@ -16,6 +16,7 @@ vi.mock("../../bridge/ai", async (orig) => ({
 vi.mock("../healthConsent", async (orig) => ({
   ...(await orig<typeof import("../healthConsent")>()),
   healthConsentOnFile: async () => true,
+  healthAgreementOnFile: async () => "2026-10-01T00:00:00.000Z",
   stillCollecting: () => true,
 }));
 vi.mock("../../bridge/vfs", () => ({

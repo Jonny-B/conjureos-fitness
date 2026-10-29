@@ -135,9 +135,33 @@ const WORKOUT: Workout = { id: "w", name: "Leg Day", exercises: [], origin: "bui
 
 const memory = () => (files["coach.json"] ? JSON.parse(files["coach.json"]) : null);
 
+/** The squat reps in the group a saved plan moved on to. */
+const nextGroupReps = () =>
+  saved.plans
+    .flatMap((p) => p.program?.workouts ?? [])
+    .filter((pw) => pw.group === 3)
+    .flatMap((pw) => pw.workout.exercises.flatMap((e) => e.sets.map((set) => set.reps)));
+
 /** The person agrees to keep health data, as the agreement screen records it. */
 async function agree() {
   expect(await collection.recordHealthConsent()).toBe(true);
+}
+
+/**
+ * What a withdrawal on another device looks like from here: the agreement
+ * file changes under this session, which is not told. `null` is a withdrawal;
+ * a date is a withdrawal and a new agreement.
+ */
+function elsewhere(acceptedAt: string | null) {
+  files["health-consent.json"] = acceptedAt ? JSON.stringify({ acceptedAt, version: 1 }) : "null";
+}
+
+/** Another device withdraws (or withdraws and agrees again) while the request is out, then answer. */
+function withdrawElsewhereWhileOut(answer: string, agreedAgainAt: string | null = null) {
+  complete.mockImplementation(async () => {
+    elsewhere(agreedAgainAt);
+    return answer;
+  });
 }
 
 /** Withdraw while the request is out, then answer. */
@@ -243,10 +267,99 @@ describe.each(FEATURES)("$name", ({ answer, run }) => {
     expect(complete).not.toHaveBeenCalled();
   });
 
+  it("sends nothing after that agreement is withdrawn on another device", async () => {
+    await agree();
+    elsewhere(null);
+    await settle(run());
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it("sends once agreed (positive control)", async () => {
     await agree();
     await settle(run());
     expect(complete).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The agreement follows the person between devices (features/healthConsent.ts),
+ * so a withdrawal on the phone reaches an open session on the iPad only as a
+ * change to the file. The gate reads the file around every request, as
+ * Health's does, and an answer that lands after it changed keeps nothing.
+ */
+describe("a withdrawal on another device reaches an open session", () => {
+  it("the coach's chat writes no memory from an answer that lands after it", async () => {
+    await agree();
+    withdrawElsewhereWhileOut(`Noted. ${REMEMBER}`);
+    const { coachChat } = await import("./coach/coach");
+    await settle(coachChat([{ role: "user", content: "I train early" }], ctx()));
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(memory()).toBeNull();
+  });
+
+  it("the coach's chat applies no program change", async () => {
+    await agree();
+    withdrawElsewhereWhileOut(`Done. <adjust>${ADJUST}</adjust>`);
+    const { coachChat } = await import("./coach/coach");
+    await settle(coachChat([{ role: "user", content: "Lighter squats" }], ctx(), { answering: true }));
+    expect(saved.plans).toEqual([]);
+  });
+
+  it("the check-in writes no memory and changes no plan", async () => {
+    await agree();
+    withdrawElsewhereWhileOut(CHECKIN);
+    const { evaluateCheckin } = await import("./coach/coach");
+    await settle(evaluateCheckin("day", [{ id: "q1", question: "How was it?", value: "Hard" }], ctx()));
+    expect(memory()).toBeNull();
+    expect(saved.plans).toEqual([]);
+  });
+
+  it("the check-in writes nothing when the call fails after it, either", async () => {
+    await agree();
+    complete.mockImplementation(async () => {
+      elsewhere(null);
+      throw new Error("network");
+    });
+    const { evaluateCheckin } = await import("./coach/coach");
+    await settle(evaluateCheckin("day", [{ id: "q1", question: "How was it?", value: "Hard" }], ctx()));
+    expect(memory()).toBeNull();
+  });
+
+  it("nothing is kept after a withdrawal and a new agreement there, either", async () => {
+    await agree();
+    withdrawElsewhereWhileOut(`Noted. ${REMEMBER}`, "2026-10-29T12:00:00.000Z");
+    const { coachChat } = await import("./coach/coach");
+    await settle(coachChat([{ role: "user", content: "I train early" }], ctx()));
+    expect(memory()).toBeNull();
+  });
+
+  // The next group is still the plain copy of the last one, since the person
+  // finished the group: that needs no AI. Only the AI's progression is lost.
+  it("the workout engine keeps no progression from the answer", async () => {
+    await agree();
+    withdrawElsewhereWhileOut(ADJUST);
+    const { startNextGroup } = await import("./plan/planService");
+    await settle(startNextGroup(makePlan(true)));
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(nextGroupReps()).not.toContain(8);
+  });
+
+  it("the workout engine keeps the progression when nothing changed (positive control)", async () => {
+    await agree();
+    complete.mockImplementation(async () => ADJUST);
+    const { startNextGroup } = await import("./plan/planService");
+    await startNextGroup(makePlan(true));
+    expect(nextGroupReps()).toEqual([8]);
+  });
+
+  it("an agreement given on another device lets this session send (positive control)", async () => {
+    await agree();
+    elsewhere("2026-10-29T12:00:00.000Z");
+    complete.mockImplementation(async () => `Noted. ${REMEMBER}`);
+    const { coachChat } = await import("./coach/coach");
+    await coachChat([{ role: "user", content: "I train early" }], ctx());
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(memory()).not.toBeNull();
   });
 });
 
