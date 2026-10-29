@@ -20,7 +20,7 @@
 
 import type { Plan, ProgramWorkout, WorkoutProgram, WorkoutSession } from "../../types";
 import { newId } from "../../data/id";
-import { complete } from "../../bridge/ai";
+import { completeUnderAgreement } from "../aiGate";
 import { applyAdjustment, buildAnalysisPrompt, parseAdjustment } from "./analyze";
 import { validateProgram } from "./validate";
 
@@ -143,7 +143,7 @@ async function buildGroup(
 
   try {
     const temp: WorkoutProgram = { ...program, workouts: base };
-    const raw = await complete({
+    const raw = await completeUnderAgreement({
       system: PROGRESSION_SYSTEM,
       messages: [
         {

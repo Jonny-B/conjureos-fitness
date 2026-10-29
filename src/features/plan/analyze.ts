@@ -14,7 +14,8 @@
  */
 
 import type { Plan, WorkoutProgram, WorkoutSession } from "../../types";
-import { complete, extractJson } from "../../bridge/ai";
+import { extractJson } from "../../bridge/ai";
+import { completeUnderAgreement } from "../aiGate";
 import { normalizeExerciseKey } from "../explainers/normalizeKey";
 import { validateProgram } from "./validate";
 import { clamp } from "../num";
@@ -264,7 +265,7 @@ export async function analyzeAndAdapt(plan: Plan, sessions: WorkoutSession[], pr
 
   let adjusted: WorkoutProgram | null = null;
   try {
-    const raw = await complete({
+    const raw = await completeUnderAgreement({
       system: SYSTEM,
       messages: [{ role: "user", content: buildAnalysisPrompt(program, sessions, preferences) }],
       maxTokens: ADJUST_MAX_TOKENS,
@@ -297,7 +298,7 @@ export async function calibrateToBenchmark(plan: Plan, sessions: WorkoutSession[
 
   let adjusted: WorkoutProgram | null = null;
   try {
-    const raw = await complete({
+    const raw = await completeUnderAgreement({
       system: CALIBRATION_SYSTEM,
       messages: [
         {

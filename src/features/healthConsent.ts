@@ -55,6 +55,29 @@ export function healthConsentGranted(): boolean {
 }
 
 /**
+ * Which agreement-or-withdrawal this session is on: moves on every record and
+ * every withdrawal. Work that sends to the AI reads it before the request, and
+ * keeps nothing when the answer lands under another (`stillCollecting`).
+ */
+export function healthConsentGeneration(): number {
+  return decisions;
+}
+
+/**
+ * Whether work that started under generation `collecting` may still keep what
+ * it got: the agreement is in force, and nobody withdrew, or withdrew and
+ * agreed again, since. An answer that lands after a withdrawal keeps nothing,
+ * not the coach's chat, its memory or a plan change (owner decision
+ * 2026-10-22, ConjureOS #1163: "Withdrawn consent means they have withdrawn
+ * consent"; conjureos-fitness#96). Synchronous, so it runs right before the
+ * write it guards. Fails closed: before the agreement screen has read the
+ * file, nothing is kept.
+ */
+export function stillCollecting(collecting: number): boolean {
+  return session === "granted" && collecting === decisions;
+}
+
+/**
  * Whether an agreement is on file, for the cross-app action guard. The
  * actions are registered at startup, before the gate has read the file
  * (ConjureOS #1156), so a call that lands first must not be refused for a
