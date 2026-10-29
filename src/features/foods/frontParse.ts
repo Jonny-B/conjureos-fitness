@@ -10,7 +10,8 @@
  */
 
 import type { ChatImage } from "../../bridge/ai";
-import { complete, extractJson } from "../../bridge/ai";
+import { extractJson } from "../../bridge/ai";
+import { completeUnderAgreement, isAiNotAgreed } from "../aiGate";
 import type { FoodItem } from "../../types";
 import { NUTRIENT_SCHEMA, buildParsedFood, clamp01, sanitizeNote, str } from "./parsedFood";
 
@@ -65,14 +66,17 @@ export async function estimateFromFront(
 
   let raw: string;
   try {
-    raw = await complete({
+    raw = await completeUnderAgreement({
       system: SYSTEM,
       messages: [{ role: "user", content: userText, images: [image] }],
       // The estimate JSON plus room to think. conjureos-fitness#89.
       maxTokens: 4000,
       tier: "capable",
     });
-  } catch {
+  } catch (err) {
+    // Nothing sent, or the answer thrown away after a withdrawal: said as
+    // that, not as "couldn't make out a food" (features/aiGate.ts).
+    if (isAiNotAgreed(err)) throw err;
     return null;
   }
   return parseFrontJson(raw, barcode);

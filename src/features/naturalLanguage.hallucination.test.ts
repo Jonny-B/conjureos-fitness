@@ -6,6 +6,14 @@ vi.mock("../bridge/ai", async (orig) => ({
   complete: (...a: unknown[]) => complete(...a),
   isAiAvailable: () => true,
 }));
+// The agreement to keep health data is in force: these tests are about what
+// the feature does with the answer. features/aiAgreement.test.ts holds the gate.
+vi.mock("./healthConsent", async (orig) => ({
+  ...(await orig<typeof import("./healthConsent")>()),
+  healthConsentOnFile: async () => true,
+  healthAgreementOnFile: async () => "2026-10-01T00:00:00.000Z",
+  stillCollecting: () => true,
+}));
 
 beforeEach(() => complete.mockReset());
 

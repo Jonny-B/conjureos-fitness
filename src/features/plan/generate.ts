@@ -11,7 +11,8 @@
  */
 
 import type { LiabilityAck, Plan, PlanGoal, PlanTargets, WorkoutProgram } from "../../types";
-import { complete, extractJson, isAiAvailable, isRanOutOfRoom, isRefusal } from "../../bridge/ai";
+import { extractJson, isAiAvailable, isRanOutOfRoom, isRefusal } from "../../bridge/ai";
+import { completeUnderAgreement } from "../aiGate";
 import { newId } from "../../data/id";
 import { shiftDate, todayISO } from "../diary";
 import { macrosForCalories } from "../goals";
@@ -234,7 +235,7 @@ function buildProgramPrompt(input: PlanInput, goals: GeneratedGoal[]): string {
 
 /** Generate the core plan (goals). Throws on transport error; typed failure otherwise. */
 async function generateCore(input: PlanInput, priorReasons?: string[]): Promise<CoreParse> {
-  const raw = await complete({
+  const raw = await completeUnderAgreement({
     system: SYSTEM_CORE,
     messages: [{ role: "user", content: buildUserPrompt(input, priorReasons) }],
     // The goals JSON (about 900 tokens) plus room to think. conjureos-fitness#89.
@@ -261,7 +262,7 @@ async function generateProgramOnce(
 ): Promise<{ program: WorkoutProgram | null; reason?: string; declined?: boolean }> {
   let raw: string;
   try {
-    raw = await complete({
+    raw = await completeUnderAgreement({
       system: SYSTEM_PROGRAM,
       messages: [
         {

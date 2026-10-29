@@ -11,7 +11,8 @@
 
 import type { ExerciseExplainer } from "../../types";
 import { readJson, writeJson, writeJsonOrThrow } from "../../bridge/vfs";
-import { complete, extractJson } from "../../bridge/ai";
+import { extractJson } from "../../bridge/ai";
+import { completeUnderAgreement } from "../aiGate";
 
 const userPath = (key: string) => `explainers/user/${key}.json`;
 const aiPath = (key: string) => `explainers/ai/${key}.json`;
@@ -75,7 +76,7 @@ export async function resolveExplainer(
   if (cached) return cached;
 
   try {
-    const raw = await complete({
+    const raw = await completeUnderAgreement({
       system: SYSTEM,
       messages: [{ role: "user", content: `Exercise: ${displayName}` }],
       maxTokens: 400,

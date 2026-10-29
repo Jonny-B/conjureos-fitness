@@ -12,7 +12,9 @@
  * conversation started here is still there when the trainer comes back.
  */
 
-import { aiErrorMessage, complete, isAiAvailable, type ChatMessage } from "../../bridge/ai";
+import { aiErrorMessage, isAiAvailable, type ChatMessage } from "../../bridge/ai";
+import { completeUnderAgreement, isAiNotAgreed } from "../aiGate";
+import { healthConsentGeneration } from "../healthConsent";
 import { readJson, writeJson } from "../../bridge/vfs";
 import { getRepository } from "../../data/repository";
 import { daySnapshot, recentSnapshots, renderDayForPrompt, renderRecentForPrompt } from "../dataApi";
@@ -135,9 +137,8 @@ async function askContext(): Promise<string> {
 }
 
 /**
- * Whether the next `askCoach()` call will run WITHOUT personal context,
- * because there's no current consent on file — so a caller can show
- * `AiConsentSheet` first instead of silently getting a generic answer.
+ * Whether the next `askCoach()` call will send nothing, because there's no
+ * current consent on file, so a caller can show `AiConsentSheet` first.
  *
  * `askContext()` enforces the actual rule (see above); this just exposes the
  * same check under a name that makes sense to a caller who has never heard of
@@ -164,12 +165,18 @@ export async function saveAskHistory(items: CoachChatItem[]): Promise<void> {
  * Answer one question, given the conversation so far (oldest first, WITHOUT
  * the new question).
  *
- * Returns the reply text. Never throws and never mutates anything but the
- * chat doc — a failed call comes back as a sentence the user can read.
+ * Returns the reply text, or null when there is nothing to keep: without the
+ * AI agreement (features/aiConsent.ts) or the agreement to keep health data,
+ * nothing is sent, not even the question; and an answer that lands after the
+ * latter is withdrawn is thrown away (features/aiGate.ts; owner decisions
+ * 2026-10-22 and 2026-10-29, ConjureOS #1163). Never throws and never mutates
+ * anything: a failed call comes back as a sentence the user can read.
  */
-export async function askCoach(question: string, history: CoachChatItem[] = []): Promise<string> {
+export async function askCoach(question: string, history: CoachChatItem[] = []): Promise<string | null> {
   const q = question.trim();
   if (!q) return "";
+  const collecting = healthConsentGeneration();
+  if (!(await hasAiJournalConsent())) return null;
   if (!isAiAvailable()) {
     return "I need the ConjureOS AI service to answer, and it isn't available right now. Open Conjure Fitness inside ConjureOS and try again.";
   }
@@ -183,17 +190,21 @@ export async function askCoach(question: string, history: CoachChatItem[] = []):
   ];
 
   try {
-    const reply = await complete({
-      system: ctx ? `${SYSTEM}\n\nABOUT THIS USER\n${ctx}` : SYSTEM,
-      messages,
-      // Room to think plus the answer, whose length the prompt bounds (four
-      // sentences at most). conjureos-fitness#89.
-      maxTokens: 3000,
-      tier: "capable",
-    });
+    const reply = await completeUnderAgreement(
+      {
+        system: ctx ? `${SYSTEM}\n\nABOUT THIS USER\n${ctx}` : SYSTEM,
+        messages,
+        // Room to think plus the answer, whose length the prompt bounds (four
+        // sentences at most). conjureos-fitness#89.
+        maxTokens: 3000,
+        tier: "capable",
+      },
+      collecting,
+    );
     const text = reply.trim();
     return text || "I couldn't come up with an answer to that one. Try asking it a different way?";
   } catch (err) {
+    if (isAiNotAgreed(err)) return null;
     return aiErrorMessage(err, "Something went wrong reaching the AI service. Try again in a moment.");
   }
 }
