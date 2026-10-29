@@ -55,6 +55,29 @@ export function healthConsentGranted(): boolean {
 }
 
 /**
+ * Which agreement-or-withdrawal this session is on: moves on every record and
+ * every withdrawal. Work that sends to the AI reads it before the request, and
+ * keeps nothing when the answer lands under another (`stillCollecting`).
+ */
+export function healthConsentGeneration(): number {
+  return decisions;
+}
+
+/**
+ * Whether work that started under generation `collecting` may still keep what
+ * it got: the agreement is in force, and nobody withdrew, or withdrew and
+ * agreed again, since. An answer that lands after a withdrawal keeps nothing,
+ * not the coach's chat, its memory or a plan change (owner decision
+ * 2026-10-22, ConjureOS #1163: "Withdrawn consent means they have withdrawn
+ * consent"; conjureos-fitness#96). Synchronous, so it runs right before the
+ * write it guards. Fails closed: before the agreement screen has read the
+ * file, nothing is kept.
+ */
+export function stillCollecting(collecting: number): boolean {
+  return session === "granted" && collecting === decisions;
+}
+
+/**
  * Whether an agreement is on file, for the cross-app action guard. The
  * actions are registered at startup, before the gate has read the file
  * (ConjureOS #1156), so a call that lands first must not be refused for a
@@ -85,8 +108,37 @@ export async function loadHealthConsent(): Promise<boolean> {
 
 /** Reads the file and changes nothing. */
 async function readAgreement(): Promise<boolean> {
+  return (await readStored()) !== undefined;
+}
+
+/** The current agreement in the file, or undefined. Reads it and changes nothing. */
+async function readStored(): Promise<HealthConsent | undefined> {
   const stored = await readJson<HealthConsent | null>(PATH, null).catch(() => null);
-  return !!stored && stored.version === HEALTH_CONSENT_VERSION && typeof stored.acceptedAt === "string";
+  return !!stored && stored.version === HEALTH_CONSENT_VERSION && typeof stored.acceptedAt === "string"
+    ? stored
+    : undefined;
+}
+
+/**
+ * For the AI gate (features/aiGate.ts): when the agreement it was given, as
+ * the file says right now, or undefined when nothing may be sent.
+ *
+ * Unlike `healthConsentOnFile`, this reads the file every time, even once the
+ * session has settled. The file follows the person between devices, so a
+ * withdrawal on the phone reaches an open session on the iPad only as a
+ * change to it, and the session is never told (conjureos-fitness#96 review).
+ * Collection itself keeps the session's answer until the next launch; what
+ * goes to the AI does not. A withdrawal in this session stands whatever the
+ * file says. An agreement that could not be written is not on file, so
+ * nothing is sent under it: an agreement that lives only in memory is not a
+ * record.
+ */
+export async function healthAgreementOnFile(): Promise<string | undefined> {
+  if (!(await healthConsentOnFile())) return undefined;
+  const stored = await readStored();
+  // A withdrawal here can land while the file is read.
+  if (session === "withdrawn") return undefined;
+  return stored?.acceptedAt;
 }
 
 /**

@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { askCoach, loadAskHistory, saveAskHistory } from "../features/coach/ask";
+import { healthConsentGeneration, stillCollecting } from "../features/healthConsent";
 import type { CoachChatItem } from "../features/coach/model";
 import { useScrollLock } from "../hooks/useScrollLock";
 import { CloseIcon } from "./icons";
@@ -38,14 +39,25 @@ export function CoachChatModal({
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    // The agreement to keep health data this question is asked under. An
+    // answer that lands after it is withdrawn is not kept (conjureos-fitness#96).
+    const collecting = healthConsentGeneration();
     const withUser: CoachChatItem[] = [...base, { role: "user", content: question }];
     setItems(withUser);
-    const reply = await askCoach(question, base);
-    const withReply: CoachChatItem[] = [...withUser, { role: "assistant", content: reply }];
-    setItems(withReply);
-    await saveAskHistory(withReply);
-    busyRef.current = false;
-    setBusy(false);
+    try {
+      const reply = await askCoach(question, base);
+      // Nothing sent, or the answer thrown away: keep nothing, on screen or on disk.
+      if (reply === null || !stillCollecting(collecting)) {
+        setItems(base);
+        return;
+      }
+      const withReply: CoachChatItem[] = [...withUser, { role: "assistant", content: reply }];
+      setItems(withReply);
+      await saveAskHistory(withReply);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
 
   useEffect(() => {

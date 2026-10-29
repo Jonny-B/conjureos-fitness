@@ -6,7 +6,8 @@
  */
 
 import type { WorkoutSession } from "../../types";
-import { complete, isAiAvailable } from "../../bridge/ai";
+import { isAiAvailable } from "../../bridge/ai";
+import { completeUnderAgreement } from "../aiGate";
 import { detectPRs } from "../workoutHistory";
 import type { CheckinKind, CoachQuestion } from "./model";
 
@@ -117,7 +118,7 @@ Return ONLY a JSON array of question ids, e.g. ["w_pr","w_difficulty","w_pain"].
 async function aiPick(statsLine: string, candidates: CoachQuestion[]): Promise<CoachQuestion[] | null> {
   if (!isAiAvailable() || candidates.length <= MAX_QUESTIONS - 1) return null;
   try {
-    const raw = await complete({
+    const raw = await completeUnderAgreement({
       system: PICK_SYSTEM,
       messages: [
         {

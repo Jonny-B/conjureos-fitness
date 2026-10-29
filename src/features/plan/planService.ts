@@ -34,6 +34,7 @@ import { modeTracksFood } from "./model";
 import { deriveDirection, macrosForCalories, recommendGoals } from "../goals";
 import { loadMemory, summarizeMemoryForProgram } from "../coach/memory";
 import { clamp } from "../num";
+import { healthConsentGeneration, stillCollecting } from "../healthConsent";
 
 /** Body stats the wizard collects, reconciled into the Profile on commit. */
 export interface WizardBody {
@@ -306,6 +307,10 @@ export async function recordSessionAndAdapt(
     programWorkoutId?: string;
   },
 ): Promise<Plan | null> {
+  // The agreement to keep health data this workout is recorded under. A plan
+  // the engine builds from an answer that lands after a withdrawal is not
+  // saved (ConjureOS #1163, conjureos-fitness#96).
+  const collecting = healthConsentGeneration();
   const repo = await getRepository();
   await persist("this workout", repo.saveWorkoutSession(session));
   if (!plan?.program) return plan;
@@ -349,6 +354,7 @@ export async function recordSessionAndAdapt(
     /* AI/adaptation is best-effort; keep the measurement result */
   }
 
+  if (!stillCollecting(collecting)) return plan;
   if (next !== plan) await persist("your plan", repo.savePlan(next));
   return next;
 }
@@ -369,9 +375,13 @@ export async function toggleWorkoutDone(plan: Plan, programWorkoutId: string, do
  *  group's progression is shaped by recorded stats AND the coach's memory of the
  *  user's feedback/preferences. */
 export async function startNextGroup(plan: Plan): Promise<Plan> {
+  // A group built from an answer that lands after consent to keep health data
+  // was withdrawn is not saved (ConjureOS #1163).
+  const collecting = healthConsentGeneration();
   const repo = await getRepository();
   const sessions = await repo.listWorkoutSessions(200).catch(() => [] as WorkoutSession[]);
   const next = await advanceToNextGroup(plan, sessions, await coachPreferences());
+  if (!stillCollecting(collecting)) return plan;
   if (next !== plan) await persist("your plan", repo.savePlan(next));
   return next;
 }

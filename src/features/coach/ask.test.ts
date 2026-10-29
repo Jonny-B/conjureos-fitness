@@ -11,6 +11,14 @@ vi.mock("../../bridge/ai", async (orig) => ({
   complete: (...a: unknown[]) => complete(...a),
   isAiAvailable: () => true,
 }));
+// The agreement to keep health data is in force: this file is about the AI
+// agreement and the answer. features/aiAgreement.test.ts holds the gate.
+vi.mock("../healthConsent", async (orig) => ({
+  ...(await orig<typeof import("../healthConsent")>()),
+  healthConsentOnFile: async () => true,
+  healthAgreementOnFile: async () => "2026-10-01T00:00:00.000Z",
+  stillCollecting: () => true,
+}));
 vi.mock("../../bridge/vfs", () => ({
   readJson: async (p: string, d: unknown) => (files[p] ? JSON.parse(files[p]) : d),
   writeJson: async (p: string, v: unknown) => {
@@ -157,49 +165,32 @@ describe("askCoach", () => {
   });
 });
 
-describe("personal context requires consent", () => {
+describe("food questions require the AI agreement", () => {
   /**
-   * The bug: askCoach stapled today's data on regardless of consent, so
-   * "Ask about food" (which never checked consent at all) and a stale
-   * "Find patterns" consent both leaked today's symptoms, weight and goal
-   * direction. This is the regression test for the chokepoint in
-   * askContext() — every assertion here is something that must NOT appear
-   * when there is no current agreement on file.
+   * The first bug: askCoach stapled today's data on regardless of consent, so
+   * "Ask about food" and a stale "Find patterns" consent both leaked today's
+   * symptoms, weight and goal direction. It then sent the question and the
+   * earlier turns with no context. Without the agreement it sends nothing at
+   * all (ConjureOS #1163: every AI feature sends nothing without its
+   * agreement), the rule Conjure Health has followed since 2026-10-22.
    */
-  it("sends no personal context, and no symptom label, when consent is absent", async () => {
+  it("sends nothing, not the question, the context or a symptom label, when consent is absent", async () => {
     consent = undefined;
     const { askCoach } = await import("./ask");
     complete.mockResolvedValue("ok");
-    await askCoach("what should I eat for dinner?");
-    const sys = (complete.mock.calls[0]![0] as { system: string }).system;
-    expect(sys).not.toContain("ABOUT THIS USER");
-    expect(sys).not.toContain("2200 cal");
-    expect(sys).not.toContain("Greek yogurt");
-    expect(sys).not.toContain("Tortilla chips");
-    expect(sys).not.toContain("losing weight");
-    expect(sys).not.toContain("Weight:");
-    expect(sys).not.toContain("Heartburn");
+    expect(await askCoach("what should I eat for dinner?")).toBeNull();
+    expect(complete).not.toHaveBeenCalled();
   });
 
-  it("also withholds context when the stored consent is stale wording", async () => {
+  it("also sends nothing when the stored consent is stale wording", async () => {
     // Consent to v(N-1)'s wording is not consent to the current disclosure —
     // that is the entire point of DISCLOSURE_VERSION. A version bump must
     // re-close this gate, not just a missing record.
     consent = { version: DISCLOSURE_VERSION - 1, acceptedAt: "2026-01-01T00:00:00.000Z", includeNotes: false };
     const { askCoach } = await import("./ask");
     complete.mockResolvedValue("ok");
-    await askCoach("what should I eat for dinner?");
-    const sys = (complete.mock.calls[0]![0] as { system: string }).system;
-    expect(sys).not.toContain("Heartburn");
-    expect(sys).not.toContain("2200 cal");
-  });
-
-  it("still answers the question with no context at all", async () => {
-    consent = undefined;
-    const { askCoach } = await import("./ask");
-    complete.mockResolvedValue("Water and plain crackers are a gentle bet.");
-    const reply = await askCoach("what should I eat for dinner?");
-    expect(reply).toContain("crackers");
+    expect(await askCoach("what should I eat for dinner?")).toBeNull();
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it("sends the symptom label once a current agreement is on file (positive control)", async () => {
@@ -213,7 +204,7 @@ describe("personal context requires consent", () => {
     expect(sys).toContain("2200 cal");
   });
 
-  it("coachNeedsConsent reports true exactly when askCoach would run without context", async () => {
+  it("coachNeedsConsent reports true exactly when askCoach would send nothing", async () => {
     const { coachNeedsConsent } = await import("./ask");
     expect(await coachNeedsConsent()).toBe(false); // beforeEach grants consent
     consent = undefined;

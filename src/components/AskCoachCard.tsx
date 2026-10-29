@@ -10,8 +10,8 @@
  * — "Find patterns" in the journal gates on `AiConsentSheet` before it ever
  * discloses anything, this card did not. Same gate here now, same components,
  * because a second consent UI would just be a second place for the wording to
- * drift from the first. `askCoach` itself refuses to send personal context
- * without consent either way (see features/coach/ask.ts) — this check is what
+ * drift from the first. `askCoach` itself sends nothing without consent
+ * either way (see features/coach/ask.ts); this check is what
  * gives the user the CHANCE to say yes, not a backstop against leaking if
  * they say no.
  */

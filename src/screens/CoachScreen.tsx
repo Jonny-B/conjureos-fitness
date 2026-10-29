@@ -3,6 +3,8 @@ import type { Plan } from "../types";
 import { aiErrorMessage } from "../bridge/ai";
 import { buildCoachContext } from "../features/coach/context";
 import { coachChat } from "../features/coach/coach";
+import { isAiNotAgreed } from "../features/aiGate";
+import { healthConsentGeneration, stillCollecting } from "../features/healthConsent";
 import type { CoachChatItem, CoachContext, CoachProposal } from "../features/coach/model";
 import {
   MAX_PROPOSAL_ROUNDS,
@@ -85,12 +87,20 @@ export function CoachScreen({
     setBusy(true);
     // A fresh (non-answering) message starts a new change episode.
     if (!answering) roundRef.current = 0;
+    // The agreement to keep health data this turn is asked under. An answer
+    // that lands after it is withdrawn keeps nothing: no turn recorded, no
+    // plan handed back (conjureos-fitness#96, ConjureOS #1163).
+    const collecting = healthConsentGeneration();
     try {
       const ctx = ctxRef.current ?? (await buildCoachContext());
       const outcome = await coachChat(toChatMessages(withUser), ctx, {
         answering,
         canPropose: roundRef.current < MAX_PROPOSAL_ROUNDS,
       });
+      if (!stillCollecting(collecting)) {
+        setMessages(grounded);
+        return;
+      }
       if (outcome.planUpdate) {
         onPlanChange(outcome.planUpdate.plan);
         ctxRef.current = await buildCoachContext();
@@ -103,8 +113,14 @@ export function CoachScreen({
       roundRef.current = outcome.proposal ? roundRef.current + 1 : 0;
       const next = [...withUser, assistant];
       setMessages(next);
+      if (!stillCollecting(collecting)) return;
       await recordCoachTurn(next);
     } catch (err) {
+      // Nothing sent, or the answer thrown away: nothing of it is shown or kept.
+      if (isAiNotAgreed(err)) {
+        setMessages(grounded);
+        return;
+      }
       setMessages([
         ...withUser,
         { role: "assistant", content: aiErrorMessage(err, "Sorry — I couldn’t reach the AI service just now. Try again in a moment.") },

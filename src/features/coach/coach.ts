@@ -7,7 +7,9 @@
  */
 
 import type { Plan } from "../../types";
-import { complete, extractJson, isAiAvailable, type ChatMessage } from "../../bridge/ai";
+import { extractJson, isAiAvailable, type ChatMessage } from "../../bridge/ai";
+import { AiNotAgreedError, completeUnderAgreement, isAiNotAgreed } from "../aiGate";
+import { healthConsentGeneration, stillCollecting } from "../healthConsent";
 import { todayISO } from "../diary";
 import { applyAdjustment, parseAdjustment, type PlanAdjustment } from "../plan/analyze";
 import { validateProgram } from "../plan/validate";
@@ -66,6 +68,17 @@ MEMORY — when the user shares something durable worth remembering (a preferenc
 Keep replies short (2-5 sentences) unless they ask for detail.`;
 
 /**
+ * Right before each write that follows an answer: the agreement to keep
+ * health data the work started under (`collecting`) still holds. Throws
+ * `AiNotAgreedError` otherwise, so an answer that lands after a withdrawal
+ * keeps nothing: no memory, no plan change (conjureos-fitness#96, owner
+ * decision 2026-10-22, ConjureOS #1163).
+ */
+function keep(collecting: number): void {
+  if (!stillCollecting(collecting)) throw new AiNotAgreedError("withdrawn");
+}
+
+/**
  * Apply a coach-proposed adjustment through the same rails as the adaptation
  * engine. Returns the persisted plan, or null when there's no program, the
  * adjustment is empty, or validation fails (no-op).
@@ -93,13 +106,18 @@ const answersBlock = (answers: CoachAnswer[]): string =>
 /**
  * Evaluate a submitted check-in (post-workout or end-of-day): coach reply,
  * memory update (notes/summary/event/metrics), and an optional validated plan
- * tweak. Never throws; without an AI bridge the check-in is still recorded.
+ * tweak. Without an AI bridge the check-in is still recorded.
+ *
+ * Throws `AiNotAgreedError`, and keeps nothing, when the agreement to keep
+ * health data is not in force or is withdrawn before the answer is kept
+ * (conjureos-fitness#96). Never throws otherwise.
  */
 export async function evaluateCheckin(
   kind: CheckinKind,
   answers: CoachAnswer[],
   ctx: CoachContext,
 ): Promise<CoachOutcome> {
+  const collecting = healthConsentGeneration();
   const eventKind: CoachEventKind = kind === "workout" ? "workout_reflect" : "day_checkin";
   const at = new Date().toISOString();
   const eventText = answers.map((a) => `${a.question} → ${a.value}`).join(" · ");
@@ -111,7 +129,7 @@ export async function evaluateCheckin(
   }
 
   try {
-    const raw = await complete({
+    const raw = await completeUnderAgreement({
       system: EVAL_SYSTEM,
       messages: [
         {
@@ -121,7 +139,7 @@ export async function evaluateCheckin(
       ],
       maxTokens: COACH_MAX_TOKENS,
       tier: "capable",
-    });
+    }, collecting);
     const o = JSON.parse(extractJson(raw)) as Record<string, unknown>;
     const reply =
       typeof o.reply === "string" && o.reply.trim() ? o.reply.trim() : "Logged — thanks for checking in.";
@@ -132,11 +150,13 @@ export async function evaluateCheckin(
     if (o.adjustment && typeof o.adjustment === "object") {
       const adj = parseAdjustment(JSON.stringify(o.adjustment));
       if (adj) {
+        keep(collecting);
         const updated = await applyToPlan(ctx.plan, adj);
         if (updated) planUpdate = { plan: updated, summary: adj.summary };
       }
     }
 
+    keep(collecting);
     await remember({
       notes,
       summary,
@@ -147,7 +167,10 @@ export async function evaluateCheckin(
       ],
     });
     return { reply, planUpdate };
-  } catch {
+  } catch (err) {
+    // Withdrawn since the check-in was submitted: not even the check-in.
+    if (isAiNotAgreed(err)) throw err;
+    keep(collecting);
     await remember({ events: [{ at, kind: eventKind, text: eventText }], metrics });
     return { reply: "Logged — thanks for checking in. Keep it up!" };
   }
@@ -256,6 +279,10 @@ export interface CoachChatOptions {
  * applies when the user is answering a prior proposal (`answering`). If the
  * coach tries to `<adjust>` cold, it's converted into a confirm proposal so the
  * user always gets the final say.
+ *
+ * Throws `AiNotAgreedError`, and keeps nothing (no memory, no plan change),
+ * when the agreement to keep health data is not in force or is withdrawn
+ * before the answer is kept (conjureos-fitness#96).
  */
 export async function coachChat(
   history: ChatMessage[],
@@ -268,15 +295,22 @@ export async function coachChat(
         "Your coach needs the ConjureOS AI service, which isn't available right now — try again inside ConjureOS.",
     };
   }
+  const collecting = healthConsentGeneration();
   const system = `${CHAT_SYSTEM_BASE}\n\nCONTEXT\n${ctx.rendered}\n\nCOACH MEMORY\n${renderMemory(ctx)}`;
-  const raw = await complete({ system, messages: history.slice(-16), maxTokens: COACH_MAX_TOKENS, tier: "capable" });
+  const raw = await completeUnderAgreement(
+    { system, messages: history.slice(-16), maxTokens: COACH_MAX_TOKENS, tier: "capable" },
+    collecting,
+  );
   const reply = stripTags(raw);
 
   // 0. Learn from the conversation: persist any durable notes/summary the coach
   //    extracted (silent, best-effort) — this is what makes chat feedback shape
   //    FUTURE workouts, not just the current reply.
   const mem = parseRemember(raw);
-  if (mem) await remember(mem);
+  if (mem) {
+    keep(collecting);
+    await remember(mem);
+  }
 
   // 1. A proposal (the ask) takes precedence, unless the follow-up budget is spent.
   if (opts?.canPropose !== false) {
@@ -296,6 +330,7 @@ export async function coachChat(
       let plan = ctx.plan;
       const summaries: string[] = [];
       if (planChange) {
+        keep(collecting);
         const res = await applyCoachPlanChange(plan, ctx.profile, ctx.goals, planChange).catch(() => null);
         if (res) {
           plan = res.plan;
@@ -303,6 +338,7 @@ export async function coachChat(
         }
       }
       if (adj) {
+        keep(collecting);
         const updated = await applyToPlan(plan, adj);
         if (updated) {
           plan = updated;
@@ -311,6 +347,7 @@ export async function coachChat(
       }
       if (plan && plan !== ctx.plan && summaries.length) {
         const summary = summaries.join("; ");
+        keep(collecting);
         await remember({
           events: [{ at: new Date().toISOString(), kind: "plan_adjusted", text: summary }],
         });

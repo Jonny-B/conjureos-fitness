@@ -13,7 +13,8 @@
  */
 
 import type { ChatImage } from "../bridge/ai";
-import { complete, extractJson } from "../bridge/ai";
+import { extractJson } from "../bridge/ai";
+import { completeUnderAgreement } from "./aiGate";
 import type { FoodItem } from "../types";
 import { newId } from "../data/id";
 import { coerceFinite } from "./num";
@@ -67,7 +68,7 @@ export async function parseMeal(input: {
   const content =
     text ||
     "Identify each food and drink visible in this photo and estimate its nutrition.";
-  const raw = await complete({
+  const raw = await completeUnderAgreement({
     system: SYSTEM,
     messages: [{ role: "user", content, images: input.image ? [input.image] : undefined }],
     maxTokens: MEAL_MAX_TOKENS,
@@ -107,7 +108,7 @@ export async function parseMealWithGroup(input: {
 
   const content =
     text || "Identify each food and drink visible in this photo and estimate its nutrition.";
-  const raw = await complete({
+  const raw = await completeUnderAgreement({
     system: SYSTEM,
     messages: [{ role: "user", content, images: input.image ? [input.image] : undefined }],
     maxTokens: MEAL_MAX_TOKENS,

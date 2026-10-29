@@ -9,7 +9,8 @@
  */
 
 import type { Profile, Workout, WorkoutSession } from "../types";
-import { complete, isAiAvailable } from "../bridge/ai";
+import { isAiAvailable } from "../bridge/ai";
+import { completeUnderAgreement } from "./aiGate";
 
 /**
  * How a burn figure was arrived at. Surfaced in the UI so an estimate is
@@ -90,7 +91,7 @@ async function estimateViaAi(
   ]
     .filter(Boolean)
     .join(" ");
-  const res = await complete({
+  const res = await completeUnderAgreement({
     system:
       'Estimate active calories burned for one workout. Reply with ONLY strict JSON: {"kcal": <integer>}. No prose.',
     messages: [{ role: "user", content: parts }],
