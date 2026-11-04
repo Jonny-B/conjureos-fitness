@@ -211,8 +211,8 @@ describe("telling ConjureOS about the agreement", () => {
     reports.length = 0;
     await c.withdrawHealthConsent();
     expect(reports).toHaveLength(1);
-    expect(reports[0].state).toBe("withdrawn");
-    expect(reports[0].fileAtReport).not.toBe("null");
+    expect(reports[0]?.state).toBe("withdrawn");
+    expect(reports[0]?.fileAtReport).not.toBe("null");
   });
 
   it("reports a withdrawal even when the write fails", async () => {
@@ -228,8 +228,8 @@ describe("telling ConjureOS about the agreement", () => {
     const c = await freshSession();
     expect(await c.recordHealthConsent()).toBe(true);
     expect(reports).toHaveLength(1);
-    expect(reports[0].state).toBe("agreed");
-    expect(reports[0].fileAtReport).not.toBeNull();
+    expect(reports[0]?.state).toBe("agreed");
+    expect(reports[0]?.fileAtReport).not.toBeNull();
   });
 
   it("reports no agreement when the write fails", async () => {
