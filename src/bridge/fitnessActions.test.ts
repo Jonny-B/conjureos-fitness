@@ -34,6 +34,8 @@ vi.mock("../data/repository", () => ({ getRepository: async () => repo }));
 let consentGranted = true;
 vi.mock("../features/healthConsent", () => ({
   healthConsentOnFile: async () => consentGranted,
+  healthConsentGranted: () => consentGranted,
+  loadHealthConsent: async () => consentGranted,
   healthAgreementOnFile: async () => (consentGranted ? "2026-01-01T00:00:00Z" : undefined),
   healthConsentGeneration: () => 0,
   stillCollecting: () => consentGranted,

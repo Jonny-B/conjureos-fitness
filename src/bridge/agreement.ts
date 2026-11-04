@@ -26,10 +26,12 @@ export interface AgreementRequest {
   purpose?: "chat";
 }
 
-/** The answer: whether the app put its agreement on screen. */
-export interface AgreementAnswer {
-  shown: boolean;
-}
+/**
+ * The answer: true when the app put its agreement on screen, false when it did
+ * not. A boolean, not an object: the shells' shims count anything but `false`
+ * as shown, so an object answer would always read as shown.
+ */
+export type AgreementAnswer = boolean;
 
 interface AgreementHost {
   reportAgreement?: (state: AgreementReport) => void;

@@ -13,17 +13,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const registerActions = vi.fn(async () => {});
 
-type Ask = () => { shown: boolean } | Promise<{ shown: boolean }>;
-let ask: Ask | null = null;
-vi.mock("./bridge/agreement", () => ({
-  reportAgreement: () => {},
-  onAgreementRequest: (fn: Ask) => {
-    ask = fn;
-    return () => {
-      if (ask === fn) ask = null;
-    };
-  },
-}));
+// The real bridge wrapper runs against a host that answers the way the shells'
+// shims do: anything but false counts as shown. Asserting on that wire value
+// is what catches an app answering in a shape the shims misread.
+type Ask = () => unknown;
+let handler: Ask | null = null;
+const ask = async (): Promise<boolean> => Promise.resolve(handler?.()).then((r) => r !== false);
+const installHost = () => {
+  (window as unknown as { __conjureos?: unknown }).__conjureos = {
+    ai: {
+      onAgreementRequest: (fn: Ask) => {
+        handler = fn;
+        return () => {
+          if (handler === fn) handler = null;
+        };
+      },
+    },
+  };
+};
 let onFile = false;
 
 vi.mock("./bridge/actions", () => ({ registerActions: () => registerActions() }));
@@ -64,7 +71,8 @@ let root: Root;
 
 beforeEach(() => {
   registerActions.mockClear();
-  ask = null;
+  handler = null;
+  installHost();
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -89,7 +97,7 @@ describe("when ConjureOS Chat asks Fitness to show its agreement", () => {
     onFile = false;
     await settle();
     expect(host.textContent ?? "").toMatch(/agree/i);
-    await expect(ask?.()).resolves.toEqual({ shown: true });
+    await expect(ask()).resolves.toBe(true);
   });
 
   it("says it shows it too when asked before the file has been read", async () => {
@@ -97,22 +105,35 @@ describe("when ConjureOS Chat asks Fitness to show its agreement", () => {
     await act(async () => {
       root.render(<App />);
     });
-    await expect(ask?.()).resolves.toEqual({ shown: true });
+    await expect(ask()).resolves.toBe(true);
   });
 
   it("shows nothing when the agreement is in force", async () => {
     onFile = true;
     await settle();
     expect(host.textContent ?? "").not.toMatch(/Agree and continue/);
-    await expect(ask?.()).resolves.toEqual({ shown: false });
+    await expect(ask()).resolves.toBe(false);
+  });
+
+  it("shows the agreement when the file stopped being agreed elsewhere while this session says yes", async () => {
+    onFile = true;
+    await settle();
+    expect(host.textContent ?? "").not.toMatch(/Agree and continue/);
+    onFile = false;
+    let result: boolean | undefined;
+    await act(async () => {
+      result = await ask();
+    });
+    expect(result).toBe(true);
+    expect(host.textContent ?? "").toMatch(/Agree and continue/);
   });
 
   it("is listening only while the app is mounted", async () => {
     onFile = false;
     await settle();
-    expect(ask).not.toBeNull();
+    expect(handler).not.toBeNull();
     act(() => root.unmount());
-    expect(ask).toBeNull();
+    expect(handler).toBeNull();
     root = createRoot(host);
   });
 });

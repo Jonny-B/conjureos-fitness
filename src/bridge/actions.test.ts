@@ -61,6 +61,8 @@ let agreementOnFile = true;
 let generation = 0;
 vi.mock("../features/healthConsent", () => ({
   healthConsentOnFile: async () => consentGranted,
+  healthConsentGranted: () => consentGranted,
+  loadHealthConsent: async () => consentGranted,
   healthAgreementOnFile: async () => (consentGranted && agreementOnFile ? "2026-01-01T00:00:00Z" : undefined),
   healthConsentGeneration: () => generation,
   stillCollecting: (g: number) => consentGranted && g === generation,

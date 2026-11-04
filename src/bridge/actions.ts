@@ -46,7 +46,9 @@
 import {
   healthAgreementOnFile,
   healthConsentGeneration,
+  healthConsentGranted,
   healthConsentOnFile,
+  loadHealthConsent,
   stillCollecting,
 } from "../features/healthConsent";
 import type { Macros, MealType } from "../types";
@@ -622,6 +624,9 @@ function requireHealthConsent<H extends Record<string, (...args: never[]) => unk
       const { args, forModel } = takeCaller(raw);
       if (!(await healthConsentOnFile())) throw new Error(NEEDS_HEALTH_CONSENT);
       if (!forModel || !MODEL_READ_ACTIONS.has(name)) return fn(...(args as never[]));
+      // A call can land before the gate has read the file (#1156); settle the
+      // session first, or stillCollecting refuses an agreement that is in force.
+      if (!healthConsentGranted() && !(await loadHealthConsent())) throw new Error(NEEDS_HEALTH_CONSENT);
       const generation = healthConsentGeneration();
       if (!(await healthAgreementOnFile())) throw new Error(NEEDS_HEALTH_CONSENT);
       const result = await fn(...(args as never[]));
