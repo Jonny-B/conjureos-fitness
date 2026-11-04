@@ -24,7 +24,9 @@ import { reportAgreement } from "../bridge/agreement";
 import { readJson, writeJsonOrThrow } from "../bridge/vfs";
 
 export const HEALTH_CONSENT_VERSION = 1;
-const PATH = "health-consent.json";
+/** The agreement file, which `conjureos.aiAgreement` in package.json names too. */
+export const HEALTH_CONSENT_FILE = "health-consent.json";
+const PATH = HEALTH_CONSENT_FILE;
 
 export interface HealthConsent {
   /** ISO timestamp of the agreement. */
