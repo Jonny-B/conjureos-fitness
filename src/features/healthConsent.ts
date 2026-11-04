@@ -20,10 +20,13 @@
  * agreement to old wording is not agreement to new wording.
  */
 
+import { reportAgreement } from "../bridge/agreement";
 import { readJson, writeJsonOrThrow } from "../bridge/vfs";
 
 export const HEALTH_CONSENT_VERSION = 1;
-const PATH = "health-consent.json";
+/** The agreement file, which `conjureos.aiAgreement` in package.json names too. */
+export const HEALTH_CONSENT_FILE = "health-consent.json";
+const PATH = HEALTH_CONSENT_FILE;
 
 export interface HealthConsent {
   /** ISO timestamp of the agreement. */
@@ -151,6 +154,9 @@ export async function recordHealthConsent(): Promise<boolean> {
   decisions++;
   try {
     await writeJsonOrThrow(PATH, { acceptedAt: new Date().toISOString(), version: HEALTH_CONSENT_VERSION });
+    // Only a saved agreement is told to ConjureOS, whose Chat reads the file
+    // and nothing else (#1230); the report just makes it read again.
+    reportAgreement("agreed");
     return true;
   } catch {
     return false;
@@ -166,10 +172,14 @@ export async function recordHealthConsent(): Promise<boolean> {
  * after a reload: the caller says so and offers a retry (the agreement
  * screen), rather than letting it pass in silence (ConjureOS #1156 review).
  * Calling it again is the retry.
+ *
+ * ConjureOS is told first, before the write, which can fail or lag: Chat
+ * holds the withdrawal for the session whatever the file says (#1230).
  */
 export async function withdrawHealthConsent(): Promise<boolean> {
   session = "withdrawn";
   decisions++;
+  reportAgreement("withdrawn");
   try {
     await writeJsonOrThrow(PATH, null);
     return true;

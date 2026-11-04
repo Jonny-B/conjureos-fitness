@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+/** Every report the host was sent, and what the file held at that moment (null: no file). */
+const reports: Array<{ state: string; fileAtReport: string | null }> = [];
+vi.mock("../bridge/agreement", () => ({
+  reportAgreement: (state: string) => {
+    reports.push({ state, fileAtReport: files.get("health-consent.json") ?? null });
+  },
+}));
+
 const files = new Map<string, string>();
 let failWrites = false;
 /** While set, every write waits for it, as an OPFS write waits for close(). */
@@ -31,6 +39,7 @@ import {
 } from "./healthConsent";
 
 beforeEach(() => {
+  reports.length = 0;
   files.clear();
   failWrites = false;
   heldWrites = null;
@@ -186,5 +195,47 @@ describe("the cross-app actions' check", () => {
     await c.recordHealthConsent();
     expect(await c.healthConsentOnFile()).toBe(true);
     expect(await c.loadHealthConsent()).toBe(true);
+  });
+});
+
+/**
+ * ConjureOS #1230: Chat checks this agreement before Fitness's data reaches a
+ * model. A withdrawal is told to the host before the file write, which can
+ * fail or lag; an agreement only after it is saved, because the file is the
+ * only thing that can make the app agreed.
+ */
+describe("telling ConjureOS about the agreement", () => {
+  it("reports a withdrawal before the write, while the old agreement is still on file", async () => {
+    const c = await freshSession();
+    await c.recordHealthConsent();
+    reports.length = 0;
+    await c.withdrawHealthConsent();
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.state).toBe("withdrawn");
+    expect(reports[0]?.fileAtReport).not.toBe("null");
+  });
+
+  it("reports a withdrawal even when the write fails", async () => {
+    const c = await freshSession();
+    await c.recordHealthConsent();
+    reports.length = 0;
+    failWrites = true;
+    expect(await c.withdrawHealthConsent()).toBe(false);
+    expect(reports.map((r) => r.state)).toEqual(["withdrawn"]);
+  });
+
+  it("reports an agreement only after it is saved", async () => {
+    const c = await freshSession();
+    expect(await c.recordHealthConsent()).toBe(true);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.state).toBe("agreed");
+    expect(reports[0]?.fileAtReport).not.toBeNull();
+  });
+
+  it("reports no agreement when the write fails", async () => {
+    const c = await freshSession();
+    failWrites = true;
+    expect(await c.recordHealthConsent()).toBe(false);
+    expect(reports).toEqual([]);
   });
 });

@@ -55,12 +55,25 @@ vi.mock("../features/exercise", () => ({ exerciseCaloriesForDate: async () => 0 
 // Consent to collect health data (features/healthConsent.ts). Granted for
 // every test except the one that checks the refusal.
 let consentGranted = true;
-vi.mock("../features/healthConsent", () => ({ healthConsentOnFile: async () => consentGranted }));
+// What the file says right now (healthAgreementOnFile re-reads it), and the
+// session's generation, which a withdrawal moves.
+let agreementOnFile = true;
+let generation = 0;
+vi.mock("../features/healthConsent", () => ({
+  healthConsentOnFile: async () => consentGranted,
+  healthConsentGranted: () => consentGranted,
+  loadHealthConsent: async () => consentGranted,
+  healthAgreementOnFile: async () => (consentGranted && agreementOnFile ? "2026-01-01T00:00:00Z" : undefined),
+  healthConsentGeneration: () => generation,
+  stillCollecting: (g: number) => consentGranted && g === generation,
+}));
 
 let actions: Record<string, Handler> = {};
 
 beforeEach(async () => {
   consentGranted = true;
+  agreementOnFile = true;
+  generation = 0;
   db.water = [];
   db.sleep = [];
   db.symptoms = [];
@@ -428,5 +441,126 @@ describe("without consent to collect health data", () => {
         "NEEDS_CONSENT:Open Conjure Fitness and agree to let it keep your health data.",
       );
     }
+  });
+});
+
+/**
+ * ConjureOS #1230: Chat stamps a call that will reach a model with
+ * `__caller.forModel`. Such a read needs the agreement as the file says right
+ * now, not as the session last saw it, and a withdrawal while the handler runs
+ * keeps the answer back.
+ */
+describe("a read that will reach a model (ConjureOS #1230)", () => {
+  const forModel = (extra: Record<string, unknown> = {}) => ({ ...extra, __caller: { forModel: true } });
+  const NEEDS = /^NEEDS_CONSENT:/;
+
+  it("is refused after another device withdrew, though this session was granted", async () => {
+    agreementOnFile = false;
+    await expect(call("listWorkouts", forModel())).rejects.toThrow(NEEDS);
+    await expect(call("trainingSummary", forModel())).rejects.toThrow(NEEDS);
+    await expect(call("nextWorkout", forModel())).rejects.toThrow(NEEDS);
+  });
+
+  it("is refused for the food reads too", async () => {
+    agreementOnFile = false;
+    await expect(call("todayTotals", forModel())).rejects.toThrow(NEEDS);
+    await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS);
+  });
+
+  it("answers while the agreement is on file, without leaking the stamp to the handler", async () => {
+    const out = (await call("recentWellbeing", forModel({ days: 2 }))) as { days: unknown[] };
+    expect(out.days).toHaveLength(2);
+  });
+
+  it("keeps the answer back when a withdrawal lands during the handler", async () => {
+    // The handler reads the repository; withdraw while it does.
+    const orig = repo.listWeights;
+    repo.listWeights = async () => {
+      generation++;
+      return orig();
+    };
+    try {
+      await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS);
+    } finally {
+      repo.listWeights = orig;
+    }
+  });
+
+  it("keeps the answer back when another device withdraws during the handler", async () => {
+    // A sync writes the file as withdrawn; this session's own state is untouched.
+    const orig = repo.listWeights;
+    repo.listWeights = async () => {
+      agreementOnFile = false;
+      return orig();
+    };
+    try {
+      await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS);
+    } finally {
+      repo.listWeights = orig;
+    }
+  });
+
+  it("is refused with no stamp outside the phone's WebView, where an older ConjureOS may be Chat", async () => {
+    agreementOnFile = false;
+    await expect(call("listWorkouts")).rejects.toThrow(NEEDS);
+    await expect(call("listWorkouts", {})).rejects.toThrow(NEEDS);
+  });
+
+  it("keeps today's rule for an unstamped call inside the phone's WebView", async () => {
+    agreementOnFile = false;
+    (window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView = {};
+    try {
+      await expect(call("recentWellbeing")).resolves.toBeDefined();
+    } finally {
+      delete (window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView;
+    }
+  });
+
+  it("keeps today's rule for forModel:false, even with no agreement re-read to find", async () => {
+    agreementOnFile = false;
+    await expect(call("recentWellbeing", { __caller: { forModel: false } })).resolves.toBeDefined();
+  });
+
+  it("never gates a write on the re-read", async () => {
+    agreementOnFile = false;
+    await expect(call("logWater", { ml: 200, __caller: { forModel: true } })).resolves.toBeDefined();
+  });
+
+  it("still refuses everything while there is no consent at all", async () => {
+    consentGranted = false;
+    await expect(call("listWorkouts", { __caller: { forModel: false } })).rejects.toThrow(/keep your health data/);
+  });
+
+  it("strips the stamp so a handler never sees it", async () => {
+    const { FITNESS_ACTIONS } = await import("./fitnessActions");
+    const { registerActions } = await import("./actions");
+    const orig = FITNESS_ACTIONS.nextWorkout;
+    const seen: unknown[] = [];
+    FITNESS_ACTIONS.nextWorkout = async (p?: unknown) => {
+      seen.push(p);
+      return {} as never;
+    };
+    try {
+      await registerActions({ includeNutrition: true });
+      await call("nextWorkout", { extra: 1, __caller: { forModel: false } });
+      await call("nextWorkout", { __caller: { forModel: false } });
+    } finally {
+      FITNESS_ACTIONS.nextWorkout = orig as NonNullable<typeof orig>;
+    }
+    expect(seen).toEqual([{ extra: 1 }, {}]);
+  });
+
+  it("reads exactly the actions the manifest declares as actions.read", async () => {
+    const pkg = (await import("../../package.json")) as unknown as {
+      default: { conjureos: { actions: Record<string, { permission: string }> } };
+    };
+    const { MODEL_READ_ACTIONS } = await import("./actions");
+    const declared = Object.entries(pkg.default.conjureos.actions)
+      .filter(([, a]) => a.permission === "actions.read")
+      .map(([n]) => n);
+    expect(declared.length).toBeGreaterThan(0);
+    for (const n of declared) expect(MODEL_READ_ACTIONS.has(n), n).toBe(true);
+    // Every other name it lists is a write-free food read that is off here.
+    for (const n of MODEL_READ_ACTIONS) expect(declared.includes(n) || /Nutrition|Wellbeing|Totals/.test(n), n).toBe(true);
   });
 });

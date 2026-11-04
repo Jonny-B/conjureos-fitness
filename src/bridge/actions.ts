@@ -43,7 +43,14 @@
  * own words, and Chat asks before it first reads this app.
  */
 
-import { healthConsentOnFile } from "../features/healthConsent";
+import {
+  healthAgreementOnFile,
+  healthConsentGeneration,
+  healthConsentGranted,
+  healthConsentOnFile,
+  loadHealthConsent,
+  stillCollecting,
+} from "../features/healthConsent";
 import type { Macros, MealType } from "../types";
 import { MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
@@ -562,19 +569,74 @@ export const NEEDS_HEALTH_CONSENT =
   "NEEDS_CONSENT:Open Conjure Fitness and agree to let it keep your health data.";
 
 /**
+ * The actions that only read. A read ConjureOS Chat makes for a model sends
+ * what it returns to an AI, so these answer under the agreement as the file
+ * says right now (ConjureOS #1230). The rest write, and keep today's rule.
+ */
+export const MODEL_READ_ACTIONS: ReadonlySet<string> = new Set([
+  "listWorkouts",
+  "trainingSummary",
+  "nextWorkout",
+  "todayTotals",
+  "dayNutrition",
+  "recentNutrition",
+  "dayWellbeing",
+  "recentWellbeing",
+]);
+
+/**
+ * Takes the `__caller` stamp ConjureOS adds to a call off the params, so no
+ * handler sees it, and says whether the call will reach a model. `forModel`
+ * true is Chat or the orchestrator. `forModel` false is another app or the
+ * person. No stamp is a ConjureOS that predates the stamp, where the caller
+ * may be Chat, except in the phone's WebView, whose shell never sends one and
+ * keeps today's rule.
+ */
+function takeCaller(args: unknown[]): { args: unknown[]; forModel: boolean } {
+  const p = args[0];
+  if (typeof p !== "object" || p === null || Array.isArray(p) || !("__caller" in p)) {
+    const inPhoneWebView =
+      typeof window !== "undefined" && (window as { ReactNativeWebView?: unknown }).ReactNativeWebView !== undefined;
+    return { args, forModel: !inPhoneWebView };
+  }
+  const { __caller, ...rest } = p as Record<string, unknown>;
+  const flag = typeof __caller === "object" && __caller !== null ? (__caller as { forModel?: unknown }).forModel : undefined;
+  return { args: [rest, ...args.slice(1)], forModel: flag !== false };
+}
+
+/**
  * Every action refuses while there is no consent to collect health data on
  * file (features/healthConsent.ts), and checks on every call: the actions are
  * registered at startup, before the person has agreed, so that a call then
  * gets this answer instead of the silence of an app that registered nothing
  * (ConjureOS #1156), and a withdrawal mid-session stops them at once. Nothing
  * is read or written before the check passes.
+ *
+ * A read that will reach a model (ConjureOS #1230) is held to more: the
+ * agreement is read from the file again, so a withdrawal on another device
+ * counts, and the answer is kept back when a withdrawal landed while the
+ * handler ran, here or on another device. The stamp that says so is taken off the params first.
  */
 function requireHealthConsent<H extends Record<string, (...args: never[]) => unknown>>(handlers: H): H {
   const out: Record<string, (...args: never[]) => unknown> = {};
   for (const [name, fn] of Object.entries(handlers)) {
-    out[name] = async (...args: never[]) => {
+    out[name] = async (...raw: never[]) => {
+      const { args, forModel } = takeCaller(raw);
       if (!(await healthConsentOnFile())) throw new Error(NEEDS_HEALTH_CONSENT);
-      return fn(...args);
+      if (!forModel || !MODEL_READ_ACTIONS.has(name)) return fn(...(args as never[]));
+      // A call can land before the gate has read the file (#1156); settle the
+      // session first, or stillCollecting refuses an agreement that is in force.
+      if (!healthConsentGranted() && !(await loadHealthConsent())) throw new Error(NEEDS_HEALTH_CONSENT);
+      const generation = healthConsentGeneration();
+      const agreedAt = await healthAgreementOnFile();
+      if (!agreedAt) throw new Error(NEEDS_HEALTH_CONSENT);
+      const result = await fn(...(args as never[]));
+      // Another device's withdrawal reaches this session only as a change to the
+      // file, so read it again. The session check goes last, with no await
+      // between it and the return.
+      if ((await healthAgreementOnFile()) !== agreedAt) throw new Error(NEEDS_HEALTH_CONSENT);
+      if (!stillCollecting(generation)) throw new Error(NEEDS_HEALTH_CONSENT);
+      return result;
     };
   }
   return out as H;
