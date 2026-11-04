@@ -486,6 +486,20 @@ describe("a read that will reach a model (ConjureOS #1230)", () => {
     }
   });
 
+  it("keeps the answer back when another device withdraws during the handler", async () => {
+    // A sync writes the file as withdrawn; this session's own state is untouched.
+    const orig = repo.listWeights;
+    repo.listWeights = async () => {
+      agreementOnFile = false;
+      return orig();
+    };
+    try {
+      await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS);
+    } finally {
+      repo.listWeights = orig;
+    }
+  });
+
   it("is refused with no stamp outside the phone's WebView, where an older ConjureOS may be Chat", async () => {
     agreementOnFile = false;
     await expect(call("listWorkouts")).rejects.toThrow(NEEDS);

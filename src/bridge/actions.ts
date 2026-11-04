@@ -615,7 +615,7 @@ function takeCaller(args: unknown[]): { args: unknown[]; forModel: boolean } {
  * A read that will reach a model (ConjureOS #1230) is held to more: the
  * agreement is read from the file again, so a withdrawal on another device
  * counts, and the answer is kept back when a withdrawal landed while the
- * handler ran. The stamp that says so is taken off the params first.
+ * handler ran, here or on another device. The stamp that says so is taken off the params first.
  */
 function requireHealthConsent<H extends Record<string, (...args: never[]) => unknown>>(handlers: H): H {
   const out: Record<string, (...args: never[]) => unknown> = {};
@@ -628,8 +628,13 @@ function requireHealthConsent<H extends Record<string, (...args: never[]) => unk
       // session first, or stillCollecting refuses an agreement that is in force.
       if (!healthConsentGranted() && !(await loadHealthConsent())) throw new Error(NEEDS_HEALTH_CONSENT);
       const generation = healthConsentGeneration();
-      if (!(await healthAgreementOnFile())) throw new Error(NEEDS_HEALTH_CONSENT);
+      const agreedAt = await healthAgreementOnFile();
+      if (!agreedAt) throw new Error(NEEDS_HEALTH_CONSENT);
       const result = await fn(...(args as never[]));
+      // Another device's withdrawal reaches this session only as a change to the
+      // file, so read it again. The session check goes last, with no await
+      // between it and the return.
+      if ((await healthAgreementOnFile()) !== agreedAt) throw new Error(NEEDS_HEALTH_CONSENT);
       if (!stillCollecting(generation)) throw new Error(NEEDS_HEALTH_CONSENT);
       return result;
     };
