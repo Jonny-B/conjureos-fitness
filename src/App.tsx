@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Goals, MealType, Plan, Profile } from "./types";
 import { DEFAULT_GOALS } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
+import { onAgreementRequest } from "./bridge/agreement";
 import { HealthConsentGate } from "./components/HealthConsentGate";
 import {
   healthConsentGranted,
@@ -140,6 +141,20 @@ export function App() {
       alive = false;
     };
   }, []);
+
+  // ConjureOS Chat asks the app to show its agreement when it needs one
+  // (#1230). The agreement screen is up whenever consent is not given, so
+  // that is the answer; with the agreement in force there is nothing to show.
+  const consentRef = useRef(consent);
+  consentRef.current = consent;
+  useEffect(
+    () =>
+      onAgreementRequest(async () => {
+        const collecting = consentRef.current === "unknown" ? await loadHealthConsent() : consentRef.current === "yes";
+        return { shown: !collecting };
+      }),
+    [],
+  );
 
   // Registered at startup, consent or not (ConjureOS #1156). Each action checks
   // the agreement itself and refuses without one, so nothing is read or kept
