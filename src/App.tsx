@@ -3,6 +3,7 @@ import type { Goals, MealType, Plan, Profile } from "./types";
 import { DEFAULT_GOALS } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
+import { onAgreementRequest } from "./bridge/agreement";
 import { HealthConsentGate } from "./components/HealthConsentGate";
 import {
   healthConsentGranted,
@@ -140,6 +141,22 @@ export function App() {
       alive = false;
     };
   }, []);
+
+  // ConjureOS Chat asks the app to show its agreement when it needs one
+  // (#1230). Chat reads the file, so this answer does too: the session's own
+  // "yes" can be stale (a withdrawal on another device, or an agreement here
+  // that did not save). The agreement screen is up whenever consent is not
+  // given, so that is the answer; with the agreement in force there is nothing
+  // to show. A boolean, which is what the shells' shims read.
+  useEffect(
+    () =>
+      onAgreementRequest(async () => {
+        const collecting = await loadHealthConsent();
+        setConsent(collecting ? "yes" : "no");
+        return !collecting;
+      }),
+    [],
+  );
 
   // Registered at startup, consent or not (ConjureOS #1156). Each action checks
   // the agreement itself and refuses without one, so nothing is read or kept

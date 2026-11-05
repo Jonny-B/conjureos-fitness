@@ -20,6 +20,19 @@ answer.
 
 ## Rules that hold for every action
 
+- **Chat reads need the agreement as it stands.** `conjureos.aiAgreement` in
+  `package.json` names the agreement (`health-consent.json`, version 1), so
+  ConjureOS Chat and the orchestrator check it before any of this app's data
+  reaches a model (ConjureOS #1230). ConjureOS stamps a call with
+  `__caller.forModel`: `true` for Chat or the orchestrator, `false` for another
+  app. The stamp is taken off the params before a handler runs. A read with
+  `forModel` true, or with no stamp outside the phone's WebView, reads the
+  agreement file again, so a withdrawal on another device counts, and is
+  refused with `NEEDS_CONSENT:` when it is gone or when a withdrawal lands
+  while the handler runs. A write, and a read with `forModel` false, keep the
+  rule below. The app tells ConjureOS at once when the agreement is withdrawn
+  (before the file is written) and after it is saved, and answers its request
+  to show the agreement.
 - **Answers come from this device.** Conjure Fitness keeps its data in its own
   local store (no shared backend), so another device may answer differently.
 - **Wearable workouts are not included.** Sessions synced from Apple Health or
