@@ -4385,6 +4385,17 @@ input[type="date"].text-input {
 .consent-foot .btn {
   flex: 1;
 }
+/* ConjureOS Chat's sheet: Allow and Don't allow are 44px targets. */
+.chat-consent .btn {
+  min-height: 44px;
+}
+/* The ConjureOS Chat row in Settings' Privacy block. */
+.chat-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
 .privacy-block {
   display: flex;
   flex-direction: column;

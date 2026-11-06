@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Goals, MealType, Plan, Profile } from "./types";
 import { DEFAULT_GOALS } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
 import { onAgreementRequest } from "./bridge/agreement";
 import { HealthConsentGate } from "./components/HealthConsentGate";
+import { ChatConsentSheet } from "./components/ChatConsentSheet";
 import {
+  healthAgreementOnFile,
   healthConsentGranted,
   loadHealthConsent,
   recordHealthConsent,
   withdrawHealthConsent,
 } from "./features/healthConsent";
+import { chatAgreedOnFile, recordChatAgreement, refuseChatAgreement } from "./features/chatConsent";
+import { CHAT_AGREEMENT_NOT_SAVED } from "./features/chatConsentCopy";
 import { todayISO } from "./features/diary";
 import {
   archivePlan,
@@ -88,6 +92,13 @@ export function App() {
   // A withdrawal in this session could not clear the stored agreement: the
   // consent screen says so and offers a retry.
   const [withdrawalNotSaved, setWithdrawalNotSaved] = useState(false);
+  // The Chat sheet (features/chatConsent.ts) is up: opened because ConjureOS
+  // Chat asked (`asked`) or from Settings. `try` remounts it after an Allow
+  // that could not be saved.
+  const [chatAsk, setChatAsk] = useState<{ try: number; notSaved: boolean; asked: boolean } | null>(null);
+  // Chat asked while the agreement to keep health data was not in place: that
+  // agreement comes first, and the Chat sheet follows once it is given.
+  const chatAfterKeep = useRef(false);
   // Settings sheet: closed, or open on a specific sub-view (main / program editor).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsView, setSettingsView] = useState<SettingsView>("main");
@@ -142,20 +153,38 @@ export function App() {
     };
   }, []);
 
+  const openChatAsk = useCallback((asked: boolean) => {
+    setChatAsk((cur) => cur ?? { try: 0, notSaved: false, asked });
+  }, []);
+
   // ConjureOS Chat asks the app to show its agreement when it needs one
-  // (#1230). Chat reads the file, so this answer does too: the session's own
-  // "yes" can be stale (a withdrawal on another device, or an agreement here
-  // that did not save). The agreement screen is up whenever consent is not
-  // given, so that is the answer; with the agreement in force there is nothing
-  // to show. A boolean, which is what the shells' shims read.
+  // (#1230). What Chat needs is its own yes or no (features/chatConsent.ts,
+  // PM decision 2026-11-06), and it cannot stand without the agreement to
+  // keep health data, so that one comes first. Both are read from their files:
+  // the session's own "yes" can be stale (a withdrawal on another device, or
+  // an agreement here that did not save).
+  //
+  //   - No agreement to keep health data: its screen is up, which is what is
+  //     shown, and the Chat sheet follows once the person agrees there.
+  //     Agreeing there never agrees Chat.
+  //   - That agreement, and not Chat's: the Chat sheet.
+  //   - Both: nothing to show.
+  //
+  // A boolean, which is what the shells' shims read.
   useEffect(
     () =>
       onAgreementRequest(async () => {
         const collecting = await loadHealthConsent();
         setConsent(collecting ? "yes" : "no");
-        return !collecting;
+        if (!collecting) {
+          chatAfterKeep.current = true;
+          return true;
+        }
+        if ((await chatAgreedOnFile()) !== undefined) return false;
+        openChatAsk(true);
+        return true;
       }),
-    [],
+    [openChatAsk],
   );
 
   // Registered at startup, consent or not (ConjureOS #1156). Each action checks
@@ -321,6 +350,9 @@ export function App() {
    */
   const withdrawCollection = useCallback(() => {
     setSettingsOpen(false);
+    // Chat goes with it (withdrawHealthConsent withdraws Chat's agreement).
+    setChatAsk(null);
+    chatAfterKeep.current = false;
     setConsent("no");
     setWithdrawalNotSaved(false);
     void saveWithdrawal();
@@ -336,7 +368,13 @@ export function App() {
         onRetryWithdrawal={saveWithdrawal}
         onAgree={() => {
           setWithdrawalNotSaved(false);
-          void recordHealthConsent();
+          const chatAsked = chatAfterKeep.current;
+          chatAfterKeep.current = false;
+          void recordHealthConsent().then(async () => {
+            // Chat asked first: its own question follows, unanswered. This
+            // agreement never answers it.
+            if (chatAsked && (await chatAgreedOnFile()) === undefined) openChatAsk(true);
+          });
           setConsent("yes");
         }}
       />
@@ -560,6 +598,37 @@ export function App() {
           onPlanChange={setPlan}
           onDataCleared={onDataCleared}
           onWithdrawHealthConsent={withdrawCollection}
+          onAllowChat={() => openChatAsk(false)}
+        />
+      )}
+
+      {chatAsk && (
+        <ChatConsentSheet
+          key={chatAsk.try}
+          asked={chatAsk.asked}
+          notice={chatAsk.notSaved ? CHAT_AGREEMENT_NOT_SAVED : undefined}
+          onDismiss={() => setChatAsk(null)}
+          onDontAllow={() => {
+            void refuseChatAgreement();
+            setChatAsk(null);
+          }}
+          onAllow={async () => {
+            // Chat cannot be allowed without the agreement to keep health data
+            // on file. One that did not save is asked for again first.
+            if (!(await healthAgreementOnFile())) {
+              setChatAsk(null);
+              setSettingsOpen(false);
+              chatAfterKeep.current = true;
+              setConsent("no");
+              return;
+            }
+            // Saved before anything else: an agreement that lives only in
+            // memory is not a record.
+            const saved = await recordChatAgreement();
+            // A sheet closed meanwhile (a withdrawal, which also overrules
+            // this Allow) stays closed.
+            setChatAsk((cur) => (saved || !cur ? null : { ...cur, try: cur.try + 1, notSaved: true }));
+          }}
         />
       )}
     </div>
