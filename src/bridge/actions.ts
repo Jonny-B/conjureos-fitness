@@ -43,7 +43,12 @@
  * own words, and Chat asks before it first reads this app.
  */
 
-import { chatAgreedOnFile, chatConsentGeneration, stillChatAgreed } from "../features/chatConsent";
+import {
+  chatAgreedOnFile,
+  chatConsentGeneration,
+  stillChatAgreed,
+  withdrawStaleChatAgreement,
+} from "../features/chatConsent";
 import {
   healthAgreementOnFile,
   healthConsentGeneration,
@@ -645,7 +650,13 @@ function requireHealthConsent<H extends Record<string, (...args: never[]) => unk
       const generation = healthConsentGeneration();
       const chatGeneration = chatConsentGeneration();
       const agreedAt = await healthAgreementOnFile();
-      if (!agreedAt) throw new Error(NEEDS_HEALTH_CONSENT);
+      if (!agreedAt) {
+        // ConjureOS asks for a model read only while it reads Chat's file as
+        // agreed, and that cannot stand without this one: clear it before
+        // refusing, or ConjureOS goes on sending what the conversation holds.
+        await withdrawStaleChatAgreement();
+        throw new Error(NEEDS_HEALTH_CONSENT);
+      }
       const chatAt = await chatAgreedOnFile();
       if (!chatAt) throw new Error(NEEDS_CHAT_CONSENT);
       const result = await fn(...(args as never[]));

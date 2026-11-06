@@ -12,6 +12,7 @@ import {
   loadHealthConsent,
   recordHealthConsent,
   withdrawHealthConsent,
+  type WithdrawalSaved,
 } from "./features/healthConsent";
 import { chatAgreedOnFile, recordChatAgreement, refuseChatAgreement } from "./features/chatConsent";
 import { CHAT_AGREEMENT_NOT_SAVED } from "./features/chatConsentCopy";
@@ -89,9 +90,10 @@ export function App() {
   // "yes", only the consent screen renders, and every cross-app action
   // refuses with ConjureOS's needs-consent answer (bridge/actions.ts).
   const [consent, setConsent] = useState<"unknown" | "yes" | "no">("unknown");
-  // A withdrawal in this session could not clear the stored agreement: the
-  // consent screen says so and offers a retry.
-  const [withdrawalNotSaved, setWithdrawalNotSaved] = useState(false);
+  // What a withdrawal in this session saved. When not everything, the
+  // consent screen says so (in Chat's own words when only its file was not
+  // cleared) and offers a retry.
+  const [withdrawal, setWithdrawal] = useState<WithdrawalSaved>("saved");
   // The Chat sheet (features/chatConsent.ts) is up: opened because ConjureOS
   // Chat asked (`asked`) or from Settings. `try` remounts it after an Allow
   // that could not be saved.
@@ -339,7 +341,7 @@ export function App() {
   const saveWithdrawal = useCallback(async () => {
     const saved = await withdrawHealthConsent();
     // Agreeing again meanwhile overrules the withdrawal: nothing left to say.
-    if (!healthConsentGranted()) setWithdrawalNotSaved(!saved);
+    if (!healthConsentGranted()) setWithdrawal(saved);
   }, []);
 
   /**
@@ -354,7 +356,7 @@ export function App() {
     setChatAsk(null);
     chatAfterKeep.current = false;
     setConsent("no");
-    setWithdrawalNotSaved(false);
+    setWithdrawal("saved");
     void saveWithdrawal();
   }, [saveWithdrawal]);
 
@@ -364,10 +366,10 @@ export function App() {
   if (consent === "no") {
     return (
       <HealthConsentGate
-        withdrawalNotSaved={withdrawalNotSaved}
+        withdrawal={withdrawal}
         onRetryWithdrawal={saveWithdrawal}
         onAgree={() => {
-          setWithdrawalNotSaved(false);
+          setWithdrawal("saved");
           const chatAsked = chatAfterKeep.current;
           chatAfterKeep.current = false;
           void recordHealthConsent().then(async () => {

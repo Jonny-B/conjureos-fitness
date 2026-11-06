@@ -153,6 +153,8 @@ describe("the ConjureOS Chat row in Settings", () => {
   });
 
   it("follows an answer given on the Chat sheet while Settings is open", async () => {
+    // Chat cannot be allowed without the agreement to keep health data on file.
+    files.set("health-consent.json", JSON.stringify({ acceptedAt: "2026-10-01T00:00:00Z", version: 1 }));
     await open();
     expect(rowButton("Allow")).toBeDefined();
     await act(async () => {

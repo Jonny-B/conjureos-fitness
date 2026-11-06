@@ -73,10 +73,16 @@ vi.mock("../features/healthConsent", () => ({
 let chatOnFile = true;
 let chatHeldHere = false;
 let chatGeneration = 0;
+/** How often a stale Chat agreement was asked to be cleared. */
+let staleChatCleared = 0;
 vi.mock("../features/chatConsent", () => ({
   chatAgreedOnFile: async () => (!chatHeldHere && chatOnFile ? "2026-11-01T00:00:00Z" : undefined),
   chatConsentGeneration: () => chatGeneration,
   stillChatAgreed: (g: number) => !chatHeldHere && g === chatGeneration,
+  withdrawStaleChatAgreement: async () => {
+    staleChatCleared++;
+    return true;
+  },
 }));
 
 let actions: Record<string, Handler> = {};
@@ -88,6 +94,7 @@ beforeEach(async () => {
   chatOnFile = true;
   chatHeldHere = false;
   chatGeneration = 0;
+  staleChatCleared = 0;
   db.water = [];
   db.sleep = [];
   db.symptoms = [];
@@ -604,6 +611,25 @@ describe("a read for a model needs both agreements", () => {
     await expect(call("listWorkouts", forModel())).rejects.toThrow(NEEDS_KEEP);
     consentGranted = false;
     await expect(call("nextWorkout", forModel())).rejects.toThrow(NEEDS_KEEP);
+  });
+
+  /**
+   * ConjureOS reads chat-consent.json alone, so a read for a model means it
+   * reads Chat as agreed. Without the agreement to keep health data on file,
+   * that Chat agreement is stale, and it is cleared before the refusal goes
+   * back, or ConjureOS keeps sending what the conversation holds (#1230 review).
+   */
+  it("clears the Chat agreement when it is refused for want of the agreement to keep health data", async () => {
+    agreementOnFile = false;
+    await expect(call("listWorkouts", forModel())).rejects.toThrow(NEEDS_KEEP);
+    expect(staleChatCleared).toBe(1);
+  });
+
+  it("leaves the Chat agreement alone when both are in place, or when only Chat's is missing", async () => {
+    await call("recentWellbeing", forModel({ days: 2 }));
+    chatOnFile = false;
+    await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS_CHAT);
+    expect(staleChatCleared).toBe(0);
   });
 
   it("is refused after a withdrawal of Chat here", async () => {

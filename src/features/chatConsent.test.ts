@@ -46,9 +46,14 @@ vi.mock("../bridge/vfs", () => ({
   },
 }));
 
+const HEALTH = "health-consent.json";
+const healthAgreed = JSON.stringify({ acceptedAt: "2026-10-01T00:00:00Z", version: 1 });
+
 beforeEach(() => {
   reports.length = 0;
   files.clear();
+  // Chat cannot be allowed without the agreement to keep health data on file.
+  files.set(HEALTH, healthAgreed);
   failWrites = false;
   heldWrites = null;
 });
@@ -139,6 +144,28 @@ describe("Allow", () => {
     await c.recordChatAgreement();
     const next = await freshSession();
     expect(await next.chatAgreementState()).toBe("agreed");
+  });
+
+  /**
+   * The Chat sheet checks the agreement to keep health data before it saves,
+   * and another device can withdraw that agreement while the save is made.
+   * ConjureOS reads this file alone, so an agreement left on it would read as
+   * agreed without the one it cannot stand without (#1230 review).
+   */
+  it("withdraws itself when the agreement to keep health data is gone by the time it is saved", async () => {
+    const c = await freshSession();
+    let land!: () => void;
+    heldWrites = new Promise<void>((resolve) => (land = resolve));
+    const allowing = c.recordChatAgreement();
+    // Another device withdraws the agreement to keep health data meanwhile.
+    files.set(HEALTH, "null");
+    heldWrites = null;
+    land();
+    expect(await allowing).toBe(false);
+    expect(files.get(FILE)).toBe("null");
+    expect(reports.map((r) => r.state)).toEqual(["withdrawn"]);
+    expect(await c.chatAgreedOnFile()).toBeUndefined();
+    expect(await (await freshSession()).chatAgreementState()).toBe("withdrawn");
   });
 });
 

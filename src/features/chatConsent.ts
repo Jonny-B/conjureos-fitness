@@ -24,6 +24,13 @@
  * withdraws this too (healthConsent.ts); agreeing to keep health data does not
  * agree to this.
  *
+ * Because ConjureOS reads this file alone, it must never say agreed without
+ * the agreement to keep health data on file. Allow checks that agreement again
+ * once it is saved, and `withdrawStaleChatAgreement` clears one left behind
+ * (by a withdrawal whose Chat write failed, a copy older than 0.7.0 that
+ * clears only health-consent.json, or another device), wherever that
+ * agreement is found not on file.
+ *
  * A read for a model needs both agreements, each read from its file again
  * (bridge/actions.ts). Fitness's own AI features (features/aiGate.ts) answer
  * to the agreement to keep health data alone and never read this file.
@@ -36,6 +43,7 @@
 
 import { reportAgreement } from "../bridge/agreement";
 import { readJson, writeJsonOrThrow } from "../bridge/vfs";
+import { healthAgreementOnFile } from "./healthConsent";
 
 /** The file `conjureos.aiAgreement` in package.json names. */
 export const CHAT_CONSENT_FILE = "chat-consent.json";
@@ -136,7 +144,10 @@ export async function chatAgreedOnFile(): Promise<string | undefined> {
  * Allow. Saved before anything else: an agreement that lives only in memory
  * is not a record, so a failed write leaves Chat where it was and returns
  * false, and the host hears nothing. The caller makes sure the agreement to
- * keep health data is in place first: this one cannot stand without it.
+ * keep health data is in place first: this one cannot stand without it. That
+ * agreement can be withdrawn on another device while this saves, so it is
+ * read again once this is saved, and without it this withdraws itself and
+ * returns false before the host hears "agreed".
  */
 export async function recordChatAgreement(): Promise<boolean> {
   const mine = ++generation;
@@ -146,6 +157,11 @@ export async function recordChatAgreement(): Promise<boolean> {
     return false;
   }
   // A withdrawal or refusal given while this saved is the later answer.
+  if (mine !== generation) return false;
+  if ((await healthAgreementOnFile()) === undefined) {
+    if (mine === generation) await withdrawChatAgreement();
+    return false;
+  }
   if (mine !== generation) return false;
   held = null;
   generation++;
@@ -192,4 +208,23 @@ export async function withdrawChatAgreement(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Clear a Chat agreement left on file without the agreement to keep health
+ * data, for callers that found that agreement not on file. ConjureOS reads
+ * this file alone, so one left saying agreed would let it send what a
+ * conversation already holds, and would agree Chat again, unasked, once the
+ * agreement to keep health data is given again (#1230 review). It is
+ * withdrawn the usual way: the host is told, then the file is written null.
+ *
+ * Returns false only when such an agreement is on file and could not be
+ * cleared. An answer given here while the file is read is the later one, and
+ * is left to stand.
+ */
+export async function withdrawStaleChatAgreement(): Promise<boolean> {
+  const at = generation;
+  const { state } = await readFile();
+  if (state !== "agreed" || at !== generation) return true;
+  return withdrawChatAgreement();
 }
