@@ -20,7 +20,7 @@ export const CHAT_INTRO =
 
 /** What Chat can read: one line per read action. */
 export const CHAT_READS: string[] = [
-  "Your workouts: the day, name and kind of each, how long it took, the calories it burned, and the distance of a run or ride. Up to 92 days at a time.",
+  "Your workouts: the day, name and kind of each, how long it took, the calories it burned (worked out from your weight), and the distance of a run or ride. Up to 92 days at a time.",
   "A summary of a week's training: how many workouts and active days, your plan's days-per-week goal, and the minutes, calories and distance.",
   "Your next planned workout, with its exercises and sets, and how far you are through the current group of workouts.",
 ];
@@ -28,7 +28,7 @@ export const CHAT_READS: string[] = [
 /** What Chat never gets from Conjure Fitness. */
 export const CHAT_WITHHOLDS: string[] = [
   "Your routes and location",
-  "Your weight, height, age and the rest of your profile",
+  "Your weight itself, your height, age and the rest of your profile",
   "What you tell the coach, and what it remembers about you",
   "Workouts synced from Apple Health, Health Connect or a wearable",
   "Your name, email and account details",

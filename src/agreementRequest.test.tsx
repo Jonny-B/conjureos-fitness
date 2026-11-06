@@ -197,6 +197,18 @@ describe("when ConjureOS Chat asks Fitness to show its agreement", () => {
     expect(button("Don't allow")).toBeDefined();
   });
 
+  it("answers false while the plan wizard covers the app, which has no room for the sheet", async () => {
+    onFile = true;
+    await settle();
+    const open = host.querySelector(".setup-banner-main") as HTMLButtonElement | null;
+    expect(open).not.toBeNull();
+    await act(async () => {
+      open!.click();
+    });
+    expect(await askNow()).toBe(false);
+    expect(chatSheet()).toBeNull();
+  });
+
   it("shows the Chat sheet after a refusal or a withdrawal, too", async () => {
     onFile = true;
     for (const raw of [JSON.stringify({ refusedAt: "2026-11-01T00:00:00Z" }), "null"]) {
@@ -222,14 +234,16 @@ describe("when ConjureOS Chat asks Fitness to show its agreement", () => {
     expect(await askNow()).toBe(false);
   });
 
-  it("Don't allow writes { refusedAt } and reports refused before the write", async () => {
+  it("Don't allow writes { refusedAt, version: 1 } and reports refused before the write", async () => {
     onFile = true;
     await settle();
     await askNow();
     await click("Don't allow");
-    const saved = JSON.parse(files.get(CHAT)!) as { refusedAt: unknown };
+    const saved = JSON.parse(files.get(CHAT)!) as { refusedAt: unknown; version: unknown };
     expect(typeof saved.refusedAt).toBe("string");
-    expect(Object.keys(saved)).toEqual(["refusedAt"]);
+    // ConjureOS reads a refusal only with its version; without one it reads unknown and asks again.
+    expect(saved.version).toBe(1);
+    expect(Object.keys(saved).sort()).toEqual(["refusedAt", "version"]);
     expect(reports.map((r) => r.state)).toEqual(["refused"]);
     expect(reports[0]?.fileAtReport).toBeNull();
     expect(chatSheet()).toBeNull();

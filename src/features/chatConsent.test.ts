@@ -170,14 +170,16 @@ describe("Allow", () => {
 });
 
 describe("Don't allow", () => {
-  it("reports refused before the write, then writes { refusedAt }", async () => {
+  it("reports refused before the write, then writes { refusedAt, version }", async () => {
     const c = await freshSession();
     expect(await c.refuseChatAgreement()).toBe(true);
     expect(reports.map((r) => r.state)).toEqual(["refused"]);
     expect(reports[0]?.fileAtReport).toBeNull();
     const saved = stored() as { refusedAt: unknown };
     expect(typeof saved.refusedAt).toBe("string");
-    expect(Object.keys(saved)).toEqual(["refusedAt"]);
+    // ConjureOS reads a refusal only with its version; without one it reads unknown and asks again.
+    expect((saved as { version?: unknown }).version).toBe(1);
+    expect(Object.keys(saved).sort()).toEqual(["refusedAt", "version"]);
     expect(await c.chatAgreementState()).toBe("refused");
   });
 

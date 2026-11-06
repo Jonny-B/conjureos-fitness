@@ -107,6 +107,10 @@ export function App() {
   // Plan wizard as a dismissible dialog, plus a per-session dismiss for its
   // banner (resets on reload = shows again while there's still no plan).
   const [planWizardOpen, setPlanWizardOpen] = useState(false);
+  // Read by the Chat agreement request, which has no room for its sheet while
+  // the full-screen wizard is up (ConjureOS #1230 review).
+  const planWizardOpenRef = useRef(false);
+  planWizardOpenRef.current = planWizardOpen;
   // The plan currently being edited (edit mode) vs null = create-a-new-plan.
   // Both open the same full-screen WizardScreen.
   const [planEditor, setPlanEditor] = useState<Plan | null>(null);
@@ -176,6 +180,9 @@ export function App() {
   useEffect(
     () =>
       onAgreementRequest(async () => {
+        // The wizard covers the app and draws no Chat sheet: answer that nothing
+        // was shown, so ConjureOS says where to agree instead of waiting on it.
+        if (planWizardOpenRef.current) return false;
         const collecting = await loadHealthConsent();
         setConsent(collecting ? "yes" : "no");
         if (!collecting) {

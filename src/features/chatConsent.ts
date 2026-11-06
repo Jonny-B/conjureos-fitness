@@ -183,7 +183,7 @@ export async function refuseChatAgreement(): Promise<boolean> {
   reportAgreement("refused");
   changed();
   try {
-    await writeJsonOrThrow(CHAT_CONSENT_FILE, { refusedAt: new Date().toISOString() });
+    await writeJsonOrThrow(CHAT_CONSENT_FILE, { refusedAt: new Date().toISOString(), version: CHAT_CONSENT_VERSION });
     return true;
   } catch {
     return false;
