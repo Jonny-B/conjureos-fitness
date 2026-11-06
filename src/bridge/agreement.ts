@@ -3,8 +3,9 @@
  *
  * ConjureOS Chat and its orchestrator check this app's AI agreement before any
  * of its data reaches a model. The host reads the agreement from the file
- * (`ai-consent.json`, declared as `conjureos.aiAgreement` in package.json);
- * these two calls are the app's side of the conversation:
+ * (`chat-consent.json`, ConjureOS Chat's own yes or no, declared as
+ * `conjureos.aiAgreement` in package.json; features/chatConsent.ts); these two
+ * calls are the app's side of the conversation:
  *
  *   - `reportAgreement`: tell the host a change at once, before the file is
  *     written. "withdrawn" and "refused" hold for the session whatever the

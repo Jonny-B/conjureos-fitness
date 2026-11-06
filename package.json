@@ -15,7 +15,7 @@
     "appType": "sealed",
     "editable": false,
     "aiAgreement": {
-      "file": "health-consent.json",
+      "file": "chat-consent.json",
       "version": 1
     },
     "permissions": [

@@ -224,12 +224,10 @@ describe("telling ConjureOS about the agreement", () => {
     expect(reports.map((r) => r.state)).toEqual(["withdrawn"]);
   });
 
-  it("reports an agreement only after it is saved", async () => {
+  it("reports nothing on an agreement to keep health data: what ConjureOS hears follows the Chat file", async () => {
     const c = await freshSession();
     expect(await c.recordHealthConsent()).toBe(true);
-    expect(reports).toHaveLength(1);
-    expect(reports[0]?.state).toBe("agreed");
-    expect(reports[0]?.fileAtReport).not.toBeNull();
+    expect(reports).toEqual([]);
   });
 
   it("reports no agreement when the write fails", async () => {
@@ -237,5 +235,68 @@ describe("telling ConjureOS about the agreement", () => {
     failWrites = true;
     expect(await c.recordHealthConsent()).toBe(false);
     expect(reports).toEqual([]);
+  });
+});
+
+/**
+ * The yes or no for ConjureOS Chat is its own file, chat-consent.json (PM
+ * decision 2026-11-06). Withdrawing the agreement to keep health data
+ * withdraws Chat too; agreeing to keep health data does not agree Chat.
+ */
+describe("the Chat agreement beside it", () => {
+  const CHAT = "chat-consent.json";
+  const chatAgreed = JSON.stringify({ acceptedAt: "2026-11-01T00:00:00Z", version: 1 });
+
+  it("is withdrawn with it: chat-consent.json is written null, and ConjureOS is told before either write", async () => {
+    const c = await freshSession();
+    await c.recordHealthConsent();
+    files.set(CHAT, chatAgreed);
+    reports.length = 0;
+    let land!: () => void;
+    heldWrites = new Promise<void>((resolve) => (land = resolve));
+    const withdrawing = c.withdrawHealthConsent();
+    // Told at once, while both files still hold their agreements.
+    expect(reports.map((r) => r.state)).toEqual(["withdrawn"]);
+    expect(files.get("health-consent.json")).not.toBe("null");
+    expect(files.get(CHAT)).toBe(chatAgreed);
+    land();
+    expect(await withdrawing).toBe(true);
+    expect(files.get(CHAT)).toBe("null");
+    expect(files.get("health-consent.json")).toBe("null");
+    expect(reports.map((r) => r.state)).toEqual(["withdrawn"]);
+  });
+
+  it("is withdrawn with it when Chat was never answered, too", async () => {
+    const c = await freshSession();
+    await c.recordHealthConsent();
+    expect(await c.withdrawHealthConsent()).toBe(true);
+    expect(files.get(CHAT)).toBe("null");
+  });
+
+  it("says the withdrawal was not saved when only the Chat file could not be cleared", async () => {
+    const c = await freshSession();
+    await c.recordHealthConsent();
+    files.set(CHAT, chatAgreed);
+    const realSet = files.set.bind(files);
+    files.set = (k: string, v: string) => {
+      if (k === CHAT) throw new Error("vfs down");
+      return realSet(k, v);
+    };
+    try {
+      expect(await c.withdrawHealthConsent()).toBe(false);
+    } finally {
+      files.set = realSet;
+    }
+    expect(files.get("health-consent.json")).toBe("null");
+  });
+
+  it("is left as it was by an agreement to keep health data", async () => {
+    const c = await freshSession();
+    expect(await c.recordHealthConsent()).toBe(true);
+    expect(files.has(CHAT)).toBe(false);
+    await c.withdrawHealthConsent();
+    expect(await c.recordHealthConsent()).toBe(true);
+    expect(files.get(CHAT)).toBe("null");
+    expect(reports.map((r) => r.state)).toEqual(["withdrawn"]);
   });
 });

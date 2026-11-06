@@ -20,11 +20,15 @@
  * agreement to old wording is not agreement to new wording.
  */
 
-import { reportAgreement } from "../bridge/agreement";
 import { readJson, writeJsonOrThrow } from "../bridge/vfs";
+import { withdrawChatAgreement } from "./chatConsent";
 
 export const HEALTH_CONSENT_VERSION = 1;
-/** The agreement file, which `conjureos.aiAgreement` in package.json names too. */
+/**
+ * The agreement file. ConjureOS does not read it: `conjureos.aiAgreement` in
+ * package.json names the separate one for ConjureOS Chat (chatConsent.ts),
+ * which a read for a model needs as well as this one.
+ */
 export const HEALTH_CONSENT_FILE = "health-consent.json";
 const PATH = HEALTH_CONSENT_FILE;
 
@@ -154,9 +158,8 @@ export async function recordHealthConsent(): Promise<boolean> {
   decisions++;
   try {
     await writeJsonOrThrow(PATH, { acceptedAt: new Date().toISOString(), version: HEALTH_CONSENT_VERSION });
-    // Only a saved agreement is told to ConjureOS, whose Chat reads the file
-    // and nothing else (#1230); the report just makes it read again.
-    reportAgreement("agreed");
+    // ConjureOS hears nothing: what it is told follows the Chat file, and
+    // agreeing to keep health data does not agree Chat (chatConsent.ts).
     return true;
   } catch {
     return false;
@@ -173,17 +176,21 @@ export async function recordHealthConsent(): Promise<boolean> {
  * screen), rather than letting it pass in silence (ConjureOS #1156 review).
  * Calling it again is the retry.
  *
- * ConjureOS is told first, before the write, which can fail or lag: Chat
- * holds the withdrawal for the session whatever the file says (#1230).
+ * It withdraws ConjureOS Chat's agreement too (PM decision 2026-11-06): Chat
+ * cannot use data the app may not keep. ConjureOS is told first, before either
+ * write, which can fail or lag: Chat holds the withdrawal for the session
+ * whatever the files say (#1230). Saved means both files were written.
  */
 export async function withdrawHealthConsent(): Promise<boolean> {
   session = "withdrawn";
   decisions++;
-  reportAgreement("withdrawn");
+  // Reports "withdrawn" and holds Chat for the session before it writes.
+  const chat = withdrawChatAgreement();
+  let kept = true;
   try {
     await writeJsonOrThrow(PATH, null);
-    return true;
   } catch {
-    return false;
+    kept = false;
   }
+  return (await chat) && kept;
 }
