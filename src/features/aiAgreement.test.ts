@@ -513,7 +513,10 @@ describe("the gate is the one way to the AI", () => {
     const reach = Object.entries(SHIPPED)
       .filter(([, text]) => /__conjureos\??\.ai\b/.test(text))
       .map(([path]) => path);
-    expect(reach).toEqual(["bridge/ai.ts"]);
+    // bridge/agreement.ts only tells the host about the agreement (#1230):
+    // it never sends anything to a model.
+    expect(reach).toEqual(["bridge/agreement.ts", "bridge/ai.ts"]);
+    expect(SHIPPED["bridge/agreement.ts"]).not.toMatch(/\bcomplete\b/);
   });
 
   it("every module that sends through the gate is one of the features above", () => {

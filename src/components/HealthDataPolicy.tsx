@@ -15,14 +15,16 @@
  * The rule for editing it: describe what the code actually does. Every AI call
  * site that sends personal data (plan/generate, coach/coach + context,
  * plan/groups, calories, explainers) is listed under "When it leaves"; add one
- * here when you add one there.
+ * here when you add one there. What ConjureOS Chat can read is the read
+ * actions in bridge/fitnessActions.ts, said the same way as the Chat sheet
+ * (features/chatConsentCopy.ts).
  *
  * Plain-language policy written against how the app behaves. Final copy as of
  * 2026-10-01 (POLICY_UPDATED); keep it true when a data flow changes.
  */
 
 /** Last material revision. Shown so a reader can tell what they agreed to. */
-export const POLICY_UPDATED = "2026-10-01";
+export const POLICY_UPDATED = "2026-11-06";
 
 export function HealthDataPolicy({ onClose }: { onClose: () => void }) {
   return (
@@ -100,6 +102,20 @@ export function HealthDataPolicy({ onClose }: { onClose: () => void }) {
             connections off in ConjureOS Settings.
           </p>
 
+          <h3>ConjureOS Chat</h3>
+          <p>
+            ConjureOS Chat, and the prompt on the ConjureOS home screen, use your Fitness data to
+            answer you only if you allow it. You are asked the first time Chat needs it, and
+            saying no changes nothing else in Conjure Fitness. If you allow it, Chat can read
+            your workouts (the day, name and kind of each, how long it took, the calories it
+            burned, and the distance of a run or ride), a summary of a week's training, and your
+            next planned workout, and it sends what it reads to the AI that writes its answer,
+            as described under Who processes it. It never gets your routes or location, your
+            weight or the rest of your profile, what you tell the coach, or your name, email and
+            account details. You can allow or withdraw it at any time in Settings, under
+            Privacy, and withdrawing your agreement to keep health data withdraws it too.
+          </p>
+
           <h3>Location</h3>
           <p>
             When you record a run or another outdoor workout on the ConjureOS phone app, Conjure
@@ -139,6 +155,10 @@ export function HealthDataPolicy({ onClose }: { onClose: () => void }) {
               Conjure Fitness collects nothing until you agree on its first screen, which also
               tells you what the coach and plan builder send to the AI. You can withdraw that
               agreement at any time in Settings, under Privacy, and collection stops at once.
+            </li>
+            <li>
+              ConjureOS Chat uses your Fitness data only after you allow it, which is a separate
+              choice. You can withdraw it in Settings, under Privacy.
             </li>
             <li>
               You can delete your data, all of it or one kind at a time, in Settings, under Reset

@@ -20,19 +20,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+/** Saved, not saved, or saved except for ConjureOS Chat's file. */
+type Save = boolean | "chat_not_saved";
 /** What each withdrawal's write does, in order; the last one repeats. */
-let saves: boolean[] = [];
+let saves: Save[] = [];
 /** When set, the next withdrawal's write waits for this to be called. */
-let holdNext: ((finish: (saved: boolean) => void) => void) | null = null;
+let holdNext: ((finish: (saved: Save) => void) => void) | null = null;
 let withdrawn = false;
+/** What withdrawHealthConsent answers for each. */
+const answer = (s: Save) => (s === true ? "saved" : s === false ? "not_saved" : s);
 const withdrawHealthConsent = vi.fn(async () => {
   withdrawn = true;
   if (holdNext) {
     const hold = holdNext;
     holdNext = null;
-    return new Promise<boolean>((resolve) => hold(resolve));
+    return new Promise<string>((resolve) => hold((s) => resolve(answer(s))));
   }
-  return saves.length > 1 ? saves.shift()! : (saves[0] ?? true);
+  return answer(saves.length > 1 ? saves.shift()! : (saves[0] ?? true));
 });
 /** The location watch and wake lock a GPS cardio session holds. */
 const stopWatching = vi.fn();
@@ -93,7 +97,7 @@ vi.mock("./data/repository", () => {
 });
 
 import { App } from "./App";
-import { WITHDRAW_NOT_SAVED } from "./features/healthConsentCopy";
+import { WITHDRAW_CHAT_NOT_SAVED, WITHDRAW_NOT_SAVED } from "./features/healthConsentCopy";
 
 let host: HTMLDivElement;
 let root: Root;
@@ -166,7 +170,7 @@ describe("withdrawing consent from Settings", () => {
   });
 
   it("leaves the app at once, before the save has finished", async () => {
-    let finish: (saved: boolean) => void = () => {};
+    let finish: (saved: Save) => void = () => {};
     holdNext = (f) => (finish = f);
     await openSettings();
     await withdraw();
@@ -229,7 +233,7 @@ describe("withdrawing consent from Settings", () => {
     const box = host.querySelector<HTMLInputElement>('.consent-toggle input[type="checkbox"]');
     await act(async () => box!.click());
     expect(button("Agree and continue")!.disabled).toBe(false);
-    let finish: (saved: boolean) => void = () => {};
+    let finish: (saved: Save) => void = () => {};
     holdNext = (f) => (finish = f);
     await click("Try again");
     expect(button("Withdrawing…")?.disabled).toBe(true);
@@ -252,7 +256,28 @@ describe("withdrawing consent from Settings", () => {
     expect(notice()).not.toContain(WITHDRAW_NOT_SAVED);
   });
 
+  /**
+   * Only ConjureOS Chat's file could not be cleared (#1230 review). Collection
+   * stays stopped after a reload, so "starts again when you reopen it" would
+   * be false, and the person needs to hear that it is Chat's withdrawal that
+   * did not save: ConjureOS reads that file alone.
+   */
+  it("says it is Chat's withdrawal that was not saved when only that failed, and offers a retry", async () => {
+    saves = ["chat_not_saved", true];
+    await openSettings();
+    await withdraw();
+    expect(onAgreementScreen()).toBe(true);
+    expect(notice()).toContain(WITHDRAW_CHAT_NOT_SAVED);
+    expect(notice()).not.toContain(WITHDRAW_NOT_SAVED);
+    await click("Try again");
+    expect(withdrawHealthConsent).toHaveBeenCalledTimes(2);
+    expect(notice()).toBe("");
+  });
+
   it("keeps the not-saved copy to the copy rules", () => {
-    expect(WITHDRAW_NOT_SAVED).not.toMatch(/—|\bnow\b|no longer|\byet\b/i);
+    for (const copy of [WITHDRAW_NOT_SAVED, WITHDRAW_CHAT_NOT_SAVED]) {
+      expect(copy).toMatch(/\S/);
+      expect(copy).not.toMatch(/—|\bnow\b|no longer|\byet\b/i);
+    }
   });
 });

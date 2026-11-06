@@ -55,12 +55,46 @@ vi.mock("../features/exercise", () => ({ exerciseCaloriesForDate: async () => 0 
 // Consent to collect health data (features/healthConsent.ts). Granted for
 // every test except the one that checks the refusal.
 let consentGranted = true;
-vi.mock("../features/healthConsent", () => ({ healthConsentOnFile: async () => consentGranted }));
+// What the file says right now (healthAgreementOnFile re-reads it), and the
+// session's generation, which a withdrawal moves.
+let agreementOnFile = true;
+let generation = 0;
+vi.mock("../features/healthConsent", () => ({
+  healthConsentOnFile: async () => consentGranted,
+  healthConsentGranted: () => consentGranted,
+  loadHealthConsent: async () => consentGranted,
+  healthAgreementOnFile: async () => (consentGranted && agreementOnFile ? "2026-01-01T00:00:00Z" : undefined),
+  healthConsentGeneration: () => generation,
+  stillCollecting: (g: number) => consentGranted && g === generation,
+}));
+// The separate yes or no for ConjureOS Chat (features/chatConsent.ts): what
+// chat-consent.json says right now, a withdrawal here, and the generation a
+// decision here moves.
+let chatOnFile = true;
+let chatHeldHere = false;
+let chatGeneration = 0;
+/** How often a stale Chat agreement was asked to be cleared. */
+let staleChatCleared = 0;
+vi.mock("../features/chatConsent", () => ({
+  chatAgreedOnFile: async () => (!chatHeldHere && chatOnFile ? "2026-11-01T00:00:00Z" : undefined),
+  chatConsentGeneration: () => chatGeneration,
+  stillChatAgreed: (g: number) => !chatHeldHere && g === chatGeneration,
+  withdrawStaleChatAgreement: async () => {
+    staleChatCleared++;
+    return true;
+  },
+}));
 
 let actions: Record<string, Handler> = {};
 
 beforeEach(async () => {
   consentGranted = true;
+  agreementOnFile = true;
+  generation = 0;
+  chatOnFile = true;
+  chatHeldHere = false;
+  chatGeneration = 0;
+  staleChatCleared = 0;
   db.water = [];
   db.sleep = [];
   db.symptoms = [];
@@ -428,5 +462,234 @@ describe("without consent to collect health data", () => {
         "NEEDS_CONSENT:Open Conjure Fitness and agree to let it keep your health data.",
       );
     }
+  });
+});
+
+/**
+ * ConjureOS #1230: Chat stamps a call that will reach a model with
+ * `__caller.forModel`. Such a read needs the agreement as the file says right
+ * now, not as the session last saw it, and a withdrawal while the handler runs
+ * keeps the answer back.
+ */
+describe("a read that will reach a model (ConjureOS #1230)", () => {
+  const forModel = (extra: Record<string, unknown> = {}) => ({ ...extra, __caller: { forModel: true } });
+  const NEEDS = /^NEEDS_CONSENT:/;
+
+  it("is refused after another device withdrew, though this session was granted", async () => {
+    agreementOnFile = false;
+    await expect(call("listWorkouts", forModel())).rejects.toThrow(NEEDS);
+    await expect(call("trainingSummary", forModel())).rejects.toThrow(NEEDS);
+    await expect(call("nextWorkout", forModel())).rejects.toThrow(NEEDS);
+  });
+
+  it("is refused for the food reads too", async () => {
+    agreementOnFile = false;
+    await expect(call("todayTotals", forModel())).rejects.toThrow(NEEDS);
+    await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS);
+  });
+
+  it("answers while the agreement is on file, without leaking the stamp to the handler", async () => {
+    const out = (await call("recentWellbeing", forModel({ days: 2 }))) as { days: unknown[] };
+    expect(out.days).toHaveLength(2);
+  });
+
+  it("keeps the answer back when a withdrawal lands during the handler", async () => {
+    // The handler reads the repository; withdraw while it does.
+    const orig = repo.listWeights;
+    repo.listWeights = async () => {
+      generation++;
+      return orig();
+    };
+    try {
+      await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS);
+    } finally {
+      repo.listWeights = orig;
+    }
+  });
+
+  it("keeps the answer back when another device withdraws during the handler", async () => {
+    // A sync writes the file as withdrawn; this session's own state is untouched.
+    const orig = repo.listWeights;
+    repo.listWeights = async () => {
+      agreementOnFile = false;
+      return orig();
+    };
+    try {
+      await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS);
+    } finally {
+      repo.listWeights = orig;
+    }
+  });
+
+  it("is refused with no stamp outside the phone's WebView, where an older ConjureOS may be Chat", async () => {
+    agreementOnFile = false;
+    await expect(call("listWorkouts")).rejects.toThrow(NEEDS);
+    await expect(call("listWorkouts", {})).rejects.toThrow(NEEDS);
+  });
+
+  it("keeps today's rule for an unstamped call inside the phone's WebView", async () => {
+    agreementOnFile = false;
+    (window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView = {};
+    try {
+      await expect(call("recentWellbeing")).resolves.toBeDefined();
+    } finally {
+      delete (window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView;
+    }
+  });
+
+  it("keeps today's rule for forModel:false, even with no agreement re-read to find", async () => {
+    agreementOnFile = false;
+    await expect(call("recentWellbeing", { __caller: { forModel: false } })).resolves.toBeDefined();
+  });
+
+  it("never gates a write on the re-read, or on the Chat agreement", async () => {
+    agreementOnFile = false;
+    chatOnFile = false;
+    await expect(call("logWater", { ml: 200, __caller: { forModel: true } })).resolves.toBeDefined();
+  });
+
+  it("still refuses everything while there is no consent at all", async () => {
+    consentGranted = false;
+    await expect(call("listWorkouts", { __caller: { forModel: false } })).rejects.toThrow(/keep your health data/);
+  });
+
+  it("strips the stamp so a handler never sees it", async () => {
+    const { FITNESS_ACTIONS } = await import("./fitnessActions");
+    const { registerActions } = await import("./actions");
+    const orig = FITNESS_ACTIONS.nextWorkout;
+    const seen: unknown[] = [];
+    FITNESS_ACTIONS.nextWorkout = async (p?: unknown) => {
+      seen.push(p);
+      return {} as never;
+    };
+    try {
+      await registerActions({ includeNutrition: true });
+      await call("nextWorkout", { extra: 1, __caller: { forModel: false } });
+      await call("nextWorkout", { __caller: { forModel: false } });
+    } finally {
+      FITNESS_ACTIONS.nextWorkout = orig as NonNullable<typeof orig>;
+    }
+    expect(seen).toEqual([{ extra: 1 }, {}]);
+  });
+
+  it("reads exactly the actions the manifest declares as actions.read", async () => {
+    const pkg = (await import("../../package.json")) as unknown as {
+      default: { conjureos: { actions: Record<string, { permission: string }> } };
+    };
+    const { MODEL_READ_ACTIONS } = await import("./actions");
+    const declared = Object.entries(pkg.default.conjureos.actions)
+      .filter(([, a]) => a.permission === "actions.read")
+      .map(([n]) => n);
+    expect(declared.length).toBeGreaterThan(0);
+    for (const n of declared) expect(MODEL_READ_ACTIONS.has(n), n).toBe(true);
+    // Every other name it lists is a write-free food read that is off here.
+    for (const n of MODEL_READ_ACTIONS) expect(declared.includes(n) || /Nutrition|Wellbeing|Totals/.test(n), n).toBe(true);
+  });
+});
+
+/**
+ * PM decision 2026-11-06 (ConjureOS #1230): Conjure Fitness asks a separate
+ * yes or no for ConjureOS Chat. A read that will reach a model needs both
+ * agreements: the one to keep health data, and the one for Chat. Both are
+ * read from their files again, before the handler and when it answers.
+ */
+describe("a read for a model needs both agreements", () => {
+  const forModel = (extra: Record<string, unknown> = {}) => ({ ...extra, __caller: { forModel: true } });
+  const NEEDS_CHAT = /^NEEDS_CONSENT:.*ConjureOS Chat/;
+  const NEEDS_KEEP = /^NEEDS_CONSENT:.*keep your health data/;
+
+  it("is refused when only the agreement to keep health data is in place", async () => {
+    chatOnFile = false;
+    await expect(call("listWorkouts", forModel())).rejects.toThrow(NEEDS_CHAT);
+    await expect(call("trainingSummary", forModel())).rejects.toThrow(NEEDS_CHAT);
+    await expect(call("nextWorkout", forModel())).rejects.toThrow(NEEDS_CHAT);
+    await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS_CHAT);
+  });
+
+  it("is refused when only the Chat agreement is in place", async () => {
+    agreementOnFile = false;
+    await expect(call("listWorkouts", forModel())).rejects.toThrow(NEEDS_KEEP);
+    consentGranted = false;
+    await expect(call("nextWorkout", forModel())).rejects.toThrow(NEEDS_KEEP);
+  });
+
+  /**
+   * ConjureOS reads chat-consent.json alone, so a read for a model means it
+   * reads Chat as agreed. Without the agreement to keep health data on file,
+   * that Chat agreement is stale, and it is cleared before the refusal goes
+   * back, or ConjureOS keeps sending what the conversation holds (#1230 review).
+   */
+  it("clears the Chat agreement when it is refused for want of the agreement to keep health data", async () => {
+    agreementOnFile = false;
+    await expect(call("listWorkouts", forModel())).rejects.toThrow(NEEDS_KEEP);
+    expect(staleChatCleared).toBe(1);
+  });
+
+  it("leaves the Chat agreement alone when both are in place, or when only Chat's is missing", async () => {
+    await call("recentWellbeing", forModel({ days: 2 }));
+    chatOnFile = false;
+    await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS_CHAT);
+    expect(staleChatCleared).toBe(0);
+  });
+
+  it("is refused after a withdrawal of Chat here", async () => {
+    chatHeldHere = true;
+    chatGeneration++;
+    await expect(call("trainingSummary", forModel())).rejects.toThrow(NEEDS_CHAT);
+  });
+
+  it("answers with both in place", async () => {
+    const out = (await call("recentWellbeing", forModel({ days: 2 }))) as { days: unknown[] };
+    expect(out.days).toHaveLength(2);
+  });
+
+  it("keeps the answer back when Chat is withdrawn here during the handler", async () => {
+    const orig = repo.listWeights;
+    repo.listWeights = async () => {
+      chatHeldHere = true;
+      chatGeneration++;
+      return orig();
+    };
+    try {
+      await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS_CHAT);
+    } finally {
+      repo.listWeights = orig;
+    }
+  });
+
+  it("keeps the answer back when another device withdraws Chat during the handler", async () => {
+    const orig = repo.listWeights;
+    repo.listWeights = async () => {
+      chatOnFile = false;
+      return orig();
+    };
+    try {
+      await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS_CHAT);
+    } finally {
+      repo.listWeights = orig;
+    }
+  });
+
+  it("keeps the answer back when Chat is withdrawn and allowed again during the handler", async () => {
+    const orig = repo.listWeights;
+    repo.listWeights = async () => {
+      chatGeneration += 2;
+      return orig();
+    };
+    try {
+      await expect(call("recentWellbeing", forModel())).rejects.toThrow(NEEDS_CHAT);
+    } finally {
+      repo.listWeights = orig;
+    }
+  });
+
+  it("needs both with no stamp outside the phone's WebView, where an older ConjureOS may be Chat", async () => {
+    chatOnFile = false;
+    await expect(call("listWorkouts")).rejects.toThrow(NEEDS_CHAT);
+  });
+
+  it("does not ask for the Chat agreement when another app reads (forModel false)", async () => {
+    chatOnFile = false;
+    await expect(call("recentWellbeing", { __caller: { forModel: false } })).resolves.toBeDefined();
   });
 });

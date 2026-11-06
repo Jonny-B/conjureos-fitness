@@ -16,6 +16,8 @@ import {
   withdrawAiJournalConsent,
 } from "../features/aiConsent";
 import type { AiJournalConsent } from "../types";
+import { chatAgreedOnFile, onChatAgreementChange, withdrawChatAgreement } from "../features/chatConsent";
+import { CHAT_NOT_ALLOWED, CHAT_WITHDRAW_NOT_SAVED, chatAllowedLine } from "../features/chatConsentCopy";
 
 /** Which surface the settings sheet opens on. "program" deep-links straight to
  *  the workout-program editor (e.g. from the Plan tab's "Edit workouts"). */
@@ -39,6 +41,7 @@ export function SettingsSheet({
   onPlanChange,
   onDataCleared,
   onWithdrawHealthConsent,
+  onAllowChat,
 }: {
   goals: Goals;
   profile: Profile | null;
@@ -51,6 +54,8 @@ export function SettingsSheet({
   onDataCleared?: () => void;
   /** Withdraw consent to collect health data: App returns to the consent screen. */
   onWithdrawHealthConsent?: () => void;
+  /** Allow ConjureOS Chat: App shows the Chat sheet, which says what Chat gets. */
+  onAllowChat?: () => void;
 }) {
   const [units, setUnitsState] = useState<Profile["units"]>(profile?.units ?? "metric");
   // The program sub-view (Edit workouts) is only ever entered directly via
@@ -59,7 +64,42 @@ export function SettingsSheet({
   const view: SettingsView = initialView === "program" && plan?.program ? "program" : "main";
   const [consent, setConsent] = useState<AiJournalConsent | undefined>(undefined);
   const [policyOpen, setPolicyOpen] = useState(false);
+  // ConjureOS Chat's own yes or no (features/chatConsent.ts): when it was
+  // given, null while Chat may not use the data, undefined until read.
+  const [chatAt, setChatAt] = useState<string | null | undefined>(undefined);
+  const [chatWithdrawNotSaved, setChatWithdrawNotSaved] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false);
   useScrollLock();
+
+  // Read from the file, and again after every answer given in this session
+  // (the Chat sheet can be up over Settings).
+  useEffect(() => {
+    let alive = true;
+    const read = () =>
+      void chatAgreedOnFile().then((at) => {
+        if (!alive) return;
+        setChatAt(at ?? null);
+        if (at) setChatWithdrawNotSaved(false);
+      });
+    read();
+    const off = onChatAgreementChange(read);
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
+
+  // Withdraw tells ConjureOS before it writes, and holds whatever the write
+  // does; a write that failed is said, and Try again is the retry.
+  const withdrawChat = async () => {
+    if (chatBusy) return;
+    setChatBusy(true);
+    try {
+      setChatWithdrawNotSaved(!(await withdrawChatAgreement()));
+    } finally {
+      setChatBusy(false);
+    }
+  };
 
   // The agreement on file for sending journal data to the AI. Re-read on open
   // rather than passed in, so it reflects an accept made on the Journal tab
@@ -174,6 +214,30 @@ export function SettingsSheet({
                 time you use Find patterns.
               </p>
             )}
+            {chatAt !== undefined && (
+              <div className="chat-row">
+                <p className="muted small">{chatAt ? chatAllowedLine(chatAt) : CHAT_NOT_ALLOWED}</p>
+                {chatWithdrawNotSaved && (
+                  <>
+                    <p className="notice notice-error" role="alert">
+                      {CHAT_WITHDRAW_NOT_SAVED}
+                    </p>
+                    <button className="btn small ghost" disabled={chatBusy} onClick={() => void withdrawChat()}>
+                      Try again
+                    </button>
+                  </>
+                )}
+                {chatAt ? (
+                  <button className="btn small ghost" disabled={chatBusy} onClick={() => void withdrawChat()}>
+                    Withdraw
+                  </button>
+                ) : onAllowChat ? (
+                  <button className="btn small ghost" disabled={chatBusy} onClick={onAllowChat}>
+                    Allow
+                  </button>
+                ) : null}
+              </div>
+            )}
             <button className="btn small ghost" onClick={() => setPolicyOpen(true)}>
               Consumer Health Data Privacy
             </button>
@@ -181,8 +245,9 @@ export function SettingsSheet({
               <>
                 <p className="muted small">
                   You agreed to let this app collect and store your health data. Withdrawing stops
-                  all collection at once and takes you back to the agreement screen. To delete
-                  what is already stored, use Reset health data below first.
+                  all collection at once, withdraws ConjureOS Chat's use of your Fitness data, and
+                  takes you back to the agreement screen. To delete what is already stored, use
+                  Reset health data below first.
                 </p>
                 <button
                   className="btn small ghost"

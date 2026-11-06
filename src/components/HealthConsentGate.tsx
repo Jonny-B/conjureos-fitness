@@ -14,17 +14,22 @@ import {
   CONSENT_APP_NAME,
   CONSENT_BODY,
   CONSENT_CHECKBOX,
+  WITHDRAW_CHAT_NOT_SAVED,
   WITHDRAW_NOT_SAVED,
 } from "../features/healthConsentCopy";
+import type { WithdrawalSaved } from "../features/healthConsent";
 
 export function HealthConsentGate({
   onAgree,
-  withdrawalNotSaved = false,
+  withdrawal = "saved",
   onRetryWithdrawal,
 }: {
   onAgree: () => void;
-  /** A withdrawal in this session could not clear the stored agreement. */
-  withdrawalNotSaved?: boolean;
+  /**
+   * What a withdrawal in this session saved: anything but "saved" says so and
+   * offers a retry, and "chat_not_saved" says it is ConjureOS Chat's.
+   */
+  withdrawal?: WithdrawalSaved;
   /** Save that withdrawal again. */
   onRetryWithdrawal?: () => Promise<unknown>;
 }) {
@@ -47,10 +52,10 @@ export function HealthConsentGate({
     <div className="app">
       <main className="screen">
         <div className="mode-body disclaimer-card">
-          {withdrawalNotSaved && (
+          {withdrawal !== "saved" && (
             <>
               <div className="notice notice-error" role="alert">
-                {WITHDRAW_NOT_SAVED}
+                {withdrawal === "chat_not_saved" ? WITHDRAW_CHAT_NOT_SAVED : WITHDRAW_NOT_SAVED}
               </div>
               {onRetryWithdrawal && (
                 <button

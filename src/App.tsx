@@ -1,15 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Goals, MealType, Plan, Profile } from "./types";
 import { DEFAULT_GOALS } from "./types";
 import { getRepository } from "./data/repository";
 import { registerActions } from "./bridge/actions";
+import { onAgreementRequest } from "./bridge/agreement";
 import { HealthConsentGate } from "./components/HealthConsentGate";
+import { ChatConsentSheet } from "./components/ChatConsentSheet";
 import {
+  healthAgreementOnFile,
   healthConsentGranted,
   loadHealthConsent,
   recordHealthConsent,
   withdrawHealthConsent,
+  type WithdrawalSaved,
 } from "./features/healthConsent";
+import { chatAgreedOnFile, recordChatAgreement, refuseChatAgreement } from "./features/chatConsent";
+import { CHAT_AGREEMENT_NOT_SAVED } from "./features/chatConsentCopy";
 import { todayISO } from "./features/diary";
 import {
   archivePlan,
@@ -84,15 +90,27 @@ export function App() {
   // "yes", only the consent screen renders, and every cross-app action
   // refuses with ConjureOS's needs-consent answer (bridge/actions.ts).
   const [consent, setConsent] = useState<"unknown" | "yes" | "no">("unknown");
-  // A withdrawal in this session could not clear the stored agreement: the
-  // consent screen says so and offers a retry.
-  const [withdrawalNotSaved, setWithdrawalNotSaved] = useState(false);
+  // What a withdrawal in this session saved. When not everything, the
+  // consent screen says so (in Chat's own words when only its file was not
+  // cleared) and offers a retry.
+  const [withdrawal, setWithdrawal] = useState<WithdrawalSaved>("saved");
+  // The Chat sheet (features/chatConsent.ts) is up: opened because ConjureOS
+  // Chat asked (`asked`) or from Settings. `try` remounts it after an Allow
+  // that could not be saved.
+  const [chatAsk, setChatAsk] = useState<{ try: number; notSaved: boolean; asked: boolean } | null>(null);
+  // Chat asked while the agreement to keep health data was not in place: that
+  // agreement comes first, and the Chat sheet follows once it is given.
+  const chatAfterKeep = useRef(false);
   // Settings sheet: closed, or open on a specific sub-view (main / program editor).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsView, setSettingsView] = useState<SettingsView>("main");
   // Plan wizard as a dismissible dialog, plus a per-session dismiss for its
   // banner (resets on reload = shows again while there's still no plan).
   const [planWizardOpen, setPlanWizardOpen] = useState(false);
+  // Read by the Chat agreement request, which has no room for its sheet while
+  // the full-screen wizard is up (ConjureOS #1230 review).
+  const planWizardOpenRef = useRef(false);
+  planWizardOpenRef.current = planWizardOpen;
   // The plan currently being edited (edit mode) vs null = create-a-new-plan.
   // Both open the same full-screen WizardScreen.
   const [planEditor, setPlanEditor] = useState<Plan | null>(null);
@@ -140,6 +158,43 @@ export function App() {
       alive = false;
     };
   }, []);
+
+  const openChatAsk = useCallback((asked: boolean) => {
+    setChatAsk((cur) => cur ?? { try: 0, notSaved: false, asked });
+  }, []);
+
+  // ConjureOS Chat asks the app to show its agreement when it needs one
+  // (#1230). What Chat needs is its own yes or no (features/chatConsent.ts,
+  // PM decision 2026-11-06), and it cannot stand without the agreement to
+  // keep health data, so that one comes first. Both are read from their files:
+  // the session's own "yes" can be stale (a withdrawal on another device, or
+  // an agreement here that did not save).
+  //
+  //   - No agreement to keep health data: its screen is up, which is what is
+  //     shown, and the Chat sheet follows once the person agrees there.
+  //     Agreeing there never agrees Chat.
+  //   - That agreement, and not Chat's: the Chat sheet.
+  //   - Both: nothing to show.
+  //
+  // A boolean, which is what the shells' shims read.
+  useEffect(
+    () =>
+      onAgreementRequest(async () => {
+        // The wizard covers the app and draws no Chat sheet: answer that nothing
+        // was shown, so ConjureOS says where to agree instead of waiting on it.
+        if (planWizardOpenRef.current) return false;
+        const collecting = await loadHealthConsent();
+        setConsent(collecting ? "yes" : "no");
+        if (!collecting) {
+          chatAfterKeep.current = true;
+          return true;
+        }
+        if ((await chatAgreedOnFile()) !== undefined) return false;
+        openChatAsk(true);
+        return true;
+      }),
+    [openChatAsk],
+  );
 
   // Registered at startup, consent or not (ConjureOS #1156). Each action checks
   // the agreement itself and refuses without one, so nothing is read or kept
@@ -293,7 +348,7 @@ export function App() {
   const saveWithdrawal = useCallback(async () => {
     const saved = await withdrawHealthConsent();
     // Agreeing again meanwhile overrules the withdrawal: nothing left to say.
-    if (!healthConsentGranted()) setWithdrawalNotSaved(!saved);
+    if (!healthConsentGranted()) setWithdrawal(saved);
   }, []);
 
   /**
@@ -304,8 +359,11 @@ export function App() {
    */
   const withdrawCollection = useCallback(() => {
     setSettingsOpen(false);
+    // Chat goes with it (withdrawHealthConsent withdraws Chat's agreement).
+    setChatAsk(null);
+    chatAfterKeep.current = false;
     setConsent("no");
-    setWithdrawalNotSaved(false);
+    setWithdrawal("saved");
     void saveWithdrawal();
   }, [saveWithdrawal]);
 
@@ -315,11 +373,17 @@ export function App() {
   if (consent === "no") {
     return (
       <HealthConsentGate
-        withdrawalNotSaved={withdrawalNotSaved}
+        withdrawal={withdrawal}
         onRetryWithdrawal={saveWithdrawal}
         onAgree={() => {
-          setWithdrawalNotSaved(false);
-          void recordHealthConsent();
+          setWithdrawal("saved");
+          const chatAsked = chatAfterKeep.current;
+          chatAfterKeep.current = false;
+          void recordHealthConsent().then(async () => {
+            // Chat asked first: its own question follows, unanswered. This
+            // agreement never answers it.
+            if (chatAsked && (await chatAgreedOnFile()) === undefined) openChatAsk(true);
+          });
           setConsent("yes");
         }}
       />
@@ -543,6 +607,37 @@ export function App() {
           onPlanChange={setPlan}
           onDataCleared={onDataCleared}
           onWithdrawHealthConsent={withdrawCollection}
+          onAllowChat={() => openChatAsk(false)}
+        />
+      )}
+
+      {chatAsk && (
+        <ChatConsentSheet
+          key={chatAsk.try}
+          asked={chatAsk.asked}
+          notice={chatAsk.notSaved ? CHAT_AGREEMENT_NOT_SAVED : undefined}
+          onDismiss={() => setChatAsk(null)}
+          onDontAllow={() => {
+            void refuseChatAgreement();
+            setChatAsk(null);
+          }}
+          onAllow={async () => {
+            // Chat cannot be allowed without the agreement to keep health data
+            // on file. One that did not save is asked for again first.
+            if (!(await healthAgreementOnFile())) {
+              setChatAsk(null);
+              setSettingsOpen(false);
+              chatAfterKeep.current = true;
+              setConsent("no");
+              return;
+            }
+            // Saved before anything else: an agreement that lives only in
+            // memory is not a record.
+            const saved = await recordChatAgreement();
+            // A sheet closed meanwhile (a withdrawal, which also overrules
+            // this Allow) stays closed.
+            setChatAsk((cur) => (saved || !cur ? null : { ...cur, try: cur.try + 1, notSaved: true }));
+          }}
         />
       )}
     </div>

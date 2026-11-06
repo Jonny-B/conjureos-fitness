@@ -32,7 +32,22 @@ vi.mock("../data/repository", () => ({ getRepository: async () => repo }));
 // Consent to collect health data (features/healthConsent.ts). Granted for
 // every test except the one that checks the refusal.
 let consentGranted = true;
-vi.mock("../features/healthConsent", () => ({ healthConsentOnFile: async () => consentGranted }));
+vi.mock("../features/healthConsent", () => ({
+  healthConsentOnFile: async () => consentGranted,
+  healthConsentGranted: () => consentGranted,
+  loadHealthConsent: async () => consentGranted,
+  healthAgreementOnFile: async () => (consentGranted ? "2026-01-01T00:00:00Z" : undefined),
+  healthConsentGeneration: () => 0,
+  stillCollecting: () => consentGranted,
+}));
+// ConjureOS Chat's own yes (features/chatConsent.ts): these calls carry no
+// stamp, so they are read as Chat's, and Chat is allowed throughout. The
+// rules for it are bridge/actions.test.ts's.
+vi.mock("../features/chatConsent", () => ({
+  chatAgreedOnFile: async () => "2026-11-01T00:00:00Z",
+  chatConsentGeneration: () => 0,
+  stillChatAgreed: () => true,
+}));
 
 let actions: Record<string, Handler> = {};
 

@@ -43,7 +43,20 @@
  * own words, and Chat asks before it first reads this app.
  */
 
-import { healthConsentOnFile } from "../features/healthConsent";
+import {
+  chatAgreedOnFile,
+  chatConsentGeneration,
+  stillChatAgreed,
+  withdrawStaleChatAgreement,
+} from "../features/chatConsent";
+import {
+  healthAgreementOnFile,
+  healthConsentGeneration,
+  healthConsentGranted,
+  healthConsentOnFile,
+  loadHealthConsent,
+  stillCollecting,
+} from "../features/healthConsent";
 import type { Macros, MealType } from "../types";
 import { MEAL_TYPES } from "../types";
 import { getRepository } from "../data/repository";
@@ -562,19 +575,99 @@ export const NEEDS_HEALTH_CONSENT =
   "NEEDS_CONSENT:Open Conjure Fitness and agree to let it keep your health data.";
 
 /**
+ * What a read for a model throws while ConjureOS Chat may not use this app's
+ * data (features/chatConsent.ts, PM decision 2026-11-06), with the agreement
+ * to keep health data in place. Chat's Open on that card asks the app to show
+ * its Chat sheet (App.tsx).
+ */
+export const NEEDS_CHAT_CONSENT =
+  "NEEDS_CONSENT:Open Conjure Fitness and allow ConjureOS Chat to use your Fitness data.";
+
+/**
+ * The actions that only read. A read ConjureOS Chat makes for a model sends
+ * what it returns to an AI, so these answer only under both agreements, the
+ * one to keep health data and Chat's own, as their files say at the time
+ * (ConjureOS #1230). The rest write, and keep the rule for every action.
+ */
+export const MODEL_READ_ACTIONS: ReadonlySet<string> = new Set([
+  "listWorkouts",
+  "trainingSummary",
+  "nextWorkout",
+  "todayTotals",
+  "dayNutrition",
+  "recentNutrition",
+  "dayWellbeing",
+  "recentWellbeing",
+]);
+
+/**
+ * Takes the `__caller` stamp ConjureOS adds to a call off the params, so no
+ * handler sees it, and says whether the call will reach a model. `forModel`
+ * true is Chat or the orchestrator. `forModel` false is another app or the
+ * person. No stamp is a ConjureOS that predates the stamp, where the caller
+ * may be Chat, except in the phone's WebView, whose shell never sends one and
+ * keeps today's rule.
+ */
+function takeCaller(args: unknown[]): { args: unknown[]; forModel: boolean } {
+  const p = args[0];
+  if (typeof p !== "object" || p === null || Array.isArray(p) || !("__caller" in p)) {
+    const inPhoneWebView =
+      typeof window !== "undefined" && (window as { ReactNativeWebView?: unknown }).ReactNativeWebView !== undefined;
+    return { args, forModel: !inPhoneWebView };
+  }
+  const { __caller, ...rest } = p as Record<string, unknown>;
+  const flag = typeof __caller === "object" && __caller !== null ? (__caller as { forModel?: unknown }).forModel : undefined;
+  return { args: [rest, ...args.slice(1)], forModel: flag !== false };
+}
+
+/**
  * Every action refuses while there is no consent to collect health data on
  * file (features/healthConsent.ts), and checks on every call: the actions are
  * registered at startup, before the person has agreed, so that a call then
  * gets this answer instead of the silence of an app that registered nothing
  * (ConjureOS #1156), and a withdrawal mid-session stops them at once. Nothing
  * is read or written before the check passes.
+ *
+ * A read that will reach a model (ConjureOS #1230) is held to more: it needs
+ * both agreements, the one to keep health data and ConjureOS Chat's own
+ * (features/chatConsent.ts). Each is read from its file again, so a withdrawal
+ * on another device counts, and the answer is kept back when either is
+ * withdrawn while the handler runs, here or on another device. The stamp that
+ * says so is taken off the params first. A write keeps the rule above: what
+ * Chat's do lane gets back is shown to the person, and ConjureOS holds that
+ * turn from any model while the agreement is not in place.
  */
 function requireHealthConsent<H extends Record<string, (...args: never[]) => unknown>>(handlers: H): H {
   const out: Record<string, (...args: never[]) => unknown> = {};
   for (const [name, fn] of Object.entries(handlers)) {
-    out[name] = async (...args: never[]) => {
+    out[name] = async (...raw: never[]) => {
+      const { args, forModel } = takeCaller(raw);
       if (!(await healthConsentOnFile())) throw new Error(NEEDS_HEALTH_CONSENT);
-      return fn(...args);
+      if (!forModel || !MODEL_READ_ACTIONS.has(name)) return fn(...(args as never[]));
+      // A call can land before the gate has read the file (#1156); settle the
+      // session first, or stillCollecting refuses an agreement that is in force.
+      if (!healthConsentGranted() && !(await loadHealthConsent())) throw new Error(NEEDS_HEALTH_CONSENT);
+      const generation = healthConsentGeneration();
+      const chatGeneration = chatConsentGeneration();
+      const agreedAt = await healthAgreementOnFile();
+      if (!agreedAt) {
+        // ConjureOS asks for a model read only while it reads Chat's file as
+        // agreed, and that cannot stand without this one: clear it before
+        // refusing, or ConjureOS goes on sending what the conversation holds.
+        await withdrawStaleChatAgreement();
+        throw new Error(NEEDS_HEALTH_CONSENT);
+      }
+      const chatAt = await chatAgreedOnFile();
+      if (!chatAt) throw new Error(NEEDS_CHAT_CONSENT);
+      const result = await fn(...(args as never[]));
+      // Another device's withdrawal reaches this session only as a change to a
+      // file, so read both again. The session checks go last, with no await
+      // between them and the return.
+      if ((await healthAgreementOnFile()) !== agreedAt) throw new Error(NEEDS_HEALTH_CONSENT);
+      if ((await chatAgreedOnFile()) !== chatAt) throw new Error(NEEDS_CHAT_CONSENT);
+      if (!stillCollecting(generation)) throw new Error(NEEDS_HEALTH_CONSENT);
+      if (!stillChatAgreed(chatGeneration)) throw new Error(NEEDS_CHAT_CONSENT);
+      return result;
     };
   }
   return out as H;
