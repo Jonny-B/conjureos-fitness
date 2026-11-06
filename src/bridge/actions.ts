@@ -44,6 +44,12 @@
  */
 
 import {
+  chatAgreedOnFile,
+  chatConsentGeneration,
+  stillChatAgreed,
+  withdrawStaleChatAgreement,
+} from "../features/chatConsent";
+import {
   healthAgreementOnFile,
   healthConsentGeneration,
   healthConsentGranted,
@@ -569,9 +575,19 @@ export const NEEDS_HEALTH_CONSENT =
   "NEEDS_CONSENT:Open Conjure Fitness and agree to let it keep your health data.";
 
 /**
+ * What a read for a model throws while ConjureOS Chat may not use this app's
+ * data (features/chatConsent.ts, PM decision 2026-11-06), with the agreement
+ * to keep health data in place. Chat's Open on that card asks the app to show
+ * its Chat sheet (App.tsx).
+ */
+export const NEEDS_CHAT_CONSENT =
+  "NEEDS_CONSENT:Open Conjure Fitness and allow ConjureOS Chat to use your Fitness data.";
+
+/**
  * The actions that only read. A read ConjureOS Chat makes for a model sends
- * what it returns to an AI, so these answer under the agreement as the file
- * says right now (ConjureOS #1230). The rest write, and keep today's rule.
+ * what it returns to an AI, so these answer only under both agreements, the
+ * one to keep health data and Chat's own, as their files say at the time
+ * (ConjureOS #1230). The rest write, and keep the rule for every action.
  */
 export const MODEL_READ_ACTIONS: ReadonlySet<string> = new Set([
   "listWorkouts",
@@ -612,10 +628,14 @@ function takeCaller(args: unknown[]): { args: unknown[]; forModel: boolean } {
  * (ConjureOS #1156), and a withdrawal mid-session stops them at once. Nothing
  * is read or written before the check passes.
  *
- * A read that will reach a model (ConjureOS #1230) is held to more: the
- * agreement is read from the file again, so a withdrawal on another device
- * counts, and the answer is kept back when a withdrawal landed while the
- * handler ran, here or on another device. The stamp that says so is taken off the params first.
+ * A read that will reach a model (ConjureOS #1230) is held to more: it needs
+ * both agreements, the one to keep health data and ConjureOS Chat's own
+ * (features/chatConsent.ts). Each is read from its file again, so a withdrawal
+ * on another device counts, and the answer is kept back when either is
+ * withdrawn while the handler runs, here or on another device. The stamp that
+ * says so is taken off the params first. A write keeps the rule above: what
+ * Chat's do lane gets back is shown to the person, and ConjureOS holds that
+ * turn from any model while the agreement is not in place.
  */
 function requireHealthConsent<H extends Record<string, (...args: never[]) => unknown>>(handlers: H): H {
   const out: Record<string, (...args: never[]) => unknown> = {};
@@ -628,14 +648,25 @@ function requireHealthConsent<H extends Record<string, (...args: never[]) => unk
       // session first, or stillCollecting refuses an agreement that is in force.
       if (!healthConsentGranted() && !(await loadHealthConsent())) throw new Error(NEEDS_HEALTH_CONSENT);
       const generation = healthConsentGeneration();
+      const chatGeneration = chatConsentGeneration();
       const agreedAt = await healthAgreementOnFile();
-      if (!agreedAt) throw new Error(NEEDS_HEALTH_CONSENT);
+      if (!agreedAt) {
+        // ConjureOS asks for a model read only while it reads Chat's file as
+        // agreed, and that cannot stand without this one: clear it before
+        // refusing, or ConjureOS goes on sending what the conversation holds.
+        await withdrawStaleChatAgreement();
+        throw new Error(NEEDS_HEALTH_CONSENT);
+      }
+      const chatAt = await chatAgreedOnFile();
+      if (!chatAt) throw new Error(NEEDS_CHAT_CONSENT);
       const result = await fn(...(args as never[]));
-      // Another device's withdrawal reaches this session only as a change to the
-      // file, so read it again. The session check goes last, with no await
-      // between it and the return.
+      // Another device's withdrawal reaches this session only as a change to a
+      // file, so read both again. The session checks go last, with no await
+      // between them and the return.
       if ((await healthAgreementOnFile()) !== agreedAt) throw new Error(NEEDS_HEALTH_CONSENT);
+      if ((await chatAgreedOnFile()) !== chatAt) throw new Error(NEEDS_CHAT_CONSENT);
       if (!stillCollecting(generation)) throw new Error(NEEDS_HEALTH_CONSENT);
+      if (!stillChatAgreed(chatGeneration)) throw new Error(NEEDS_CHAT_CONSENT);
       return result;
     };
   }

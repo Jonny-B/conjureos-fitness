@@ -1,6 +1,6 @@
 {
   "name": "conjureos-fitness",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Conjure Fitness: guided workouts, run tracking, an adaptive training plan and an AI coach for ConjureOS.",
   "type": "module",
   "license": "MIT",
@@ -15,7 +15,7 @@
     "appType": "sealed",
     "editable": false,
     "aiAgreement": {
-      "file": "health-consent.json",
+      "file": "chat-consent.json",
       "version": 1
     },
     "permissions": [

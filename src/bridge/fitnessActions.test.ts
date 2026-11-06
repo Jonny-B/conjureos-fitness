@@ -40,6 +40,14 @@ vi.mock("../features/healthConsent", () => ({
   healthConsentGeneration: () => 0,
   stillCollecting: () => consentGranted,
 }));
+// ConjureOS Chat's own yes (features/chatConsent.ts): these calls carry no
+// stamp, so they are read as Chat's, and Chat is allowed throughout. The
+// rules for it are bridge/actions.test.ts's.
+vi.mock("../features/chatConsent", () => ({
+  chatAgreedOnFile: async () => "2026-11-01T00:00:00Z",
+  chatConsentGeneration: () => 0,
+  stillChatAgreed: () => true,
+}));
 
 let actions: Record<string, Handler> = {};
 
