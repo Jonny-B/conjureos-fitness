@@ -20,19 +20,28 @@ answer.
 
 ## Rules that hold for every action
 
-- **Chat reads need the agreement as it stands.** `conjureos.aiAgreement` in
-  `package.json` names the agreement (`health-consent.json`, version 1), so
-  ConjureOS Chat and the orchestrator check it before any of this app's data
-  reaches a model (ConjureOS #1230). ConjureOS stamps a call with
-  `__caller.forModel`: `true` for Chat or the orchestrator, `false` for another
-  app. The stamp is taken off the params before a handler runs. A read with
-  `forModel` true, or with no stamp outside the phone's WebView, reads the
-  agreement file again, so a withdrawal on another device counts, and is
-  refused with `NEEDS_CONSENT:` when it is gone or when a withdrawal lands
-  while the handler runs. A write, and a read with `forModel` false, keep the
-  rule below. The app tells ConjureOS at once when the agreement is withdrawn
-  (before the file is written) and after it is saved, and answers its request
-  to show the agreement.
+- **Chat reads need both agreements as they stand.** ConjureOS Chat has its
+  own yes or no, separate from the agreement to keep health data (PM decision
+  2026-11-06), so a no to Chat costs nobody the app. `conjureos.aiAgreement`
+  in `package.json` names it (`chat-consent.json`, version 1), so ConjureOS
+  Chat and the orchestrator check it before any of this app's data reaches a
+  model (ConjureOS #1230). The file holds `{ acceptedAt, version: 1 }` when
+  allowed, `{ refusedAt }` after Don't allow, and `null` after a withdrawal.
+  ConjureOS stamps a call with `__caller.forModel`: `true` for Chat or the
+  orchestrator, `false` for another app. The stamp is taken off the params
+  before a handler runs. A read with `forModel` true, or with no stamp outside
+  the phone's WebView, needs both `health-consent.json` and
+  `chat-consent.json` in place, reads both files again before the handler and
+  after it, and is refused with `NEEDS_CONSENT:` when either is missing or a
+  withdrawal of either lands while the handler runs. A write, and a read with
+  `forModel` false, keep the rule below. What ConjureOS hears follows
+  `chat-consent.json`: a withdrawal or Don't allow at once, before the file is
+  written, and Allow after it is saved. Withdrawing the agreement to keep
+  health data writes `chat-consent.json` null too and reports a withdrawal;
+  agreeing to keep health data does not allow Chat. When ConjureOS asks the
+  app to show its agreement, the agreement to keep health data comes first if
+  it is not in place, and the Chat sheet follows it. Settings, under Privacy,
+  has Allow and Withdraw for Chat.
 - **Answers come from this device.** Conjure Fitness keeps its data in its own
   local store (no shared backend), so another device may answer differently.
 - **Wearable workouts are not included.** Sessions synced from Apple Health or

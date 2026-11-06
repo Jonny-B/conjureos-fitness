@@ -24,3 +24,13 @@ export const CONSENT_CHECKBOX =
  */
 export const WITHDRAW_NOT_SAVED =
   "Your withdrawal was not saved. Collection stays stopped until you close the app, and starts again when you reopen it.";
+
+/**
+ * Shown there instead when everything but ConjureOS Chat's file was saved
+ * (healthConsent.ts "chat_not_saved"). Collection stays stopped after a
+ * reload, so WITHDRAW_NOT_SAVED would be wrong, and ConjureOS reads Chat's
+ * file alone, so until it is saved Chat's withdrawal holds only while the app
+ * is open (#1230 review). Draft copy, pending the owner's approval.
+ */
+export const WITHDRAW_CHAT_NOT_SAVED =
+  "Your withdrawal was saved, except for ConjureOS Chat. Chat's withdrawal holds only while the app stays open. Try again so it holds after you close it.";
