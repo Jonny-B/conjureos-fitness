@@ -65,14 +65,21 @@ describe("clearAllHistories", () => {
 });
 
 describe("visibleHistoryItems", () => {
-  it("offers the wellbeing rows", () => {
+  it("offers only what Conjure Fitness keeps: no food diary, sleep, water or symptoms", () => {
     const kinds = visibleHistoryItems().map((i) => i.kind);
-    expect(kinds).toContain("sleep");
-    expect(kinds).toContain("water");
-    expect(kinds).toContain("symptoms");
+    for (const k of ["diary", "sleep", "water", "symptoms"] as const) expect(kinds).not.toContain(k);
+    for (const k of ["weights", "workouts", "coach", "coachChat", "plan", "planHistory"] as const) {
+      expect(kinds).toContain(k);
+    }
   });
 
-  it("offers every row, coach + workout slices included, with the coach on", () => {
-    expect(visibleHistoryItems()).toEqual(HISTORY_ITEMS);
+  it("does not call the coach thread food questions", () => {
+    const row = visibleHistoryItems().find((i) => i.kind === "coachChat")!;
+    expect(`${row.label} ${row.desc}`.toLowerCase()).not.toContain("food");
+  });
+
+  it("still lets Clear all history reach every slice, hidden ones included", async () => {
+    await clearAllHistories();
+    for (const k of ["diary", "sleep", "water", "symptoms"]) expect(calls).toContain(k);
   });
 });

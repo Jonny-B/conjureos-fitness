@@ -10,6 +10,7 @@
 import type { CardioActual, Exercise, ExerciseActual, ExerciseSet, Workout, WorkoutSession } from "../types";
 import { newId } from "../data/id";
 import { todayISO } from "./diary";
+import { INJURY_REGIONS, isExerciseExcluded } from "./safety/injuryExclusions";
 
 let n = 0;
 const id = () => `seed-${n++}`;
@@ -197,4 +198,19 @@ export function buildSteps(workout: Workout): PlayerStep[] {
     }
   }
   return steps;
+}
+
+/**
+ * For each injury the person entered, the workout's exercises that load it
+ * (the same name patterns the plan validator rejects). Empty when none do.
+ */
+export function injuryFlags(workout: Workout, injuries: readonly string[]): { label: string; exercises: string[] }[] {
+  const out: { label: string; exercises: string[] }[] = [];
+  for (const region of injuries) {
+    const exercises = workout.exercises.filter((e) => isExerciseExcluded(e.name, [region])).map((e) => e.name);
+    if (exercises.length === 0) continue;
+    const label = INJURY_REGIONS.find((r) => r.id === region)?.label ?? region;
+    out.push({ label: label.toLowerCase(), exercises });
+  }
+  return out;
 }

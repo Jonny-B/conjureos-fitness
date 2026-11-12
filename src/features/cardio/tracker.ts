@@ -14,6 +14,8 @@ export interface CardioTrackState {
   autoPaused: boolean;
   /** True once at least one GPS fix has arrived. */
   gps: boolean;
+  /** True when location could not be read (permission denied or unavailable). */
+  gpsError: boolean;
 }
 
 const MIN_MOVE_M = 4; // ignore sub-jitter movement
@@ -28,6 +30,7 @@ const INITIAL: CardioTrackState = {
   running: false,
   autoPaused: false,
   gps: false,
+  gpsError: false,
 };
 
 /**
@@ -51,6 +54,7 @@ export function useGpsTracker() {
   const splitsRef = useRef<number[]>([]);
   const trackRef = useRef<LocationSample[]>([]);
   const unsubRef = useRef<(() => void) | null>(null);
+  const gpsErrorRef = useRef(false);
   const wakeRef = useRef<{ release: () => void } | null>(null);
 
   const publish = useCallback(() => {
@@ -64,12 +68,14 @@ export function useGpsTracker() {
       running: runningRef.current,
       autoPaused: autoPausedRef.current,
       gps: trackRef.current.length > 0,
+      gpsError: gpsErrorRef.current,
     });
   }, []);
 
   const onSample = useCallback(
     (s: LocationSample) => {
       trackRef.current.push(s);
+      gpsErrorRef.current = false;
       const last = lastSampleRef.current;
       lastSampleRef.current = s;
       if (!runningRef.current) {
@@ -131,7 +137,10 @@ export function useGpsTracker() {
     runningRef.current = true;
     lastTickRef.current = Date.now();
     lastMoveRef.current = Date.now();
-    if (!unsubRef.current) unsubRef.current = watchLocation(onSample);
+    if (!unsubRef.current) unsubRef.current = watchLocation(onSample, () => {
+      gpsErrorRef.current = true;
+      publish();
+    });
     requestWake();
     publish();
   }, [onSample, publish]);

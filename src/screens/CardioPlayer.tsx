@@ -62,7 +62,15 @@ export function CardioPlayer({ workout, units, onFinish, onCancel }: Props) {
           </div>
         </div>
         {state.autoPaused && <div className="cardio-autopause">Auto-paused</div>}
-        {started && !state.gps && <div className="muted small">Waiting for GPS…</div>}
+        {started && !state.gps && state.gpsError && (
+          <div className="notice notice-soft">
+            <span>
+              Can't get your location. Allow location for this app in your settings, or add the run yourself.
+            </span>
+            <button className="link-btn" onClick={() => setManual(true)}>Enter distance by hand</button>
+          </div>
+        )}
+        {started && !state.gps && !state.gpsError && <div className="muted small">Waiting for GPS…</div>}
       </div>
 
       {state.splits.length > 0 && (
