@@ -13,7 +13,7 @@
 
 import { getRepository } from "../data/repository";
 import { vfs } from "../bridge/vfs";
-import { COACH_AND_WORKOUTS_ENABLED } from "./flags";
+import { COACH_AND_WORKOUTS_ENABLED, NUTRITION_ENABLED } from "./flags";
 
 /** One independently clearable slice of the user's history. */
 export type HistoryKind =
@@ -114,6 +114,8 @@ export async function clearAllHistories(): Promise<void> {
 
 /** Slices belonging to the paused coach + workout features (see features/flags). */
 const PAUSED_KINDS: ReadonlySet<HistoryKind> = new Set<HistoryKind>(["workouts", "coach"]);
+/** Slices only the nutrition features write (see NUTRITION_ENABLED). */
+const NUTRITION_KINDS: ReadonlySet<HistoryKind> = new Set<HistoryKind>(["diary", "sleep", "water", "symptoms"]);
 // "coachChat" is deliberately NOT paused: the home screen's ask box writes to
 // it, so the user must be able to clear what they can see.
 
@@ -125,6 +127,19 @@ const PAUSED_KINDS: ReadonlySet<HistoryKind> = new Set<HistoryKind>(["workouts",
  * including the hidden slices, so it keeps meaning all.
  */
 export function visibleHistoryItems(): typeof HISTORY_ITEMS {
-  if (COACH_AND_WORKOUTS_ENABLED) return HISTORY_ITEMS;
-  return HISTORY_ITEMS.filter((i) => !PAUSED_KINDS.has(i.kind));
+  let items = HISTORY_ITEMS;
+  if (!COACH_AND_WORKOUTS_ENABLED) items = items.filter((i) => !PAUSED_KINDS.has(i.kind));
+  if (!NUTRITION_ENABLED) {
+    // Conjure Fitness has no food diary, sleep, water or symptom logging, so
+    // those rows would offer to clear data it never keeps. The only thread left
+    // is the coach's chat, so it is named for that.
+    items = items
+      .filter((i) => !NUTRITION_KINDS.has(i.kind))
+      .map((i) =>
+        i.kind === "coachChat"
+          ? { ...i, label: "Coach chat", desc: "Everything you've asked your coach, and the answers" }
+          : i,
+      );
+  }
+  return items;
 }

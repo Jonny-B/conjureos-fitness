@@ -88,6 +88,46 @@ export function BodyStatsFields({
   );
 }
 
+/** Weight on its own, for plans that do not track food (no height needed).
+ *  Optional: when blank, calorie-burn estimates use an average weight, and the
+ *  hint says so. */
+export function WeightOnlyField({
+  units,
+  weightKg,
+  onUnits,
+  onWeightKg,
+}: {
+  units: Profile["units"];
+  weightKg: number | undefined;
+  onUnits: (u: Profile["units"]) => void;
+  onWeightKg: (kg: number | undefined) => void;
+}) {
+  return (
+    <div className="body-stats">
+      <label className="field">
+        <span>Units</span>
+        <UnitsToggle units={units} onChange={onUnits} />
+      </label>
+      <label className="field">
+        <span>Weight ({weightUnit(units)}) — optional</span>
+        <NumberField
+          value={weightKg == null ? undefined : weightToDisplay(weightKg, units)}
+          min={weightToDisplay(25, units)}
+          max={weightToDisplay(400, units)}
+          decimals={1}
+          onChange={(n) => onWeightKg(n == null ? undefined : Math.round(weightToKg(n, units) * 100) / 100)}
+          aria-label="Weight"
+        />
+        <span className="muted small field-hint">
+          {weightKg == null
+            ? `Used to estimate calories burned. Skip it and your plan assumes an average weight (${Math.round(weightToDisplay(70, units))} ${weightUnit(units)}).`
+            : "Used to estimate calories burned."}
+        </span>
+      </label>
+    </div>
+  );
+}
+
 /**
  * Height input. Metric = one cm field; imperial = feet + inches side by side
  * (nobody thinks of themselves as "72 inches"). Storage is always cm. Shared by

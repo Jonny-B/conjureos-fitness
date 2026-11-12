@@ -21,6 +21,7 @@ import {
   AgeField,
   BodyStatsFields,
   GoalWeightField,
+  WeightOnlyField,
   PlanDatesField,
   SexField,
   weeksBetween,
@@ -321,7 +322,7 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
   const buildBody = (): WizardBody => ({
     sex: tracksFood ? sex : undefined,
     heightCm: tracksFood ? heightCm : undefined,
-    weightKg: tracksFood ? weightKg : undefined,
+    weightKg,
     goalWeightKg: tracksFood && direction !== "maintain" ? goalWeightKg : undefined,
     age,
     ageBand,
@@ -448,6 +449,18 @@ export function WizardScreen({ onComplete, onClose, units = "metric", profile, e
                 optional
               />
             </>
+          )}
+
+          {!tracksFood && (
+            <WeightOnlyField
+              units={unitPref}
+              weightKg={weightKg}
+              onUnits={setUnitPref}
+              onWeightKg={(kg) => {
+                weightTouched.current = true;
+                setWeightKg(kg);
+              }}
+            />
           )}
 
           <div className="section-label">Safety check</div>

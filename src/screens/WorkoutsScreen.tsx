@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Plan, Profile, Workout } from "../types";
-import { BUILT_IN_WORKOUTS } from "../features/workouts";
+import { BUILT_IN_WORKOUTS, injuryFlags } from "../features/workouts";
 import { todayISO } from "../features/diary";
 import { fmtDuration } from "../features/units";
 import {
@@ -93,6 +93,11 @@ export function WorkoutsScreen({
                 <div className="workout-name">{w.name}</div>
                 <div className="workout-summary">{w.summary}</div>
                 <div className="workout-meta">{metaLine(w)}</div>
+                {injuryFlags(w, plan?.safety?.injuries ?? []).map((f) => (
+                  <div key={f.label} className="workout-meta">
+                    May load your {f.label}: {f.exercises.join(", ")}
+                  </div>
+                ))}
               </div>
               <span className="workout-play" aria-hidden>
                 <PlayIcon size={18} />
